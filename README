@@ -1,0 +1,66 @@
+MySQL FDW for PostgreSQL 9.1+
+==============================
+
+This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for
+the MySQL.
+
+This code is experimental, and largely intended as a pet project for me
+to experiment with and learn about FDWs in PostgreSQL.
+
+By all means use it, but do so entirely at your own risk! You have been
+warned!
+
+Building
+--------
+
+FIXME: Library requirements etc.
+
+Once that's done, the extension can be built with:
+
+PATH=/usr/local/pgsql91/bin/:$PATH make USE_PGXS=1 make
+sudo PATH=/usr/local/pgsql91/bin/:$PATH make USE_PGXS=1 install
+
+(assuming you have PostgreSQL 9.1 in /usr/local/pgsql91).
+
+I've tested on Mac OS X 10.6 only, but other *nix's should also work.
+I haven't tested on Windows, but the code should be good on MinGW.
+
+Limitations
+-----------
+
+FIXME
+
+Usage
+-----
+
+The following parameters can be set on a MySQL foreign server:
+
+address:	The address or hostname of the MySQL server.
+	 	Default: 127.0.0.1
+
+port:		The port number on which the MySQL server is listening.
+     		Default: 6379
+
+The following parameter can be set on a MySQL foreign table:
+
+database:	The numeric ID of the MySQL database to query.
+	  	Default: 0
+
+The following parameter can be set on a user mapping for a MySQL
+foreign server:
+
+username:	The username to use when connecting to MySQL
+
+password:	The password to authenticate to the MySQL server with.
+		Default: <none>
+
+FIXME: Add additional options.
+
+Example
+-------
+
+FIXME
+
+-- 
+Dave Page
+dpage@pgadmin.org

@@ -1,0 +1,19 @@
+##########################################################################
+#
+#                foreign-data wrapper for MySQL
+#
+# Copyright (c) 2011, PostgreSQL Global Development Group
+#
+# This software is released under the PostgreSQL Licence
+#
+# Author: Dave Page <dpage@pgadmin.org>
+#
+# IDENTIFICATION
+#                 mysql_fdw/mysql_fdw.control
+# 
+##########################################################################
+
+comment = 'Foreign data wrapper for querying a MySQL server'
+default_version = '1.0'
+module_pathname = '$libdir/mysql_fdw'
+relocatable = true
