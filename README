@@ -13,22 +13,25 @@ warned!
 Building
 --------
 
-FIXME: Library requirements etc.
+Install MySQL, or just the C client library, and Once that's done, the 
+extension can be built with:
 
-Once that's done, the extension can be built with:
+PATH=/usr/local/pgsql/bin/:/usr/local/mysql/bin:$PATH make USE_PGXS=1 
+sudo PATH=/usr/local/pgsql/bin/:/usr/local/mysql/bin:$PATH make USE_PGXS=1 install
 
-PATH=/usr/local/pgsql91/bin/:$PATH make USE_PGXS=1 make
-sudo PATH=/usr/local/pgsql91/bin/:$PATH make USE_PGXS=1 install
+(assuming you have PostgreSQL 9.1 in /usr/local/pgsql and MySQL in 
+/usr/local/mysql).
 
-(assuming you have PostgreSQL 9.1 in /usr/local/pgsql91).
-
-I've tested on Mac OS X 10.6 only, but other *nix's should also work.
+I've tested on Mac OS X 10.7 only, but other *nix's should also work.
 I haven't tested on Windows, but the code should be good on MinGW.
 
 Limitations
 -----------
 
-FIXME
+- No attempt is made to pushdown quals to MySQL.
+
+- No attempt is made to estimate the number of rows etc. when planning
+  the remote query.
 
 Usage
 -----
@@ -39,27 +42,79 @@ address:	The address or hostname of the MySQL server.
 	 	Default: 127.0.0.1
 
 port:		The port number on which the MySQL server is listening.
-     		Default: 6379
+     		Default: 3306
 
 The following parameter can be set on a MySQL foreign table:
 
-database:	The numeric ID of the MySQL database to query.
-	  	Default: 0
+database:	The name of the MySQL database to query.
+	  	Default: NULL
+
+query:		An SQL query to define the data set on the MySQL server.
+
+table:		The name of a table (quoted and qualified as required)
+		on the MySQL table.
+
+Note that the query and table paramters are mutually exclusive. Using
+query can provide either a simple way to push down quals (which of
+course is fixed at definition time), or to base remote tables on 
+more complex SQL queries.
 
 The following parameter can be set on a user mapping for a MySQL
 foreign server:
 
 username:	The username to use when connecting to MySQL
+		Default <none>
 
 password:	The password to authenticate to the MySQL server with.
 		Default: <none>
 
-FIXME: Add additional options.
-
 Example
 -------
 
-FIXME
+-- Create the require functions for the FDW.
+CREATE FUNCTION mysql_fdw_handler() 
+    RETURNS fdw_handler 
+    AS '$libdir/mysql_fdw' 
+    LANGUAGE C STRICT;
+
+CREATE FUNCTION mysql_fdw_validator(text[], oid) 
+    RETURNS void 
+    AS '$libdir/mysql_fdw' 
+    LANGUAGE C STRICT;
+
+-- Create the data wrapper or "transport".
+CREATE FOREIGN DATA WRAPPER mysql_fdw 
+    HANDLER mysql_fdw_handler 
+    VALIDATOR mysql_fdw_validator;
+
+-- Create the foreign server, a pointer to the MySQL server.
+CREATE SERVER mysql_svr 
+    FOREIGN DATA WRAPPER mysql_fdw 
+    OPTIONS (address '127.0.0.1', port '3306');
+
+-- Create one or more foreign tables on the MySQL server. The first of 
+-- these maps to a remote table, whilst the second uses an SQL query.
+CREATE FOREIGN TABLE employees (
+    id integer,
+    name text,
+    address text)
+    SERVER mysql_svr
+    OPTIONS (table 'hr.employees');
+
+CREATE FOREIGN TABLE overtime_2010 (
+    id integer,
+    employee_id integer,
+    ot_date date,
+    ot_hours integer))
+    SERVER mysql_svr
+    OPTIONS (query 'SELECT * FROM overtime WHERE year = 2010;');
+
+-- Create a user mapping to tell the FDW the username/password to 
+-- use to connect to MySQL, for PUBLIC. This could be done on a per-
+-- role basis.
+CREATE USER MAPPING FOR PUBLIC 
+    SERVER mysql 
+    OPTIONS (username 'dpage', password '');
 
 -- 
 Dave Page

@@ -14,9 +14,6 @@
  *-------------------------------------------------------------------------
  */
 
-/* Debug mode */
-/* #define DEBUG */
-
 #include "postgres.h"
 
 #include <stdio.h>
@@ -50,8 +47,6 @@
 
 PG_MODULE_MAGIC;
 
-#define PROCID_TEXTEQ 67
-
 /*
  * Describes the valid options for objects that use this wrapper.
  */
@@ -74,7 +69,7 @@ static struct MySQLFdwOption valid_options[] =
 	{ "username",		UserMappingRelationId },
 	{ "password",		UserMappingRelationId },
 	{ "database",		ForeignTableRelationId },
-	{ "schema",		ForeignTableRelationId },
+	{ "query",		ForeignTableRelationId },
 	{ "table",		ForeignTableRelationId },
 
 	/* Sentinel */
@@ -88,14 +83,14 @@ static struct MySQLFdwOption valid_options[] =
 typedef struct MySQLFdwExecutionState
 {
 	MYSQL		*conn;
+	MYSQL_RES	*result;
 	AttInMetadata	*attinmeta;
-	long long	row;
 	char		*address;
 	int		port;
 	char		*username;
 	char		*password;
 	char		*database;
-	char		*schema;
+	char		*query;
 	char		*table;
 } MySQLFdwExecutionState;
 
@@ -122,8 +117,7 @@ static void mysqlEndForeignScan(ForeignScanState *node);
  * Helper functions
  */
 static bool mysqlIsValidOption(const char *option, Oid context);
-static void mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, char **password, char **database, char **schema, char **table);
-static void mysqlGetQual(Node *node, TupleDesc tupdesc, char **key, char **value, bool *pushdown);
+static void mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, char **password, char **database, char **query, char **table);
 
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
@@ -133,10 +127,6 @@ Datum
 mysql_fdw_handler(PG_FUNCTION_ARGS)
 {
 	FdwRoutine *fdwroutine = makeNode(FdwRoutine);
-
-#ifdef DEBUG
-	elog(NOTICE, "mysql_fdw_handler");
-#endif
 
 	fdwroutine->PlanForeignScan = mysqlPlanForeignScan;
 	fdwroutine->ExplainForeignScan = mysqlExplainForeignScan;
@@ -164,13 +154,9 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 	char		*svr_username = NULL;
 	char		*svr_password = NULL;
 	char		*svr_database = NULL;
-	char		*svr_schema = NULL;
+	char		*svr_query = NULL;
 	char		*svr_table = NULL;
 	ListCell	*cell;
-
-#ifdef DEBUG
-	elog(NOTICE, "mysql_fdw_validator");
-#endif
 
 	/*
 	 * Check that only options supported by mysql_fdw,
@@ -251,18 +237,30 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 
 			svr_database = defGetString(def);
 		}
-                else if (strcmp(def->defname, "schema") == 0)
+                else if (strcmp(def->defname, "query") == 0)
                 {
-                        if (svr_schema)
+                        if (svr_table)
                                 ereport(ERROR,
                                         (errcode(ERRCODE_SYNTAX_ERROR),
-                                        errmsg("conflicting or redundant options: schema (%s)", defGetString(def))
+                                        errmsg("conflicting options: query cannot be used with table")
                                         ));
 
-                        svr_schema = defGetString(def);
+                        if (svr_query)
+                                ereport(ERROR,
+                                        (errcode(ERRCODE_SYNTAX_ERROR),
+                                        errmsg("conflicting or redundant options: query (%s)", defGetString(def))
+                                        ));
+
+                        svr_query = defGetString(def);
                 }
                 else if (strcmp(def->defname, "table") == 0)
                 {
+                        if (svr_query)
+                                ereport(ERROR,
+                                        (errcode(ERRCODE_SYNTAX_ERROR),
+                                        errmsg("conflicting options: table cannot be used with query")
+                                        ));
+
                         if (svr_table)
                                 ereport(ERROR,
                                         (errcode(ERRCODE_SYNTAX_ERROR),
@@ -286,10 +284,6 @@ mysqlIsValidOption(const char *option, Oid context)
 {
 	struct MySQLFdwOption *opt;
 
-#ifdef DEBUG
-	elog(NOTICE, "mysqlIsValidOption");
-#endif
-
 	for (opt = valid_options; opt->optname; opt++)
 	{
 		if (context == opt->optcontext && strcmp(opt->optname, option) == 0)
@@ -302,17 +296,13 @@ mysqlIsValidOption(const char *option, Oid context)
  * Fetch the options for a mysql_fdw foreign table.
  */
 static void
-mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, char **password, char **database, char **schema, char **table)
+mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, char **password, char **database, char **query, char **table)
 {
 	ForeignTable	*f_table;
 	ForeignServer	*f_server;
 	UserMapping	*f_mapping;
 	List		*options;
 	ListCell	*lc;
-
-#ifdef DEBUG
-	elog(NOTICE, "mysqlGetOptions");
-#endif
 
 	/*
 	 * Extract options from FDW objects.
@@ -346,8 +336,8 @@ mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, 
 		if (strcmp(def->defname, "database") == 0)
 			*database = defGetString(def);
 
-                if (strcmp(def->defname, "schema") == 0)
-                        *schema = defGetString(def);
+                if (strcmp(def->defname, "query") == 0)
+                        *query = defGetString(def);
 
                 if (strcmp(def->defname, "table") == 0)
                         *table = defGetString(def);
@@ -359,6 +349,13 @@ mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, 
 
 	if (!*port)
 		*port = 3306;
+
+	/* Check we have the options we need to proceed */
+        if (!*table && !*query)
+                ereport(ERROR,
+                        (errcode(ERRCODE_SYNTAX_ERROR),
+                        errmsg("either a table or a query must be specified")
+                        ));
 }
 
 /*
@@ -374,19 +371,11 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 	char		*svr_username = NULL;
 	char		*svr_password = NULL;
 	char 		*svr_database = NULL;
-	char 		*svr_schema = NULL;
+	char 		*svr_query = NULL;
 	char 		*svr_table = NULL;
 
-#ifdef DEBUG
-	elog(NOTICE, "mysqlPlanForeignScan");
-#endif
-
 	/* Fetch options  */
-	mysqlGetOptions(foreigntableid, &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_schema, &svr_table);
-
-	/* Connect to the database */
-
-	/* Execute a query to get the database size */
+	mysqlGetOptions(foreigntableid, &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_query, &svr_table);
 
 	/* Construct FdwPlan with cost estimates. */
 	fdwplan = makeNode(FdwPlan);
@@ -397,6 +386,11 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 	else
 		fdwplan->startup_cost = 25;
 
+	/* 
+	 * TODO: Currently we assume 10 rows. We need to connect to the remote database and
+	 * execute an explain or count to get an idea of the number of rows (and maybe other
+	 * costs), without it costing a fortune to do so - Heisenberg's principle people! 
+	 */
 	baserel->rows = 10;
 	fdwplan->total_cost = 10 + fdwplan->startup_cost;
 	fdwplan->fdw_private = NIL;	/* not used */
@@ -411,19 +405,41 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 static void
 mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
+	char			*query;
+	MYSQL_RES		*result;
+	MYSQL_ROW		*row;
+	long			rows = 0;
+
 	MySQLFdwExecutionState *festate = (MySQLFdwExecutionState *) node->fdw_state;
 
-#ifdef DEBUG
-	elog(NOTICE, "mysqlExplainForeignScan");
-#endif
+	/*
+	 * MySQL seems to have some pretty unhelpful EXPLAIN output, which only
+	 * gives a row estimate for each relation in the statement. We'll use the
+	 * sum of the rows as our cost estimate.
+	 */
+	query = (char *) palloc(strlen(festate->query) + 9);
+	snprintf(query, strlen(festate->query) + 9, "EXPLAIN %s", festate->query);
 
-	/* Execute a query to get the database size */
+        if (mysql_query(festate->conn, query) != 0)
+        {
+		char *err = pstrdup(mysql_error(festate->conn));
+                mysql_close(festate->conn);
+                ereport(ERROR,
+                        (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+                        errmsg("failed to execute the MySQL query: %s", err)
+                        ));
+        }
 
+	result = mysql_store_result(festate->conn);
+
+        while ((row = mysql_fetch_row(result)))
+		rows += atol(row[8]);
+
+	mysql_free_result(result);
+	
 	/* Suppress file size if we're not showing cost details */
 	if (es->costs)
-	{
-		ExplainPropertyLong("Foreign MySQL Database Size", 10, es);
-	}
+		ExplainPropertyLong("Foreign MySQL Data Rows", rows, es);
 }
 
 /*
@@ -438,21 +454,14 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	char			*svr_username = NULL;
 	char			*svr_password = NULL;
 	char			*svr_database = NULL;
-	char			*svr_schema = NULL;
+	char			*svr_query = NULL;
 	char			*svr_table = NULL;
 	MYSQL			*conn;
-	char			*qual_key = NULL;
-	char			*qual_value = NULL;
-	bool			pushdown = false;
 	MySQLFdwExecutionState  *festate;
-	char			query[1024];
-
-#ifdef DEBUG
-	elog(NOTICE, "BeginForeignScan");
-#endif
+	char			*query;
 
 	/* Fetch options  */
-	mysqlGetOptions(RelationGetRelid(node->ss.ss_currentRelation), &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_schema, &svr_table);
+	mysqlGetOptions(RelationGetRelid(node->ss.ss_currentRelation), &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_query, &svr_table);
 
 	/* Connect to the server */
 	conn = mysql_init(NULL);
@@ -468,43 +477,42 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
                         errmsg("failed to connect to MySQL: %s", mysql_error(conn))
                         ));
 
-	/* See if we've got a qual we can push down */
-	if (node->ss.ps.plan->qual)
+	/* Build the query */
+	if (svr_query)
+		query = svr_query;
+	else
 	{
-		ListCell	*lc;
+		size_t len = strlen(svr_table) + 15;
 
-		foreach (lc, node->ss.ps.qual)
-		{
-			/* Only the first qual can be pushed down to MySQL */
-			ExprState  *state = lfirst(lc);
-
-			mysqlGetQual((Node *) state->expr, node->ss.ss_currentRelation->rd_att, &qual_key, &qual_value, &pushdown);
-			if (pushdown)
-				break;
-		}
+		query = (char *)palloc(len);
+		snprintf(query, len, "SELECT * FROM %s", svr_table);
 	}
 
-	/* Stash away the state info we have already */
-	festate = (MySQLFdwExecutionState *) palloc(sizeof(MySQLFdwExecutionState));
-	node->fdw_state = (void *) festate;
-	festate->conn = conn;
-	festate->row = 0;
-	festate->address = svr_address;
-	festate->port = svr_port;
+        /* Stash away the state info we have already */
+        festate = (MySQLFdwExecutionState *) palloc(sizeof(MySQLFdwExecutionState));
+        node->fdw_state = (void *) festate;
+        festate->conn = conn;
+        festate->address = svr_address;
+        festate->port = svr_port;
+	festate->query = query;
 
-	/* OK, we connected. If this is an EXPLAIN, bail out now */
-	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
-		return;
+        /* OK, we connected. If this is an EXPLAIN, bail out now */
+        if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+                return;
 
 	/* Execute the query */
-	snprintf(query, sizeof(query), "SELECT * FROM `%s`.`%s`", svr_schema, svr_table);
 	if (mysql_query(conn, query) != 0)
 	{
+                char *err = pstrdup(mysql_error(conn));
+		mysql_close(conn);
                 ereport(ERROR,
                         (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-                        errmsg("failed to execute the MySQL query: %s", mysql_error(conn))
+                        errmsg("failed to execute the MySQL query: %s", err)
                         ));
 	}
+
+	/* Guess the query succeeded then */
+	festate->result = mysql_store_result(conn);
 
 	/* Store the additional state info */
 	festate->attinmeta = TupleDescGetAttInMetadata(node->ss.ss_currentRelation->rd_att);
@@ -518,40 +526,29 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 static TupleTableSlot *
 mysqlIterateForeignScan(ForeignScanState *node)
 {
-	bool			found = false;
-	char			*key;
-	char 			*data = 0;
 	char			**values;
 	HeapTuple		tuple;
+	MYSQL_ROW		row;
+	int			x;
 
 	MySQLFdwExecutionState *festate = (MySQLFdwExecutionState *) node->fdw_state;
 	TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
 
-#ifdef DEBUG
-	elog(NOTICE, "mysqlIterateForeignScan");
-#endif
-
 	/* Cleanup */
 	ExecClearTuple(slot);
 
-
 	/* Get the next tuple */
-	if (festate->row < 10)
-		found = true;
-	festate->row++;
-
-	/* Build the tuple */
-	values = (char **) palloc(sizeof(char *) * 2);
-
-	if (found)
+	if ((row = mysql_fetch_row(festate->result)))
 	{
-		values[0] = "<key>";
-		values[1] = "<vaue>";
+		/* Build the tuple */
+		values = (char **) palloc(sizeof(char *) * mysql_num_fields(festate->result));
+
+		for (x = 0; x < mysql_num_fields(festate->result); x++)
+			values[x] = row[x];
+
 		tuple = BuildTupleFromCStrings(festate->attinmeta, values);
 		ExecStoreTuple(tuple, slot, InvalidBuffer, false);
 	}
-
-	/* Cleanup */
 
 	return slot;
 }
@@ -565,12 +562,17 @@ mysqlEndForeignScan(ForeignScanState *node)
 {
 	MySQLFdwExecutionState *festate = (MySQLFdwExecutionState *) node->fdw_state;
 
-#ifdef DEBUG
-	elog(NOTICE, "mysqlEndForeignScan");
-#endif
+	if (festate->result)
+	{
+		mysql_free_result(festate->result);
+		festate->result = NULL;
+	}
 
-	mysql_close(festate->conn);
-	festate->conn = NULL;
+	if (festate->result)
+	{
+		mysql_close(festate->conn);
+		festate->conn = NULL;
+	}
 }
 
 /*
@@ -582,63 +584,5 @@ mysqlReScanForeignScan(ForeignScanState *node)
 {
 	MySQLFdwExecutionState *festate = (MySQLFdwExecutionState *) node->fdw_state;
 
-#ifdef DEBUG
-	elog(NOTICE, "mysqlReScanForeignScan");
-#endif
-
-	festate->row = 0;
 }
 
-static void
-mysqlGetQual(Node *node, TupleDesc tupdesc, char **key, char **value, bool *pushdown)
-{
-	*key = NULL;
-	*value = NULL;
-	*pushdown = false;
-
-	if (!node)
-		return;
-
-	if (IsA(node, OpExpr))
-	{
-		OpExpr	*op = (OpExpr *) node;
-		Node	*left, *right;
-		Index	varattno;
-
-		if (list_length(op->args) != 2)
-			return;
-
-		left = list_nth(op->args, 0);
-
-		if (!IsA(left, Var))
-			return;
-
-		varattno = ((Var *) left)->varattno;
-
-		right = list_nth(op->args, 1);
-
-		if (IsA(right, Const))
-		{
-			StringInfoData  buf;
-
-			initStringInfo(&buf);
-
-			/* And get the column and value... */
-			*key = NameStr(tupdesc->attrs[varattno - 1]->attname);
-			*value = TextDatumGetCString(((Const *) right)->constvalue);
-
-			/*
-			 * We can push down this qual if:
-			 * - The operatory is TEXTEQ
-			 * - The qual is on the key column
-			 */
-			if (op->opfuncid == PROCID_TEXTEQ && strcmp(*key, "key") == 0)
-                        	*pushdown = true;
-
-			elog(NOTICE, "Got qual %s = %s", *key, *value);
-			return;
-		}
-	}
-
-	return;
-}
