@@ -373,6 +373,11 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 	char 		*svr_database = NULL;
 	char 		*svr_query = NULL;
 	char 		*svr_table = NULL;
+	char		*query;
+	double		rows;
+	MYSQL           *conn;
+	MYSQL_RES	*result;
+	MYSQL_ROW	row;
 
 	/* Fetch options  */
 	mysqlGetOptions(foreigntableid, &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_query, &svr_table);
@@ -387,12 +392,67 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 		fdwplan->startup_cost = 25;
 
 	/* 
-	 * TODO: Currently we assume 10 rows. We need to connect to the remote database and
-	 * execute an explain or count to get an idea of the number of rows (and maybe other
-	 * costs), without it costing a fortune to do so - Heisenberg's principle people! 
+	 * TODO: Find a way to stash this connection object away, so we don't have
+	 * to reconnect to MySQL aain later.
 	 */
-	baserel->rows = 10;
-	fdwplan->total_cost = 10 + fdwplan->startup_cost;
+
+        /* Connect to the server */
+        conn = mysql_init(NULL);
+        if (!conn)
+                ereport(ERROR,
+                        (errcode(ERRCODE_FDW_OUT_OF_MEMORY),
+                        errmsg("failed to initialise the MySQL connection object")
+                        ));
+
+        if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
+                ereport(ERROR,
+                        (errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+                        errmsg("failed to connect to MySQL: %s", mysql_error(conn))
+                        ));
+
+        /* Build the query */
+        if (svr_query)
+	{
+                size_t len = strlen(svr_query) + 9;
+
+        	query = (char *) palloc(len);
+        	snprintf(query, len, "EXPLAIN %s", svr_query);
+	}
+        else
+        {
+                size_t len = strlen(svr_table) + 23;
+
+                query = (char *) palloc(len);
+                snprintf(query, len, "EXPLAIN SELECT * FROM %s", svr_table);
+        }
+
+        /*A
+         * MySQL seems to have some pretty unhelpful EXPLAIN output, which only
+         * gives a row estimate for each relation in the statement. We'll use the
+         * sum of the rows as our cost estimate - it's not great (in fact, in some
+         * cases it sucks), but it's all we've got for now.
+         */
+        if (mysql_query(conn, query) != 0)
+        {
+                char *err = pstrdup(mysql_error(conn));
+                mysql_close(conn);
+                ereport(ERROR,
+                        (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+                        errmsg("failed to execute the MySQL query: %s", err)
+                        ));
+        }
+
+        result = mysql_store_result(conn);
+
+        while ((row = mysql_fetch_row(result)))
+                rows += atof(row[8]);
+
+        mysql_free_result(result);
+	mysql_close(conn);
+
+	baserel->rows = rows;
+	baserel->tuples = rows;
+	fdwplan->total_cost = rows + fdwplan->startup_cost;
 	fdwplan->fdw_private = NIL;	/* not used */
 
 	return fdwplan;
@@ -405,41 +465,25 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 static void
 mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
-	char			*query;
-	MYSQL_RES		*result;
-	MYSQL_ROW		*row;
-	long			rows = 0;
+        char                    *svr_address = NULL;
+        int                     svr_port = 0;
+        char                    *svr_username = NULL;
+        char                    *svr_password = NULL;
+        char                    *svr_database = NULL;
+        char                    *svr_query = NULL;
+        char                    *svr_table = NULL;
 
-	MySQLFdwExecutionState *festate = (MySQLFdwExecutionState *) node->fdw_state;
+        /* Fetch options  */
+        mysqlGetOptions(RelationGetRelid(node->ss.ss_currentRelation), &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_query, &svr_table);
 
-	/*
-	 * MySQL seems to have some pretty unhelpful EXPLAIN output, which only
-	 * gives a row estimate for each relation in the statement. We'll use the
-	 * sum of the rows as our cost estimate.
-	 */
-	query = (char *) palloc(strlen(festate->query) + 9);
-	snprintf(query, strlen(festate->query) + 9, "EXPLAIN %s", festate->query);
-
-        if (mysql_query(festate->conn, query) != 0)
-        {
-		char *err = pstrdup(mysql_error(festate->conn));
-                mysql_close(festate->conn);
-                ereport(ERROR,
-                        (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-                        errmsg("failed to execute the MySQL query: %s", err)
-                        ));
-        }
-
-	result = mysql_store_result(festate->conn);
-
-        while ((row = mysql_fetch_row(result)))
-		rows += atol(row[8]);
-
-	mysql_free_result(result);
-	
-	/* Suppress file size if we're not showing cost details */
+	/* Give some possibly useful info about startup costs */
 	if (es->costs)
-		ExplainPropertyLong("Foreign MySQL Data Rows", rows, es);
+	{
+		if (strcmp(svr_address, "127.0.0.1") == 0 || strcmp(svr_address, "localhost") == 0)	
+			ExplainPropertyLong("Local server startup cost", 10, es);
+		else
+			ExplainPropertyLong("Remote server startup cost", 25, es);
+	}
 }
 
 /*
@@ -582,7 +626,6 @@ mysqlEndForeignScan(ForeignScanState *node)
 static void
 mysqlReScanForeignScan(ForeignScanState *node)
 {
-	MySQLFdwExecutionState *festate = (MySQLFdwExecutionState *) node->fdw_state;
 
 }
 
