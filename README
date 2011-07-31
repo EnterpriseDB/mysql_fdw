@@ -30,8 +30,14 @@ Limitations
 
 - No attempt is made to pushdown quals to MySQL.
 
-- No attempt is made to estimate the number of rows etc. when planning
-  the remote query.
+- The MySQL connection used to plan queries isn't currently reused
+  during execution.
+
+- The entire resultset from MySQL is transferred to the PostgreSQL
+  server at once - need to use prepared statements with batch
+  transfer.
+
+- Rescan currently does nothing. 
 
 Usage
 -----
