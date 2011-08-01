@@ -33,10 +33,6 @@ Limitations
 - The MySQL connection used to plan queries isn't currently reused
   during execution.
 
-- The entire resultset from MySQL is transferred to the PostgreSQL
-  server at once - need to use prepared statements with batch
-  transfer.
-
 - Rescan currently does nothing. 
 
 Usage

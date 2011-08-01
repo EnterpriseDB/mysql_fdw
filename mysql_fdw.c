@@ -556,7 +556,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	}
 
 	/* Guess the query succeeded then */
-	festate->result = mysql_store_result(conn);
+	festate->result = mysql_use_result(conn);
 
 	/* Store the additional state info */
 	festate->attinmeta = TupleDescGetAttInMetadata(node->ss.ss_currentRelation->rd_att);
