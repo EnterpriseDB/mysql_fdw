@@ -202,15 +202,15 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 
 			svr_port = atoi(defGetString(def));
 		}
-                if (strcmp(def->defname, "username") == 0)
-                {
-                        if (svr_username)
-                                ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-                                        errmsg("conflicting or redundant options: username (%s)", defGetString(def))
-                                        ));
+		if (strcmp(def->defname, "username") == 0)
+		{
+			if (svr_username)
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("conflicting or redundant options: username (%s)", defGetString(def))
+					));
 
-                        svr_username = defGetString(def);
-                }
+			svr_username = defGetString(def);
+		}
 		if (strcmp(def->defname, "password") == 0)
 		{
 			if (svr_password)
@@ -230,38 +230,38 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 
 			svr_database = defGetString(def);
 		}
-                else if (strcmp(def->defname, "query") == 0)
-                {
-                        if (svr_table)
-                                ereport(ERROR,
-                                        (errcode(ERRCODE_SYNTAX_ERROR),
-                                        errmsg("conflicting options: query cannot be used with table")
-                                        ));
+		else if (strcmp(def->defname, "query") == 0)
+		{
+			if (svr_table)
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("conflicting options: query cannot be used with table")
+					));
 
-                        if (svr_query)
-                                ereport(ERROR,
-                                        (errcode(ERRCODE_SYNTAX_ERROR),
-                                        errmsg("conflicting or redundant options: query (%s)", defGetString(def))
-                                        ));
+			if (svr_query)
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("conflicting or redundant options: query (%s)", defGetString(def))
+					));
 
-                        svr_query = defGetString(def);
-                }
-                else if (strcmp(def->defname, "table") == 0)
-                {
-                        if (svr_query)
-                                ereport(ERROR,
-                                        (errcode(ERRCODE_SYNTAX_ERROR),
-                                        errmsg("conflicting options: table cannot be used with query")
-                                        ));
+			svr_query = defGetString(def);
+		}
+		else if (strcmp(def->defname, "table") == 0)
+		{
+			if (svr_query)
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("conflicting options: table cannot be used with query")
+					));
 
-                        if (svr_table)
-                                ereport(ERROR,
-                                        (errcode(ERRCODE_SYNTAX_ERROR),
-                                        errmsg("conflicting or redundant options: table (%s)", defGetString(def))
-                                        ));
+			if (svr_table)
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("conflicting or redundant options: table (%s)", defGetString(def))
+					));
 
-                        svr_table = defGetString(def);
-                }
+			svr_table = defGetString(def);
+		}
 	}
 
 	PG_RETURN_VOID();
@@ -320,8 +320,8 @@ mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, 
 		if (strcmp(def->defname, "port") == 0)
 			*port = atoi(defGetString(def));
 
-                if (strcmp(def->defname, "username") == 0)
-                        *username = defGetString(def);
+		if (strcmp(def->defname, "username") == 0)
+			*username = defGetString(def);
 
 		if (strcmp(def->defname, "password") == 0)
 			*password = defGetString(def);
@@ -329,11 +329,11 @@ mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, 
 		if (strcmp(def->defname, "database") == 0)
 			*database = defGetString(def);
 
-                if (strcmp(def->defname, "query") == 0)
-                        *query = defGetString(def);
+		if (strcmp(def->defname, "query") == 0)
+			*query = defGetString(def);
 
-                if (strcmp(def->defname, "table") == 0)
-                        *table = defGetString(def);
+		if (strcmp(def->defname, "table") == 0)
+			*table = defGetString(def);
 	}
 
 	/* Default values, if required */
@@ -344,11 +344,11 @@ mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, 
 		*port = 3306;
 
 	/* Check we have the options we need to proceed */
-        if (!*table && !*query)
-                ereport(ERROR,
-                        (errcode(ERRCODE_SYNTAX_ERROR),
-                        errmsg("either a table or a query must be specified")
-                        ));
+	if (!*table && !*query)
+		ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			errmsg("either a table or a query must be specified")
+			));
 }
 
 /*
@@ -368,7 +368,7 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 	char 		*svr_table = NULL;
 	char		*query;
 	double		rows;
-	MYSQL           *conn;
+	MYSQL	   *conn;
 	MYSQL_RES	*result;
 	MYSQL_ROW	row;
 
@@ -389,58 +389,58 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 	 * to reconnect to MySQL aain later.
 	 */
 
-        /* Connect to the server */
-        conn = mysql_init(NULL);
-        if (!conn)
-                ereport(ERROR,
-                        (errcode(ERRCODE_FDW_OUT_OF_MEMORY),
-                        errmsg("failed to initialise the MySQL connection object")
-                        ));
+	/* Connect to the server */
+	conn = mysql_init(NULL);
+	if (!conn)
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
+			errmsg("failed to initialise the MySQL connection object")
+			));
 
-        if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
-                ereport(ERROR,
-                        (errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
-                        errmsg("failed to connect to MySQL: %s", mysql_error(conn))
-                        ));
+	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+			errmsg("failed to connect to MySQL: %s", mysql_error(conn))
+			));
 
-        /* Build the query */
-        if (svr_query)
+	/* Build the query */
+	if (svr_query)
 	{
-                size_t len = strlen(svr_query) + 9;
+		size_t len = strlen(svr_query) + 9;
 
-        	query = (char *) palloc(len);
-        	snprintf(query, len, "EXPLAIN %s", svr_query);
+		query = (char *) palloc(len);
+		snprintf(query, len, "EXPLAIN %s", svr_query);
 	}
-        else
-        {
-                size_t len = strlen(svr_table) + 23;
+	else
+	{
+		size_t len = strlen(svr_table) + 23;
 
-                query = (char *) palloc(len);
-                snprintf(query, len, "EXPLAIN SELECT * FROM %s", svr_table);
-        }
+		query = (char *) palloc(len);
+		snprintf(query, len, "EXPLAIN SELECT * FROM %s", svr_table);
+	}
 
-        /*A
-         * MySQL seems to have some pretty unhelpful EXPLAIN output, which only
-         * gives a row estimate for each relation in the statement. We'll use the
-         * sum of the rows as our cost estimate - it's not great (in fact, in some
-         * cases it sucks), but it's all we've got for now.
-         */
-        if (mysql_query(conn, query) != 0)
-        {
-                char *err = pstrdup(mysql_error(conn));
-                mysql_close(conn);
-                ereport(ERROR,
-                        (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-                        errmsg("failed to execute the MySQL query: %s", err)
-                        ));
-        }
+	/*A
+	 * MySQL seems to have some pretty unhelpful EXPLAIN output, which only
+	 * gives a row estimate for each relation in the statement. We'll use the
+	 * sum of the rows as our cost estimate - it's not great (in fact, in some
+	 * cases it sucks), but it's all we've got for now.
+	 */
+	if (mysql_query(conn, query) != 0)
+	{
+		char *err = pstrdup(mysql_error(conn));
+		mysql_close(conn);
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+			errmsg("failed to execute the MySQL query: %s", err)
+			));
+	}
 
-        result = mysql_store_result(conn);
+	result = mysql_store_result(conn);
 
-        while ((row = mysql_fetch_row(result)))
-                rows += atof(row[8]);
+	while ((row = mysql_fetch_row(result)))
+		rows += atof(row[8]);
 
-        mysql_free_result(result);
+	mysql_free_result(result);
 	mysql_close(conn);
 
 	baserel->rows = rows;
@@ -458,16 +458,16 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 static void
 mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
-        char                    *svr_address = NULL;
-        int                     svr_port = 0;
-        char                    *svr_username = NULL;
-        char                    *svr_password = NULL;
-        char                    *svr_database = NULL;
-        char                    *svr_query = NULL;
-        char                    *svr_table = NULL;
+	char		    *svr_address = NULL;
+	int		     svr_port = 0;
+	char		    *svr_username = NULL;
+	char		    *svr_password = NULL;
+	char		    *svr_database = NULL;
+	char		    *svr_query = NULL;
+	char		    *svr_table = NULL;
 
-        /* Fetch options  */
-        mysqlGetOptions(RelationGetRelid(node->ss.ss_currentRelation), &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_query, &svr_table);
+	/* Fetch options  */
+	mysqlGetOptions(RelationGetRelid(node->ss.ss_currentRelation), &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_query, &svr_table);
 
 	/* Give some possibly useful info about startup costs */
 	if (es->costs)
@@ -503,16 +503,16 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Connect to the server */
 	conn = mysql_init(NULL);
 	if (!conn)
-                ereport(ERROR,
-                        (errcode(ERRCODE_FDW_OUT_OF_MEMORY),
-                        errmsg("failed to initialise the MySQL connection object")
-                        ));
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
+			errmsg("failed to initialise the MySQL connection object")
+			));
 
 	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
-                        (errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
-                        errmsg("failed to connect to MySQL: %s", mysql_error(conn))
-                        ));
+			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+			errmsg("failed to connect to MySQL: %s", mysql_error(conn))
+			));
 
 	/* Build the query */
 	if (svr_query)
@@ -525,10 +525,10 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 		snprintf(query, len, "SELECT * FROM %s", svr_table);
 	}
 
-        /* Stash away the state info we have already */
-        festate = (MySQLFdwExecutionState *) palloc(sizeof(MySQLFdwExecutionState));
-        node->fdw_state = (void *) festate;
-        festate->conn = conn;
+	/* Stash away the state info we have already */
+	festate = (MySQLFdwExecutionState *) palloc(sizeof(MySQLFdwExecutionState));
+	node->fdw_state = (void *) festate;
+	festate->conn = conn;
 	festate->result = NULL;
 	festate->query = query;
 }
@@ -552,18 +552,18 @@ mysqlIterateForeignScan(ForeignScanState *node)
 	/* Execute the query, if required */
 	if (!festate->result)
 	{
-	        if (mysql_query(festate->conn, festate->query) != 0)
-        	{
-                	char *err = pstrdup(mysql_error(festate->conn));
-                	mysql_close(festate->conn);
-                	ereport(ERROR,
-                	        (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-                	        errmsg("failed to execute the MySQL query: %s", err)
-                	        ));
-        	}
+		if (mysql_query(festate->conn, festate->query) != 0)
+		{
+			char *err = pstrdup(mysql_error(festate->conn));
+			mysql_close(festate->conn);
+			ereport(ERROR,
+				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+				errmsg("failed to execute the MySQL query: %s", err)
+				));
+		}
 
-        	/* Guess the query succeeded then */
-        	festate->result = mysql_store_result(festate->conn);
+		/* Guess the query succeeded then */
+		festate->result = mysql_store_result(festate->conn);
 	}
 
 	/* Cleanup */
