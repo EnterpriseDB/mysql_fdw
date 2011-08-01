@@ -84,7 +84,6 @@ typedef struct MySQLFdwExecutionState
 {
 	MYSQL		*conn;
 	MYSQL_RES	*result;
-	AttInMetadata	*attinmeta;
 	char		*query;
 } MySQLFdwExecutionState;
 
@@ -530,28 +529,8 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
         festate = (MySQLFdwExecutionState *) palloc(sizeof(MySQLFdwExecutionState));
         node->fdw_state = (void *) festate;
         festate->conn = conn;
+	festate->result = NULL;
 	festate->query = query;
-
-        /* OK, we connected. If this is an EXPLAIN, bail out now */
-        if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
-                return;
-
-	/* Execute the query */
-	if (mysql_query(conn, query) != 0)
-	{
-                char *err = pstrdup(mysql_error(conn));
-		mysql_close(conn);
-                ereport(ERROR,
-                        (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-                        errmsg("failed to execute the MySQL query: %s", err)
-                        ));
-	}
-
-	/* Guess the query succeeded then */
-	festate->result = mysql_store_result(conn);
-
-	/* Store the additional state info */
-	festate->attinmeta = TupleDescGetAttInMetadata(node->ss.ss_currentRelation->rd_att);
 }
 
 /*
@@ -570,6 +549,23 @@ mysqlIterateForeignScan(ForeignScanState *node)
 	MySQLFdwExecutionState *festate = (MySQLFdwExecutionState *) node->fdw_state;
 	TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
 
+	/* Execute the query, if required */
+	if (!festate->result)
+	{
+	        if (mysql_query(festate->conn, festate->query) != 0)
+        	{
+                	char *err = pstrdup(mysql_error(festate->conn));
+                	mysql_close(festate->conn);
+                	ereport(ERROR,
+                	        (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+                	        errmsg("failed to execute the MySQL query: %s", err)
+                	        ));
+        	}
+
+        	/* Guess the query succeeded then */
+        	festate->result = mysql_store_result(festate->conn);
+	}
+
 	/* Cleanup */
 	ExecClearTuple(slot);
 
@@ -582,7 +578,7 @@ mysqlIterateForeignScan(ForeignScanState *node)
 		for (x = 0; x < mysql_num_fields(festate->result); x++)
 			values[x] = row[x];
 
-		tuple = BuildTupleFromCStrings(festate->attinmeta, values);
+		tuple = BuildTupleFromCStrings(TupleDescGetAttInMetadata(node->ss.ss_currentRelation->rd_att), values);
 		ExecStoreTuple(tuple, slot, InvalidBuffer, false);
 	}
 
@@ -608,6 +604,12 @@ mysqlEndForeignScan(ForeignScanState *node)
 	{
 		mysql_close(festate->conn);
 		festate->conn = NULL;
+	}
+
+	if (festate->query)
+	{
+		pfree(festate->query);
+		festate->query = 0;
 	}
 }
 
