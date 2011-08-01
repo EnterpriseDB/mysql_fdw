@@ -466,6 +466,8 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	char		    *svr_query = NULL;
 	char		    *svr_table = NULL;
 
+	MySQLFdwExecutionState *festate = (MySQLFdwExecutionState *) node->fdw_state;
+
 	/* Fetch options  */
 	mysqlGetOptions(RelationGetRelid(node->ss.ss_currentRelation), &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_query, &svr_table);
 
@@ -476,6 +478,7 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 			ExplainPropertyLong("Local server startup cost", 10, es);
 		else
 			ExplainPropertyLong("Remote server startup cost", 25, es);
+		ExplainPropertyText("MySQL query", festate->query, es);
 	}
 }
 
