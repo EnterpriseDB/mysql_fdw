@@ -33,8 +33,6 @@ Limitations
 - The MySQL connection used to plan queries isn't currently reused
   during execution.
 
-- Rescan currently does nothing. 
-
 Usage
 -----
 

@@ -85,13 +85,7 @@ typedef struct MySQLFdwExecutionState
 	MYSQL		*conn;
 	MYSQL_RES	*result;
 	AttInMetadata	*attinmeta;
-	char		*address;
-	int		port;
-	char		*username;
-	char		*password;
-	char		*database;
 	char		*query;
-	char		*table;
 } MySQLFdwExecutionState;
 
 /*
@@ -536,8 +530,6 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
         festate = (MySQLFdwExecutionState *) palloc(sizeof(MySQLFdwExecutionState));
         node->fdw_state = (void *) festate;
         festate->conn = conn;
-        festate->address = svr_address;
-        festate->port = svr_port;
 	festate->query = query;
 
         /* OK, we connected. If this is an EXPLAIN, bail out now */
@@ -556,7 +548,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	}
 
 	/* Guess the query succeeded then */
-	festate->result = mysql_use_result(conn);
+	festate->result = mysql_store_result(conn);
 
 	/* Store the additional state info */
 	festate->attinmeta = TupleDescGetAttInMetadata(node->ss.ss_currentRelation->rd_att);
@@ -612,7 +604,7 @@ mysqlEndForeignScan(ForeignScanState *node)
 		festate->result = NULL;
 	}
 
-	if (festate->result)
+	if (festate->conn)
 	{
 		mysql_close(festate->conn);
 		festate->conn = NULL;
@@ -626,6 +618,8 @@ mysqlEndForeignScan(ForeignScanState *node)
 static void
 mysqlReScanForeignScan(ForeignScanState *node)
 {
+	MySQLFdwExecutionState *festate = (MySQLFdwExecutionState *) node->fdw_state;
 
+	mysql_row_seek(festate->result, 0);
 }
 
