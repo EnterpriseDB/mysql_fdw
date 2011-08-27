@@ -21,8 +21,6 @@ DATA = mysql_fdw--1.0.sql
 
 REGRESS = mysql_fdw
 
-EXTRA_CLEAN = sql/mysql_fdw.sql expected/mysql_fdw.out
-
 MYSQL_CONFIG = mysql_config
 SHLIB_LINK := $(shell $(MYSQL_CONFIG) --libs)
 PG_CPPFLAGS := $(shell $(MYSQL_CONFIG) --include)
