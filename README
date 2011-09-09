@@ -71,21 +71,8 @@ password:	The password to authenticate to the MySQL server with.
 Example
 -------
 
--- Create the require functions for the FDW.
-CREATE FUNCTION mysql_fdw_handler() 
-    RETURNS fdw_handler 
-    AS '$libdir/mysql_fdw' 
-    LANGUAGE C STRICT;
-
-CREATE FUNCTION mysql_fdw_validator(text[], oid) 
-    RETURNS void 
-    AS '$libdir/mysql_fdw' 
-    LANGUAGE C STRICT;
-
--- Create the data wrapper or "transport".
-CREATE FOREIGN DATA WRAPPER mysql_fdw 
-    HANDLER mysql_fdw_handler 
-    VALIDATOR mysql_fdw_validator;
+-- Install the extension
+CREATE EXTENSION mysql_fdw;
 
 -- Create the foreign server, a pointer to the MySQL server.
 CREATE SERVER mysql_svr 
@@ -104,16 +91,15 @@ CREATE FOREIGN TABLE employees (
 CREATE FOREIGN TABLE overtime_2010 (
     id integer,
     employee_id integer,
-    ot_date date,
-    ot_hours integer))
+    hours integer)
     SERVER mysql_svr
-    OPTIONS (query 'SELECT * FROM overtime WHERE year = 2010;');
+    OPTIONS (query 'SELECT id, employee_id, hours FROM hr.overtime WHERE year = 2010;');
 
 -- Create a user mapping to tell the FDW the username/password to 
 -- use to connect to MySQL, for PUBLIC. This could be done on a per-
 -- role basis.
 CREATE USER MAPPING FOR PUBLIC 
-    SERVER mysql 
+    SERVER mysql_svr 
     OPTIONS (username 'dpage', password '');
 
 -- 
