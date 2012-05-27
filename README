@@ -1,4 +1,4 @@
-MySQL FDW for PostgreSQL 9.1+
+MySQL FDW for PostgreSQL 9.2+
 ==============================
 
 This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for
@@ -19,7 +19,7 @@ extension can be built with:
 PATH=/usr/local/pgsql/bin/:/usr/local/mysql/bin:$PATH make USE_PGXS=1 
 sudo PATH=/usr/local/pgsql/bin/:/usr/local/mysql/bin:$PATH make USE_PGXS=1 install
 
-(assuming you have PostgreSQL 9.1 in /usr/local/pgsql and MySQL in 
+(assuming you have PostgreSQL 9.2 in /usr/local/pgsql and MySQL in 
 /usr/local/mysql).
 
 I've tested on Mac OS X 10.7 only, but other *nix's should also work.
