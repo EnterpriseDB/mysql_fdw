@@ -659,7 +659,6 @@ mysqlReScanForeignScan(ForeignScanState *node)
 	}
 }
 
-//New 9.2 Api
 #if (PG_VERSION_NUM >= 90200)
 /*
  * mysqlPlanForeignScan
