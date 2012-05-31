@@ -46,6 +46,12 @@
 #include "utils/builtins.h"
 #include "utils/rel.h"
 
+#if (PG_VERSION_NUM >= 90200)
+#include "optimizer/pathnode.h"
+#include "optimizer/restrictinfo.h"
+#include "optimizer/planmain.h"
+#endif
+
 PG_MODULE_MAGIC;
 
 /*
@@ -670,7 +676,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	char 		*svr_query = NULL;
 	char 		*svr_table = NULL;
 	char		*query;
-	double		rows;
+	double		rows = 0;
 	MYSQL	   *conn;
 	MYSQL_RES	*result;
 	MYSQL_ROW	row;
@@ -801,14 +807,9 @@ static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel,O
 }
 
 /* FIXME: implement stats collection */
-static bool mysqlAnalyzeForeignTable(Relation  	relation,AcquireSampleRowsFunc *func,
+static bool mysqlAnalyzeForeignTable(Relation  relation,AcquireSampleRowsFunc *func,
 		BlockNumber *totalpages)
 {
-        char       *filename;
-        List       *options;
-        struct stat stat_buf;
-
-
         return false;
 }	
 #endif
