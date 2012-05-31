@@ -100,13 +100,11 @@ PG_FUNCTION_INFO_V1(mysql_fdw_validator);
 /*
  * FDW callback routines
  */
-static FdwPlan *mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel);
 static void mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es);
 static void mysqlBeginForeignScan(ForeignScanState *node, int eflags);
 static TupleTableSlot *mysqlIterateForeignScan(ForeignScanState *node);
 static void mysqlReScanForeignScan(ForeignScanState *node);
 static void mysqlEndForeignScan(ForeignScanState *node);
-//New 9.2 Api
 #if (PG_VERSION_NUM >= 90200)
 static void mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
 static void mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid);
@@ -121,7 +119,7 @@ static FdwPlan *mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelO
  */
 static bool mysqlIsValidOption(const char *option, Oid context);
 static void mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, char **password, char **database, char **query, char **table);
-//New 9.2 Api
+
 #if (PG_VERSION_NUM >= 90200)
 static void estimate_costs(PlannerInfo *root,RelOptInfo *baserel,Cost *startup_cost,Cost *total_cost,Oid foreigntableid);
 #endif
@@ -135,7 +133,6 @@ mysql_fdw_handler(PG_FUNCTION_ARGS)
 {
 	FdwRoutine *fdwroutine = makeNode(FdwRoutine);
 	
-	//New 9.2 Api
 	#if (PG_VERSION_NUM >= 90200)
 	fdwroutine->GetForeignRelSize = mysqlGetForeignRelSize;
 	fdwroutine->GetForeignPaths = mysqlGetForeignPaths;
@@ -374,7 +371,6 @@ mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, 
 			));
 }
 
-//Not Used in 9.2 
 #if (PG_VERSION_NUM < 90200)
 /*
  * mysqlPlanForeignScan
@@ -411,7 +407,7 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 
 	/* 
 	 * TODO: Find a way to stash this connection object away, so we don't have
-	 * to reconnect to MySQL aain later.
+	 * to reconnect to MySQL again later.
 	 */
 
 	/* Connect to the server */
@@ -804,6 +800,7 @@ static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel,O
                             NIL); /* no private state either */
 }
 
+/* FIXME: implement stats collection */
 static bool mysqlAnalyzeForeignTable(Relation  	relation,AcquireSampleRowsFunc *func,
 		BlockNumber *totalpages)
 {
@@ -811,9 +808,6 @@ static bool mysqlAnalyzeForeignTable(Relation  	relation,AcquireSampleRowsFunc *
         List       *options;
         struct stat stat_buf;
 
-
-//      *totalpages = null;
-//      *func = null;
 
         return false;
 }	
