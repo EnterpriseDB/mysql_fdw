@@ -100,24 +100,31 @@ PG_FUNCTION_INFO_V1(mysql_fdw_validator);
 /*
  * FDW callback routines
  */
+static FdwPlan *mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel);
 static void mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es);
 static void mysqlBeginForeignScan(ForeignScanState *node, int eflags);
 static TupleTableSlot *mysqlIterateForeignScan(ForeignScanState *node);
 static void mysqlReScanForeignScan(ForeignScanState *node);
 static void mysqlEndForeignScan(ForeignScanState *node);
 //New 9.2 Api
+#if (PG_VERSION_NUM >= 90200)
 static void mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
 static void mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid);
 static bool mysqlAnalyzeForeignTable(Relation relation,AcquireSampleRowsFunc *func,BlockNumber *totalpages);
 static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid, ForeignPath *best_path,List * tlist, List *scan_clauses);
+#else
+static FdwPlan *mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel);
+#endif
 
 /*
  * Helper functions
  */
 static bool mysqlIsValidOption(const char *option, Oid context);
 static void mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, char **password, char **database, char **query, char **table);
-//New
+//New 9.2 Api
+#if (PG_VERSION_NUM >= 90200)
 static void estimate_costs(PlannerInfo *root,RelOptInfo *baserel,Cost *startup_cost,Cost *total_cost,Oid foreigntableid);
+#endif
 
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
@@ -127,12 +134,17 @@ Datum
 mysql_fdw_handler(PG_FUNCTION_ARGS)
 {
 	FdwRoutine *fdwroutine = makeNode(FdwRoutine);
-
+	
+	//New 9.2 Api
+	#if (PG_VERSION_NUM >= 90200)
 	fdwroutine->GetForeignRelSize = mysqlGetForeignRelSize;
 	fdwroutine->GetForeignPaths = mysqlGetForeignPaths;
 	fdwroutine->AnalyzeForeignTable = mysqlAnalyzeForeignTable;
 	fdwroutine->GetForeignPlan = mysqlGetForeignPlan;
-//	fdwroutine->PlanForeignScan = mysqlPlanForeignScan;
+	#else
+	fdwroutine->PlanForeignScan = mysqlPlanForeignScan;
+	#endif
+	
 	fdwroutine->ExplainForeignScan = mysqlExplainForeignScan;
 	fdwroutine->BeginForeignScan = mysqlBeginForeignScan;
 	fdwroutine->IterateForeignScan = mysqlIterateForeignScan;
@@ -362,6 +374,109 @@ mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, 
 			));
 }
 
+//Not Used in 9.2 
+#if (PG_VERSION_NUM < 90200)
+/*
+ * mysqlPlanForeignScan
+ *		Create a FdwPlan for a scan on the foreign table
+ */
+static FdwPlan *
+mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
+{
+	FdwPlan		*fdwplan;
+	char		*svr_address = NULL;
+	int		svr_port = 0;
+	char		*svr_username = NULL;
+	char		*svr_password = NULL;
+	char 		*svr_database = NULL;
+	char 		*svr_query = NULL;
+	char 		*svr_table = NULL;
+	char		*query;
+	double		rows;
+	MYSQL	   *conn;
+	MYSQL_RES	*result;
+	MYSQL_ROW	row;
+
+	/* Fetch options  */
+	mysqlGetOptions(foreigntableid, &svr_address, &svr_port, &svr_username, &svr_password, &svr_database, &svr_query, &svr_table);
+
+	/* Construct FdwPlan with cost estimates. */
+	fdwplan = makeNode(FdwPlan);
+
+	/* Local databases are probably faster */
+	if (strcmp(svr_address, "127.0.0.1") == 0 || strcmp(svr_address, "localhost") == 0)
+		fdwplan->startup_cost = 10;
+	else
+		fdwplan->startup_cost = 25;
+
+	/* 
+	 * TODO: Find a way to stash this connection object away, so we don't have
+	 * to reconnect to MySQL aain later.
+	 */
+
+	/* Connect to the server */
+	conn = mysql_init(NULL);
+	if (!conn)
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
+			errmsg("failed to initialise the MySQL connection object")
+			));
+
+	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+			errmsg("failed to connect to MySQL: %s", mysql_error(conn))
+			));
+
+	/* Build the query */
+	if (svr_query)
+	{
+		size_t len = strlen(svr_query) + 9;
+
+		query = (char *) palloc(len);
+		snprintf(query, len, "EXPLAIN %s", svr_query);
+	}
+	else
+	{
+		size_t len = strlen(svr_table) + 23;
+
+		query = (char *) palloc(len);
+		snprintf(query, len, "EXPLAIN SELECT * FROM %s", svr_table);
+	}
+
+	/*A
+	 * MySQL seems to have some pretty unhelpful EXPLAIN output, which only
+	 * gives a row estimate for each relation in the statement. We'll use the
+	 * sum of the rows as our cost estimate - it's not great (in fact, in some
+	 * cases it sucks), but it's all we've got for now.
+	 */
+	if (mysql_query(conn, query) != 0)
+	{
+		char *err = pstrdup(mysql_error(conn));
+		mysql_close(conn);
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+			errmsg("failed to execute the MySQL query: %s", err)
+			));
+	}
+
+	result = mysql_store_result(conn);
+
+	while ((row = mysql_fetch_row(result)))
+		rows += atof(row[8]);
+
+	mysql_free_result(result);
+	mysql_close(conn);
+
+	baserel->rows = rows;
+	baserel->tuples = rows;
+	fdwplan->total_cost = rows + fdwplan->startup_cost;
+	fdwplan->fdw_private = NIL;	/* not used */
+
+	return fdwplan;
+}
+#endif
+
 /*
  * fileExplainForeignScan
  *		Produce extra output for EXPLAIN
@@ -542,7 +657,8 @@ mysqlReScanForeignScan(ForeignScanState *node)
 	}
 }
 
-//new
+//New 9.2 Api
+#if (PG_VERSION_NUM >= 90200)
 /*
  * mysqlPlanForeignScan
  *		Create a FdwPlan for a scan on the foreign table
@@ -701,3 +817,4 @@ static bool mysqlAnalyzeForeignTable(Relation  	relation,AcquireSampleRowsFunc *
 
         return false;
 }	
+#endif
