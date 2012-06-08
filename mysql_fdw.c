@@ -113,9 +113,9 @@ static void mysqlReScanForeignScan(ForeignScanState *node);
 static void mysqlEndForeignScan(ForeignScanState *node);
 #if (PG_VERSION_NUM >= 90200)
 static void mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
-static void mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid);
-static bool mysqlAnalyzeForeignTable(Relation relation,AcquireSampleRowsFunc *func,BlockNumber *totalpages);
-static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid, ForeignPath *best_path,List * tlist, List *scan_clauses);
+static void mysqlGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
+static bool mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func, BlockNumber *totalpages);
+static ForeignScan *mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid, ForeignPath *best_path, List * tlist, List *scan_clauses);
 #else
 static FdwPlan *mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel);
 #endif
@@ -125,9 +125,8 @@ static FdwPlan *mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelO
  */
 static bool mysqlIsValidOption(const char *option, Oid context);
 static void mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, char **password, char **database, char **query, char **table);
-
 #if (PG_VERSION_NUM >= 90200)
-static void estimate_costs(PlannerInfo *root,RelOptInfo *baserel,Cost *startup_cost,Cost *total_cost,Oid foreigntableid);
+static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *startup_cost, Cost *total_cost, Oid foreigntableid);
 #endif
 
 /*
@@ -379,8 +378,7 @@ mysqlGetOptions(Oid foreigntableid, char **address, int *port, char **username, 
 
 #if (PG_VERSION_NUM < 90200)
 /*
- * mysqlPlanForeignScan
- *		Create a FdwPlan for a scan on the foreign table
+ * (9.1) Create a FdwPlan for a scan on the foreign table
  */
 static FdwPlan *
 mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
@@ -395,7 +393,7 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 	char 		*svr_table = NULL;
 	char		*query;
 	double		rows;
-	MYSQL	   *conn;
+	MYSQL		*conn;
 	MYSQL_RES	*result;
 	MYSQL_ROW	row;
 
@@ -480,14 +478,13 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 #endif
 
 /*
- * fileExplainForeignScan
- *		Produce extra output for EXPLAIN
+ * Produce extra output for EXPLAIN
  */
 static void
 mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
 	char		    *svr_address = NULL;
-	int		     svr_port = 0;
+	int		    svr_port = 0;
 	char		    *svr_username = NULL;
 	char		    *svr_password = NULL;
 	char		    *svr_database = NULL;
@@ -511,8 +508,7 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 }
 
 /*
- * mysqlBeginForeignScan
- *		Initiate access to the database
+ * Initiate access to the database
  */
 static void
 mysqlBeginForeignScan(ForeignScanState *node, int eflags)
@@ -565,9 +561,8 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 }
 
 /*
- * mysqlIterateForeignScan
- *		Read next record from the data file and store it into the
- *		ScanTupleSlot as a virtual tuple
+ * Read next record from the data file and store it into the
+ * ScanTupleSlot as a virtual tuple
  */
 static TupleTableSlot *
 mysqlIterateForeignScan(ForeignScanState *node)
@@ -617,8 +612,7 @@ mysqlIterateForeignScan(ForeignScanState *node)
 }
 
 /*
- * mysqlEndForeignScan
- *		Finish scanning foreign table and dispose objects used for this scan
+ * Finish scanning foreign table and dispose objects used for this scan
  */
 static void
 mysqlEndForeignScan(ForeignScanState *node)
@@ -645,8 +639,7 @@ mysqlEndForeignScan(ForeignScanState *node)
 }
 
 /*
- * mysqlReScanForeignScan
- *		Rescan table, possibly with new parameters
+ * Rescan table, possibly with new parameters
  */
 static void
 mysqlReScanForeignScan(ForeignScanState *node)
@@ -661,8 +654,7 @@ mysqlReScanForeignScan(ForeignScanState *node)
 
 #if (PG_VERSION_NUM >= 90200)
 /*
- * mysqlPlanForeignScan
- *		Create a FdwPlan for a scan on the foreign table
+ * (9.2+) Create a FdwPlan for a scan on the foreign table
  */
 static void 
 mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
@@ -676,7 +668,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	char 		*svr_table = NULL;
 	char		*query;
 	double		rows = 0;
-	MYSQL	   *conn;
+	MYSQL		*conn;
 	MYSQL_RES	*result;
 	MYSQL_ROW	row;
 
@@ -748,10 +740,12 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	baserel->tuples = rows;
 }
 
-static void estimate_costs(PlannerInfo *root,RelOptInfo *baserel,
-		Cost *startup_cost,Cost *total_cost,Oid foreigntableid)
+/*
+ * (9.2+) Estimate the remote query cost
+ */
+static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *startup_cost, Cost *total_cost, Oid foreigntableid)
 {
-       char		*svr_address = NULL;
+        char		*svr_address = NULL;
 	int		svr_port = 0;
 	char		*svr_username = NULL;
 	char		*svr_password = NULL;
@@ -771,13 +765,16 @@ static void estimate_costs(PlannerInfo *root,RelOptInfo *baserel,
        *total_cost = baserel->rows + *startup_cost;
 } 
 
+/*
+ * (9.2+) Get the foreign paths
+ */
 static void mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid)
 {
        Cost        startup_cost;
        Cost        total_cost;
 
        /* Estimate costs */
-       estimate_costs(root, baserel, &startup_cost, &total_cost, foreigntableid);
+       mysqlEstimateCosts(root, baserel, &startup_cost, &total_cost, foreigntableid);
 
        /* Create a ForeignPath node and add it as only possible path */
        add_path(baserel, (Path *)
@@ -785,13 +782,15 @@ static void mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid forei
                                      baserel->rows,
                                      startup_cost,
                                      total_cost,
-                                     NIL, /* no pathkeys */
-                                     NULL, /* no outer rel either */
-                                     NIL)); /* no fdw_private data */
+                                     NIL,	/* no pathkeys */
+                                     NULL,	/* no outer rel either */
+                                     NIL));	/* no fdw_private data */
 }
 
-static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid,
-		ForeignPath *best_path,List * tlist,	List *scan_clauses) 	
+/*
+ * (9.2+) Get a foreign scan plan node
+ */
+static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel, Oid foreigntableid, ForeignPath *best_path, List * tlist, List *scan_clauses) 	
 {
         Index scan_relid = baserel->relid;
 
@@ -801,14 +800,16 @@ static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel,O
         return make_foreignscan(tlist,
                             scan_clauses,
                             scan_relid,
-                            NIL, /* no expressions to evaluate */
-                            NIL); /* no private state either */
+                            NIL,	/* no expressions to evaluate */
+                            NIL);	/* no private state either */
 }
 
-/* FIXME: implement stats collection */
-static bool mysqlAnalyzeForeignTable(Relation  relation,AcquireSampleRowsFunc *func,
-		BlockNumber *totalpages)
+/* 
+ * FIXME: (9.2+) Implement stats collection 
+ */
+static bool mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func, BlockNumber *totalpages)
 {
         return false;
 }	
 #endif
+
