@@ -2,7 +2,7 @@
  *
  *		  foreign-data wrapper for MySQL
  *
- * Copyright (c) 2011, PostgreSQL Global Development Group
+ * Copyright (c) 2011 - 2013, PostgreSQL Global Development Group
  *
  * This software is released under the PostgreSQL Licence
  *
@@ -138,14 +138,14 @@ mysql_fdw_handler(PG_FUNCTION_ARGS)
 {
 	FdwRoutine *fdwroutine = makeNode(FdwRoutine);
 	
-	#if (PG_VERSION_NUM >= 90200)
+#if (PG_VERSION_NUM >= 90200)
 	fdwroutine->GetForeignRelSize = mysqlGetForeignRelSize;
 	fdwroutine->GetForeignPaths = mysqlGetForeignPaths;
 	fdwroutine->AnalyzeForeignTable = mysqlAnalyzeForeignTable;
 	fdwroutine->GetForeignPlan = mysqlGetForeignPlan;
-	#else
+#else
 	fdwroutine->PlanForeignScan = mysqlPlanForeignScan;
-	#endif
+#endif
 	
 	fdwroutine->ExplainForeignScan = mysqlExplainForeignScan;
 	fdwroutine->BeginForeignScan = mysqlBeginForeignScan;

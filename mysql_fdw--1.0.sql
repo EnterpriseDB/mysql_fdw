@@ -2,7 +2,7 @@
  *
  *                foreign-data wrapper for MySQL
  *
- * Copyright (c) 2011, PostgreSQL Global Development Group
+ * Copyright (c) 2011 - 2013, PostgreSQL Global Development Group
  *
  * This software is released under the PostgreSQL Licence
  *
