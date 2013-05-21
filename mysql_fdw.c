@@ -137,7 +137,7 @@ Datum
 mysql_fdw_handler(PG_FUNCTION_ARGS)
 {
 	FdwRoutine *fdwroutine = makeNode(FdwRoutine);
-	
+
 #if (PG_VERSION_NUM >= 90200)
 	fdwroutine->GetForeignRelSize = mysqlGetForeignRelSize;
 	fdwroutine->GetForeignPaths = mysqlGetForeignPaths;
@@ -146,7 +146,7 @@ mysql_fdw_handler(PG_FUNCTION_ARGS)
 #else
 	fdwroutine->PlanForeignScan = mysqlPlanForeignScan;
 #endif
-	
+
 	fdwroutine->ExplainForeignScan = mysqlExplainForeignScan;
 	fdwroutine->BeginForeignScan = mysqlBeginForeignScan;
 	fdwroutine->IterateForeignScan = mysqlIterateForeignScan;
@@ -201,9 +201,9 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 							 opt->optname);
 			}
 
-			ereport(ERROR, 
-				(errcode(ERRCODE_FDW_INVALID_OPTION_NAME), 
-				errmsg("invalid option \"%s\"", def->defname), 
+			ereport(ERROR,
+				(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
+				errmsg("invalid option \"%s\"", def->defname),
 				errhint("Valid options in this context are: %s", buf.len ? buf.data : "<none>")
 				));
 		}
@@ -211,7 +211,7 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 		if (strcmp(def->defname, "address") == 0)
 		{
 			if (svr_address)
-				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 					errmsg("conflicting or redundant options: address (%s)", defGetString(def))
 					));
 
@@ -220,8 +220,8 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 		else if (strcmp(def->defname, "port") == 0)
 		{
 			if (svr_port)
-				ereport(ERROR, 
-					(errcode(ERRCODE_SYNTAX_ERROR), 
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
 					errmsg("conflicting or redundant options: port (%s)", defGetString(def))
 					));
 
@@ -409,7 +409,7 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 	else
 		fdwplan->startup_cost = 25;
 
-	/* 
+	/*
 	 * TODO: Find a way to stash this connection object away, so we don't have
 	 * to reconnect to MySQL again later.
 	 */
@@ -422,6 +422,8 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 			errmsg("failed to initialise the MySQL connection object")
 			));
 
+        mysql_options(conn, MYSQL_SET_CHARSET_NAME, "utf8");
+        mysql_options(conn, MYSQL_INIT_COMMAND, "SET NAMES utf8");
 	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
@@ -499,7 +501,7 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	/* Give some possibly useful info about startup costs */
 	if (es->costs)
 	{
-		if (strcmp(svr_address, "127.0.0.1") == 0 || strcmp(svr_address, "localhost") == 0)	
+		if (strcmp(svr_address, "127.0.0.1") == 0 || strcmp(svr_address, "localhost") == 0)
 			ExplainPropertyLong("Local server startup cost", 10, es);
 		else
 			ExplainPropertyLong("Remote server startup cost", 25, es);
@@ -535,6 +537,8 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 			errmsg("failed to initialise the MySQL connection object")
 			));
 
+        mysql_options(conn, MYSQL_SET_CHARSET_NAME, "utf8");
+        mysql_options(conn, MYSQL_INIT_COMMAND, "SET NAMES utf8");
 	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
@@ -656,7 +660,7 @@ mysqlReScanForeignScan(ForeignScanState *node)
 /*
  * (9.2+) Create a FdwPlan for a scan on the foreign table
  */
-static void 
+static void
 mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
 {
 	char		*svr_address = NULL;
@@ -677,7 +681,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 
 	/* Construct FdwPlan with cost estimates. */
 
-	/* 
+	/*
 	 * TODO: Find a way to stash this connection object away, so we don't have
 	 * to reconnect to MySQL aain later.
 	 */
@@ -690,6 +694,8 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 			errmsg("failed to initialise the MySQL connection object")
 			));
 
+        mysql_options(conn, MYSQL_SET_CHARSET_NAME, "utf8");
+        mysql_options(conn, MYSQL_INIT_COMMAND, "SET NAMES utf8");
 	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
@@ -763,7 +769,7 @@ static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *sta
            *startup_cost = 25;
 
        *total_cost = baserel->rows + *startup_cost;
-} 
+}
 
 /*
  * (9.2+) Get the foreign paths
@@ -790,7 +796,7 @@ static void mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid forei
 /*
  * (9.2+) Get a foreign scan plan node
  */
-static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel, Oid foreigntableid, ForeignPath *best_path, List * tlist, List *scan_clauses) 	
+static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel, Oid foreigntableid, ForeignPath *best_path, List * tlist, List *scan_clauses)
 {
         Index scan_relid = baserel->relid;
 
@@ -804,12 +810,12 @@ static ForeignScan * mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel, 
                             NIL);	/* no private state either */
 }
 
-/* 
- * FIXME: (9.2+) Implement stats collection 
+/*
+ * FIXME: (9.2+) Implement stats collection
  */
 static bool mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func, BlockNumber *totalpages)
 {
         return false;
-}	
+}
 #endif
 
