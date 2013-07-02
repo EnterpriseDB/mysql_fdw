@@ -78,6 +78,12 @@ CREATE EXTENSION mysql_fdw;
 CREATE SERVER mysql_svr 
     FOREIGN DATA WRAPPER mysql_fdw 
     OPTIONS (address '127.0.0.1', port '3306');
+    
+-- Grant other user's permissions to create and/or have access to foreign tables.
+GRANT ALL ON FOREIGN DATA WRAPPER mysql_fdw TO some_user; -- do everything
+-- GRANT USAGE ON FOREIGN DATA WRAPPER mysql_fdw TO some_user; -- just query
+GRANT ALL ON FOREIGN SERVER mysql_svr TO some_user;
+-- GRANT ALL ON FOREIGN SERVER mysql_svr TO some_user; -- just query
 
 -- Create one or more foreign tables on the MySQL server. The first of 
 -- these maps to a remote table, whilst the second uses an SQL query.
