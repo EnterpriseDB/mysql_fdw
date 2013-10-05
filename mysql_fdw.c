@@ -463,7 +463,7 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 	result = mysql_store_result(conn);
 
 	while ((row = mysql_fetch_row(result)))
-		rows += atof(row[8]);
+		if (row[8] != NULL) rows += atof(row[8]);
 
 	mysql_free_result(result);
 	mysql_close(conn);
@@ -731,7 +731,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	result = mysql_store_result(conn);
 
 	while ((row = mysql_fetch_row(result)))
-		rows += atof(row[8]);
+		if (row[8] != NULL) rows += atof(row[8]);
 
 	mysql_free_result(result);
 	mysql_close(conn);
