@@ -444,7 +444,7 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 		snprintf(query, len, "EXPLAIN SELECT * FROM %s", svr_table);
 	}
 
-	/*A
+	/*
 	 * MySQL seems to have some pretty unhelpful EXPLAIN output, which only
 	 * gives a row estimate for each relation in the statement. We'll use the
 	 * sum of the rows as our cost estimate - it's not great (in fact, in some
@@ -463,7 +463,7 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 	result = mysql_store_result(conn);
 
 	while ((row = mysql_fetch_row(result)))
-		rows += atof(row[8]);
+		rows += row[8] ? atof(row[8]) : 2;
 
 	mysql_free_result(result);
 	mysql_close(conn);
@@ -731,7 +731,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	result = mysql_store_result(conn);
 
 	while ((row = mysql_fetch_row(result)))
-		rows += atof(row[8]);
+		rows += row[8] ? atof(row[8]) : 2;
 
 	mysql_free_result(result);
 	mysql_close(conn);
