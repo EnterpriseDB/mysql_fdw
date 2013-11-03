@@ -591,7 +591,7 @@ mysqlIterateForeignScan(ForeignScanState *node)
 		}
 
 		/* Guess the query succeeded then */
-		festate->result = mysql_store_result(festate->conn);
+		festate->result = mysql_use_result(festate->conn);
 	}
 
 	/* Cleanup */
