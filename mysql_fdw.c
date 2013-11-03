@@ -422,6 +422,7 @@ mysqlPlanForeignScan(Oid foreigntableid, PlannerInfo *root, RelOptInfo *baserel)
 			errmsg("failed to initialise the MySQL connection object")
 			));
 
+	mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
 	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
@@ -535,6 +536,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 			errmsg("failed to initialise the MySQL connection object")
 			));
 
+	mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
 	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
@@ -690,6 +692,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 			errmsg("failed to initialise the MySQL connection object")
 			));
 
+	mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
 	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
