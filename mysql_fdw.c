@@ -580,6 +580,7 @@ mysqlIterateForeignScan(ForeignScanState *node)
 	/* Execute the query, if required */
 	if (!festate->result)
 	{
+		mysql_query(festate->conn, "SET time_zone = '+00:00'");
 		if (mysql_query(festate->conn, festate->query) != 0)
 		{
 			char *err = pstrdup(mysql_error(festate->conn));
