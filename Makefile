@@ -14,7 +14,7 @@
 ##########################################################################
 
 MODULE_big = mysql_fdw
-OBJS = mysql_fdw.o
+OBJS = option.o mysql_fdw.o
 
 EXTENSION = mysql_fdw
 DATA = mysql_fdw--1.0.sql
