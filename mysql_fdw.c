@@ -21,29 +21,57 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "funcapi.h"
 #include "access/reloptions.h"
-#include "catalog/pg_foreign_server.h"
-#include "catalog/pg_foreign_table.h"
-#include "catalog/pg_user_mapping.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
+#include "commands/vacuum.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
-#include "miscadmin.h"
-#include "mb/pg_wchar.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
-#include "storage/fd.h"
+#include "optimizer/pathnode.h"
+#include "optimizer/plancat.h"
+#include "optimizer/planmain.h"
+#include "optimizer/restrictinfo.h"
+#include "storage/ipc.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/date.h"
+#include "utils/hsearch.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/timestamp.h"
+#include "utils/formatting.h"
+#include "utils/memutils.h"
+#include "access/htup_details.h"
+#include "access/sysattr.h"
+#include "commands/defrem.h"
+#include "commands/explain.h"
+#include "commands/vacuum.h"
+#include "foreign/fdwapi.h"
+#include "funcapi.h"
+#include "miscadmin.h"
+#include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "optimizer/cost.h"
+#include "optimizer/pathnode.h"
+#include "optimizer/paths.h"
+#include "optimizer/planmain.h"
+#include "optimizer/prep.h"
+#include "optimizer/restrictinfo.h"
+#include "optimizer/var.h"
+#include "parser/parsetree.h"
+#include "utils/builtins.h"
+#include "utils/guc.h"
+#include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/planmain.h"
 
-PG_MODULE_MAGIC;
 
+PG_MODULE_MAGIC;
 
 /*
  * FDW-specific information for ForeignScanState.fdw_state.
@@ -60,6 +88,8 @@ typedef struct MySQLFdwExecutionState
  * SQL functions
  */
 extern Datum mysql_fdw_handler(PG_FUNCTION_ARGS);
+static void mysql_fdw_exit(int code, Datum arg);
+extern PGDLLEXPORT void _PG_init(void);
 
 PG_FUNCTION_INFO_V1(mysql_fdw_handler);
 
@@ -80,6 +110,27 @@ static ForeignScan *mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, 
  * Helper functions
  */
 static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *startup_cost, Cost *total_cost, Oid foreigntableid);
+
+
+/*
+ * Library load-time initalization, sets on_proc_exit() callback for
+ * backend shutdown.
+ */
+void
+_PG_init(void)
+{
+	on_proc_exit(&mysql_fdw_exit, PointerGetDatum(NULL));
+}
+
+/*
+ * mysql_fdw_exit: Exit callback function.
+ */
+static void
+mysql_fdw_exit(int code, Datum arg)
+{
+	mysql_cleanup_connection();
+}
+
 
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
@@ -144,19 +195,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	options = mysql_get_options(RelationGetRelid(node->ss.ss_currentRelation));
 
 	/* Connect to the server */
-	conn = mysql_init(NULL);
-	if (!conn)
-		ereport(ERROR,
-			(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
-			errmsg("failed to initialise the MySQL connection object")
-			));
-
-	mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
-	if (!mysql_real_connect(conn, options->svr_address, options->svr_username, options->svr_password, options->svr_database, options->svr_port, NULL, 0))
-		ereport(ERROR,
-			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
-			errmsg("failed to connect to MySQL: %s", mysql_error(conn))
-			));
+	conn = mysql_get_connection(options);
 
 	/* Build the query */
 	len = strlen(options->svr_table) + 15;
@@ -194,7 +233,6 @@ mysqlIterateForeignScan(ForeignScanState *node)
 		if (mysql_query(festate->conn, festate->query) != 0)
 		{
 			char *err = pstrdup(mysql_error(festate->conn));
-			mysql_close(festate->conn);
 			ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 				errmsg("failed to execute the MySQL query: %s", err)
@@ -238,12 +276,6 @@ mysqlEndForeignScan(ForeignScanState *node)
 		festate->result = NULL;
 	}
 
-	if (festate->conn)
-	{
-		mysql_close(festate->conn);
-		festate->conn = NULL;
-	}
-
 	if (festate->query)
 	{
 		pfree(festate->query);
@@ -284,25 +316,8 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 
 	/* Construct FdwPlan with cost estimates. */
 
-	/* 
-	 * TODO: Find a way to stash this connection object away, so we don't have
-	 * to reconnect to MySQL aain later.
-	 */
-
-	/* Connect to the server */
-	conn = mysql_init(NULL);
-	if (!conn)
-		ereport(ERROR,
-			(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
-			errmsg("failed to initialise the MySQL connection object")
-			));
-
-	mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
-	if (!mysql_real_connect(conn, options->svr_address, options->svr_username, options->svr_password, options->svr_database, options->svr_port, NULL, 0))
-		ereport(ERROR,
-			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
-			errmsg("failed to connect to MySQL: %s", mysql_error(conn))
-			));
+		/* Connect to the server */
+	conn = mysql_get_connection(options);
 
 	len = strlen(options->svr_table) + 23;
 
@@ -318,7 +333,6 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	if (mysql_query(conn, query) != 0)
 	{
 		char *err = pstrdup(mysql_error(conn));
-		mysql_close(conn);
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 			errmsg("failed to execute the MySQL query: %s", err)
@@ -331,7 +345,6 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 		rows += row[8] ? atof(row[8]) : 2;
 
 	mysql_free_result(result);
-	mysql_close(conn);
 
 	baserel->rows = rows;
 	baserel->tuples = rows;
