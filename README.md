@@ -54,7 +54,7 @@ The latest version comes with a connection pooler that utilises the same mysql d
 
 Where clause push-down
 ----------------------
-The latest version will push-down the foreign table where clause to the foreign server. The where condition on the foreign table will be executed on the foreign server hence their will be fewer rows to to bring across to PG. This is a performance feature.
+The latest version will push-down the foreign table where clause to the foreign server. The where condition on the foreign table will be executed on the foreign server hence there will be fewer rows to to bring across to PostgreSQL. This is a performance feature.
 
 Column push-down
 ----------------
@@ -90,7 +90,6 @@ The following parameters need to supplied while creating user mapping.
 
 
 ```sql
-Examples with MySQL equelent statments.
 
 
 -- load extension first time after install
@@ -148,6 +147,7 @@ SERVER mysql_server
  Planning time: 0.564 ms
 (5 rows)
 
+```
 
 Contributing
 ------------
