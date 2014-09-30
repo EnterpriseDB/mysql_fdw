@@ -1,15 +1,15 @@
 {
    "name": "mysql_fdw",
-   "abstract": "MySQL FDW for PostgreSQL 9.1+",
-   "description": "This extension implements a Foreign Data Wrapper for MySQL. It is supported on PostgreSQL 9.1 and above.",
+   "abstract": "MySQL FDW for PostgreSQL 9.3+",
+   "description": "This extension implements a Foreign Data Wrapper for MySQL. It is supported on PostgreSQL 9.3 and above.",
    "version": "1.0.1",
    "maintainer": [
-      "Dave Page <dpage@pgadmin.org>"
+      "mysql_fdw@enterprisedb.com"
    ],
    "license": "postgresql",
    "provides": {
       "mysql_fdw": {
-         "abstract": "MySQL FDW for PostgreSQL 9.1+",
+         "abstract": "MySQL FDW for PostgreSQL 9.3+",
          "file": "mysql_fdw--1.0.sql",
          "docfile": "README",
          "version": "1.0.1"
@@ -32,7 +32,7 @@
         "type": "git"
       }
    },
-   "generated_by": "Dave Page",
+   "generated_by": "mysql_fdw@enterprisedb.com",
    "meta-spec": {
       "version": "1.0.1",
       "url": "http://pgxn.org/meta/spec.txt"

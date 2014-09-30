@@ -1,18 +1,18 @@
 /*-------------------------------------------------------------------------
  *
- *                foreign-data wrapper for MySQL
+ * mysql_fdw--1.0.sql
+ * 			Foreign-data wrapper for remote MySQL servers
  *
- * Copyright (c) 2011 - 2013, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  *
- * This software is released under the PostgreSQL Licence
- *
- * Author: Dave Page <dpage@pgadmin.org>
+ * Portions Copyright (c) 2004-2014, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
- *                mysql_fdw/mysql_fdw--1.0.sql
+ * 			mysql_fdw--1.0.sql
  *
  *-------------------------------------------------------------------------
  */
+
 
 CREATE FUNCTION mysql_fdw_handler()
 RETURNS fdw_handler
