@@ -1,14 +1,14 @@
 /*-------------------------------------------------------------------------
  *
- * connection.h
- *		  Foreign-data wrapper for remote MySQL servers
+ * connection.c
+ * 		Foreign-data wrapper for remote MySQL servers
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  *
  * Portions Copyright (c) 2004-2014, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
- *		  connection.h
+ * 		connection.c
  *
  *-------------------------------------------------------------------------
  */
@@ -37,13 +37,13 @@
  */
 typedef struct ConnCacheKey
 {
-	char host[HOST_LEN];	/* MySQL's host name  / IP address */
-	int32 port;				/* MySQL's port number */
+	char        host[HOST_LEN];     /* MySQL's host name / IP address */
+	int32       port;               /* MySQL's port number */
 } ConnCacheKey;
 
 typedef struct ConnCacheEntry
 {
-	ConnCacheKey key;		/* hash key (must be first) */
+	ConnCacheKey key;       /* hash key (must be first) */
 	MYSQL *conn;            /* connection to foreign server, or NULL */
 } ConnCacheEntry;
 
@@ -61,11 +61,11 @@ static HTAB *ConnectionHash = NULL;
 MYSQL*
 mysql_get_connection(mysql_opt *opt)
 {
-    bool found;
+	bool found;
 	ConnCacheEntry *entry;
 	ConnCacheKey key;
-    
- 	/* First time through, initialize connection cache hashtable */
+
+	/* First time through, initialize connection cache hashtable */
 	if (ConnectionHash == NULL)
 	{
 		HASHCTL	ctl;
@@ -73,19 +73,19 @@ mysql_get_connection(mysql_opt *opt)
 		ctl.keysize = sizeof(ConnCacheKey);
 		ctl.entrysize = sizeof(ConnCacheEntry);
 		ctl.hash = tag_hash;
-        
+
 		/* allocate ConnectionHash in the cache context */
 		ctl.hcxt = CacheMemoryContext;
 		ConnectionHash = hash_create("mysql_fdw connections", 8,
-                                     &ctl,
-                                     HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+									&ctl,
+									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 	}
-    
+
 	/* Create hash key for the entry */
 	memset(key.host, 0, HOST_LEN);
 	strncpy(key.host, opt->svr_address, HOST_LEN);
 	key.port = opt->svr_port;
-    
+
 	/*
 	 * Find or create cached entry for requested connection.
 	 */
@@ -113,18 +113,18 @@ mysql_cleanup_connection(void)
 {
 	HASH_SEQ_STATUS	scan;
 	ConnCacheEntry *entry;
-    
+
 	if (ConnectionHash == NULL)
 		return;
-    
+
 	hash_seq_init(&scan, ConnectionHash);
 	while ((entry = (ConnCacheEntry *) hash_seq_search(&scan)))
 	{
 		if (entry->conn == NULL)
 			continue;
-        
+
 		elog(DEBUG3, "disconnecting mysql_fdw connection %p", entry->conn);
-		mysql_close(entry->conn);
+		_mysql_close(entry->conn);
 		entry->conn = NULL;
 	}
 }
@@ -148,19 +148,19 @@ mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *s
 	MYSQL *conn = NULL;
 
 	/* Connect to the server */
-	conn = mysql_init(NULL);
+	conn = _mysql_init(NULL);
 	if (!conn)
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
 			errmsg("failed to initialise the MySQL connection object")
 			));
 
-	mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
+	_mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
 
-	if (!mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
+	if (!_mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
-			errmsg("failed to connect to MySQL: %s", mysql_error(conn))
+			errmsg("failed to connect to MySQL: %s", _mysql_error(conn))
 			));
 	return conn;
 }

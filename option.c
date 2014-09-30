@@ -1,14 +1,14 @@
 /*-------------------------------------------------------------------------
  *
  * options.c
- *		  Foreign-data wrapper for remote MySQL servers
+ * 		Foreign-data wrapper for remote MySQL servers
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  *
  * Portions Copyright (c) 2004-2014, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
- *		  options.c
+ * 		options.c
  *
  *-------------------------------------------------------------------------
  */
@@ -60,13 +60,13 @@ struct MySQLFdwOption
 static struct MySQLFdwOption valid_options[] =
 {
 	/* Connection options */
-	{ "host",	ForeignServerRelationId },
-	{ "port",		ForeignServerRelationId },
-	{ "username",	UserMappingRelationId },
-	{ "password",	UserMappingRelationId },
-	{ "dbname",	ForeignTableRelationId },
-	{ "table_name",		ForeignTableRelationId },
-    
+	{ "host",           ForeignServerRelationId },
+	{ "port",           ForeignServerRelationId },
+	{ "username",       UserMappingRelationId },
+	{ "password",       UserMappingRelationId },
+	{ "dbname",         ForeignTableRelationId },
+	{ "table_name",     ForeignTableRelationId },
+
 	/* Sentinel */
 	{ NULL,			InvalidOid }
 };
@@ -95,7 +95,7 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 	 */
 	foreach(cell, options_list)
 	{
-		DefElem	   *def = (DefElem *) lfirst(cell);
+		DefElem	 *def = (DefElem *) lfirst(cell);
 
 		if (!mysql_is_valid_option(def->defname, catalog))
 		{
@@ -133,7 +133,7 @@ bool
 mysql_is_valid_option(const char *option, Oid context)
 {
 	struct MySQLFdwOption *opt;
-    
+
 	for (opt = valid_options; opt->optname; opt++)
 	{
 		if (context == opt->optcontext && strcmp(opt->optname, option) == 0)
@@ -154,22 +154,22 @@ mysql_get_options(Oid foreigntableid)
 	List *options;
 	ListCell *lc;
 	mysql_opt *opt;
-    
+
 	opt = (mysql_opt*) palloc(sizeof(mysql_opt));
 	memset(opt, 0, sizeof(mysql_opt));
-    
+
 	/*
 	 * Extract options from FDW objects.
 	 */
 	f_table = GetForeignTable(foreigntableid);
 	f_server = GetForeignServer(f_table->serverid);
 	f_mapping = GetUserMapping(GetUserId(), f_table->serverid);
-    
+
 	options = NIL;
 	options = list_concat(options, f_table->options);
 	options = list_concat(options, f_server->options);
 	options = list_concat(options, f_mapping->options);
-    
+
 	/* Loop through the options, and get the server/port */
 	foreach(lc, options)
 	{
@@ -177,30 +177,29 @@ mysql_get_options(Oid foreigntableid)
 
 		if (strcmp(def->defname, "host") == 0)
 			opt->svr_address = defGetString(def);
-        
+
 		if (strcmp(def->defname, "port") == 0)
 			opt->svr_port = atoi(defGetString(def));
-        
+
 		if (strcmp(def->defname, "username") == 0)
 			opt->svr_username = defGetString(def);
-        
+
 		if (strcmp(def->defname, "password") == 0)
 			opt->svr_password = defGetString(def);
-        
+
 		if (strcmp(def->defname, "dbname") == 0)
 			opt->svr_database = defGetString(def);
-        
+
 		if (strcmp(def->defname, "table_name") == 0)
 			opt->svr_table = defGetString(def);
 	}
-    
 	/* Default values, if required */
 	if (!opt->svr_address)
 		opt->svr_address = "127.0.0.1";
-    
+
 	if (!opt->svr_port)
 		opt->svr_port = MYSQL_PORT;
-    
+
 	return opt;
 }
 
