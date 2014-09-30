@@ -93,40 +93,35 @@ The following parameters need to supplied while creating user mapping.
 
 
 -- load extension first time after install
-`CREATE EXTENSION mysql_fdw;`
+CREATE EXTENSION mysql_fdw;
 
 -- create server object
-
-`CREATE SERVER mysql_server
+CREATE SERVER mysql_server
          FOREIGN DATA WRAPPER mysql_fdw
-         OPTIONS (host '127.0.0.1', port '3306');`
+         OPTIONS (host '127.0.0.1', port '3306');
 
 -- create user mapping 
-
-`CREATE USER MAPPING FOR postgres
+CREATE USER MAPPING FOR postgres
 	SERVER mysql_server
-	OPTIONS (username 'foo', password 'bar')`;
+	OPTIONS (username 'foo', password 'bar');
 
 -- create foreign table
-
-`CREATE FOREIGN TABLE warehouse(
+CREATE FOREIGN TABLE warehouse(
          warehouse_id int,
          warehouse_name text,
          warehouse_created datetime)
 SERVER mysql_server
-         OPTIONS (dbname 'db', table_name 'warehouse');`
+         OPTIONS (dbname 'db', table_name 'warehouse');
 
 
--- insert row in table
-
-`INSERT INTO warehouse values (1, 'UPS', sysdate());
- INSERT INTO warehouse values (2, 'TV', sysdate());
- INSERT INTO warehouse values (3, 'Table', sysdate());`
+-- insert new rows in table
+INSERT INTO warehouse values (1, 'UPS', sysdate());
+INSERT INTO warehouse values (2, 'TV', sysdate());
+INSERT INTO warehouse values (3, 'Table', sysdate());
 
 
 -- select from table
-
-` SELECT * FROM warehouse`;
+SELECT * FROM warehouse;
  warehouse_id | warehouse_name | warehouse_created  
 --------------+----------------+--------------------
             1 | UPS            | 29-SEP-14 23:33:46
@@ -135,17 +130,15 @@ SERVER mysql_server
             
 
 -- delete row from table
-
-`DELETE FROM warehouse where warehouse_id = 3;`
+DELETE FROM warehouse where warehouse_id = 3;
 
 
 -- update a row of table
+UPDATE warehouse set warehouse_name = 'UPS_NEW' where warehouse_id = 1;
 
-`UPDATE warehouse set warehouse_name = 'UPS_NEW' where warehouse_id = 1;`
 
 -- explain a table
-
-`EXPLAIN SELECT warehouse_id, warehouse_name FROM warehouse WHERE warehouse_name LIKE 'TV' limit 1;
+EXPLAIN SELECT warehouse_id, warehouse_name FROM warehouse WHERE warehouse_name LIKE 'TV' limit 1;
                                 QUERY PLAN                                                   
 -----------------------------------------------------------------------------------
  Limit  (cost=10.00..11.00 rows=1 width=36)
