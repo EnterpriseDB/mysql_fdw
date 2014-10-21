@@ -141,8 +141,7 @@ mysql_deparse_relation(StringInfo buf, Relation rel)
 	if (relname == NULL)
 		relname = RelationGetRelationName(rel);
 
-	appendStringInfo(buf, "%s.%s",
-					 quote_identifier(nspname), quote_identifier(relname));
+	appendStringInfo(buf, "%s.%s", quote_identifier(nspname), quote_identifier(relname));
 }
 
 
@@ -229,7 +228,6 @@ mysql_deparse_insert(StringInfo buf, PlannerInfo *root,
 	}
 	else
 		appendStringInfoString(buf, " DEFAULT VALUES");
-    
 }
 
 void

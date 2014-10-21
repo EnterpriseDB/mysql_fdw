@@ -98,6 +98,9 @@ x->second = y.tm_sec; \
 
 
 static int32 mysql_from_pgtyp(Oid type);
+static int dec_bin(int n);
+static int bin_dec(int n);
+
 
 /*
  * convert_mysql_to_pg: Convert MySQL data into PostgreSQL's compatible data types
@@ -110,6 +113,7 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, Datum data, MySQLFdwExecState *fest
 	regproc typeinput;
 	HeapTuple tuple;
 	int typemod;
+	char str[MAXDATELEN];
 
 	/* get the type's output function */
 	tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(pgtyp));
@@ -120,9 +124,36 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, Datum data, MySQLFdwExecState *fest
 	typemod  = ((Form_pg_type)GETSTRUCT(tuple))->typtypmod;
 	ReleaseSysCache(tuple);
 
-	valueDatum = CStringGetDatum((char*)data);
-	value_datum = OidFunctionCall3(typeinput, valueDatum, ObjectIdGetDatum(InvalidOid), Int32GetDatum(typemod));
+	switch (pgtyp)
+	{
+		/*
+		 * MySQL gives BIT / BIT(n) data type as decimal value. The only way to
+		 * retrieve this value is to use BIN, OCT or HEX function in MySQL, otherwise
+		 * mysql client shows the actual decimal value, which could be a non - printable character.
+		 * For exmple in MySQL
+		 *
+		 * CREATE TABLE t (b BIT(8));
+		 * INSERT INTO t SET b = b'1001';
+		 * SELECT BIN(b) FROM t;
+		 * +--------+
+		 * | BIN(b) |
+		 * +--------+
+		 * | 1001   |
+		 * +--------+
+		 *
+		 * PostgreSQL expacts all binary data to be composed of either '0' or '1'. MySQL gives
+		 * value 9 hence PostgreSQL reports error. The solution is to convert the decimal number
+		 * into equivalent binary string.
+		 */
 
+		case BITOID:
+			sprintf(str, "%d", dec_bin(*((int*)data)));
+			valueDatum = CStringGetDatum((char*)str);
+		break;
+		default:
+			valueDatum = CStringGetDatum((char*)data);
+	}
+	value_datum = OidFunctionCall3(typeinput, valueDatum, ObjectIdGetDatum(InvalidOid), Int32GetDatum(typemod));
 	return value_datum;
 }
 
@@ -170,6 +201,10 @@ mysql_from_pgtyp(Oid type)
 		case TIMESTAMPOID:
 		case TIMESTAMPTZOID:
 			return MYSQL_TYPE_TIMESTAMP;
+
+		case BITOID:
+			return MYSQL_TYPE_LONG;
+
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
@@ -332,6 +367,22 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds, bool *i
 
 			break;
 		}
+		case BITOID:
+		{
+			int32 dat;
+			int32 *bufptr = palloc0(sizeof(int32));
+			char *outputString = NULL;
+			Oid outputFunctionId = InvalidOid;
+			bool typeVarLength = false;
+			getTypeOutputInfo(type, &outputFunctionId, &typeVarLength);
+			outputString = OidOutputFunctionCall(outputFunctionId, value);
+
+			dat = bin_dec(atoi(outputString));
+			memcpy(bufptr, (char*)&dat, sizeof(int32));
+			binds[attnum].buffer = bufptr;
+			break;
+		}
+
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
@@ -359,4 +410,35 @@ mysql_bind_result(int attnum, Datum *value, bool *isnull, MYSQL_BIND *result_val
 	return (Datum)value;
 }
 
+static
+int dec_bin(int n)
+{
+	int rem, i = 1;
+	int bin = 0;
 
+	while (n != 0)
+	{
+		rem  = n % 2;
+		n /= 2;
+		bin += rem * i;
+		i *= 10;
+	}
+	return bin;
+}
+
+static int
+bin_dec(int n)
+{
+	int dec = 0;
+	int i = 0;
+	int rem;
+
+	while (n != 0)
+	{
+		rem = n % 10;
+		n /= 10;
+		dec += rem * pow(2 , i);
+		++i;
+	}
+	return dec;
+}
