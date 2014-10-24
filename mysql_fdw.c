@@ -24,6 +24,9 @@
 #include <mysql.h>
 
 #include "access/reloptions.h"
+#include "catalog/pg_foreign_server.h"
+#include "catalog/pg_foreign_table.h"
+#include "catalog/pg_user_mapping.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
@@ -264,6 +267,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	TupleTableSlot    *tupleSlot = node->ss.ss_ScanTupleSlot;
 	TupleDesc         tupleDescriptor = tupleSlot->tts_tupleDescriptor;
 	MYSQL             *conn = NULL;
+	RangeTblEntry     *rte;
 	MySQLFdwExecState *festate = NULL;
 	EState            *estate = node->ss.ps.state;
 	ForeignScan       *fsplan = (ForeignScan *) node->ss.ps.plan;
@@ -273,6 +277,29 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	int               atindex = 0;
 	unsigned long     prefetch_rows = MYSQL_PREFETCH_ROWS;
 	unsigned long     type = (unsigned long) CURSOR_TYPE_READ_ONLY;
+	Oid               userid;
+	ForeignServer     *server;
+	UserMapping       *user;
+	ForeignTable      *table;
+
+	/*
+	 * We'll save private state in node->fdw_state.
+	 */
+	festate = (MySQLFdwExecState *) palloc(sizeof(MySQLFdwExecState));
+	node->fdw_state = (void *) festate;
+
+	/*
+	 * Identify which user to do the remote access as.  This should match what
+	 * ExecCheckRTEPerms() does.
+	 */
+	rte = rt_fetch(fsplan->scan.scanrelid, estate->es_range_table);
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+
+	/* Get info about foreign table. */
+	festate->rel = node->ss.ss_currentRelation;
+	table = GetForeignTable(RelationGetRelid(festate->rel));
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
 
 	/* Fetch the options */
 	options = mysql_get_options(RelationGetRelid(node->ss.ss_currentRelation));
@@ -281,10 +308,9 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	 * Get the already connected connection, otherwise connect
 	 * and get the connection handle.
 	 */
-	conn = mysql_get_connection(options);
+	conn = mysql_get_connection(server, user, options);
 
 	/* Stash away the state info we have already */
-	festate = (MySQLFdwExecState *) palloc(sizeof(MySQLFdwExecState));
 	festate->query = strVal(list_nth(fsplan->fdw_private, 0));
 	festate->retrieved_attrs = list_nth(fsplan->fdw_private, 1);
 	festate->conn = conn;
@@ -298,8 +324,6 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Allocate memory for the values and nulls for the results */
 	festate->tts_values = (Datum*) palloc0(sizeof(Datum) * tupleDescriptor->natts);
 	festate->tts_isnull = palloc0(sizeof(bool) * tupleDescriptor->natts);
-
-	node->fdw_state = (void *) festate;
 
 	_mysql_query(festate->conn, "SET time_zone = '+00:00'");
 
@@ -471,12 +495,24 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	Bitmapset       *attrs_used = NULL;
 	List            *retrieved_attrs = NULL;
 	mysql_opt       *options = NULL;
+	Oid             userid =  GetUserId();
+	ForeignServer   *server;
+	UserMapping     *user;
+	ForeignTable    *table;
+
+	table = GetForeignTable(foreigntableid);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
+
+	/* Fetch the options */
+	options = mysql_get_options(foreigntableid);
+
 
 	/* Fetch options */
 	options = mysql_get_options(foreigntableid);
 
 	/* Connect to the server */
-	conn = mysql_get_connection(options);
+	conn = mysql_get_connection(server, user, options);
 
 	/* Build the query */
 	initStringInfo(&sql);
@@ -636,12 +672,19 @@ mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func, BlockNu
 	Oid            foreignTableId = RelationGetRelid(relation);
 	mysql_opt      *options;
 	char           *relname;
+	ForeignServer  *server;
+	UserMapping    *user;
+	ForeignTable   *table;
+
+	table = GetForeignTable(foreignTableId);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(relation->rd_rel->relowner, server->serverid);
 
 	/* Fetch options */
 	options = mysql_get_options(foreignTableId);
 
 	/* Connect to the server */
-	conn = mysql_get_connection(options);
+	conn = mysql_get_connection(server, user, options);
 
 	/* Build the query */
 	initStringInfo(&sql);
@@ -783,6 +826,21 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	bool                isvarlena = false;
 	ListCell            *lc = NULL;
 	Oid                 foreignTableId = InvalidOid;
+	RangeTblEntry       *rte;
+	Oid                 userid;
+	ForeignServer       *server;
+	UserMapping         *user;
+	ForeignTable        *table;
+
+
+	rte = rt_fetch(resultRelInfo->ri_RangeTableIndex, estate->es_range_table);
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+
+	foreignTableId = RelationGetRelid(rel);
+
+	table = GetForeignTable(foreignTableId);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
 
 	/*
 	 * Do nothing in EXPLAIN (no ANALYZE) case. resultRelInfo->ri_FdwState
@@ -791,14 +849,12 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 		return;
 
-	foreignTableId = RelationGetRelid(rel);
-
 	/* Begin constructing MongoFdwModifyState. */
 	fmstate = (MySQLFdwExecState *) palloc0(sizeof(MySQLFdwExecState));
 
 	fmstate->rel = rel;
 	fmstate->mysqlFdwOptions = mysql_get_options(foreignTableId);
-	fmstate->conn = mysql_get_connection(fmstate->mysqlFdwOptions);
+	fmstate->conn = mysql_get_connection(server, user, fmstate->mysqlFdwOptions);
 
 	fmstate->query = strVal(list_nth(fdw_private, 0));
 	fmstate->retrieved_attrs = (List *) list_nth(fdw_private, 1);

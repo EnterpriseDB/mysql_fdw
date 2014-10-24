@@ -29,16 +29,14 @@
 /*
  * Connection cache hash table entry
  *
- * The lookup key in this hash table is the foreign MySQL server name / IP
- * and the server port number. (We use just one connection per user per foreign server,
+ * The lookup key in this hash table is the foreign server OID plus the user
+ * mapping OID.  (We use just one connection per user per foreign server,
  * so that we can ensure all scans use the same snapshot during a query.)
- *
- * The "conn" pointer can be NULL if we don't currently have a live connection.
  */
 typedef struct ConnCacheKey
 {
-	char        host[HOST_LEN];     /* MySQL's host name / IP address */
-	int32       port;               /* MySQL's port number */
+	Oid			serverid;		/* OID of foreign server */
+	Oid			userid;			/* OID of local user whose mapping we use */
 } ConnCacheKey;
 
 typedef struct ConnCacheEntry
@@ -59,7 +57,7 @@ static HTAB *ConnectionHash = NULL;
  * is established if we don't already have a suitable one.
  */
 MYSQL*
-mysql_get_connection(mysql_opt *opt)
+mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 {
 	bool found;
 	ConnCacheEntry *entry;
@@ -81,10 +79,9 @@ mysql_get_connection(mysql_opt *opt)
 									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 	}
 
-	/* Create hash key for the entry */
-	memset(key.host, 0, HOST_LEN);
-	strncpy(key.host, opt->svr_address, HOST_LEN);
-	key.port = opt->svr_port;
+	/* Create hash key for the entry.  Assume no pad bytes in key struct */
+	key.serverid = server->serverid;
+	key.userid = user->userid;
 
 	/*
 	 * Find or create cached entry for requested connection.
@@ -98,8 +95,8 @@ mysql_get_connection(mysql_opt *opt)
 	if (entry->conn == NULL)
 	{
 		entry->conn = mysql_connect(opt->svr_address, opt->svr_username, opt->svr_password, opt->svr_database, opt->svr_port);
-		elog(DEBUG3, "new mysql_fdw connection %p for server \"%s:%d\"",
-			 entry->conn, opt->svr_address, opt->svr_port);
+		elog(DEBUG3, "new mysql_fdw connection %p for server \"%s\"",
+			 entry->conn, server->servername);
 	}
 	return entry->conn;
 }

@@ -127,7 +127,7 @@ extern void mysql_deparse_analyze(StringInfo buf, char *dbname, char *relname);
 
 
 /* connection.c headers */
-MYSQL *mysql_get_connection(mysql_opt* opt);
+MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt);
 MYSQL *mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *svr_database, int svr_port);
 void  mysql_cleanup_connection(void);
 void mysql_rel_connection(MYSQL *conn);
