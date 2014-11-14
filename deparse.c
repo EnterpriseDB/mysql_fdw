@@ -388,34 +388,66 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *r
 }
 
 
+static void
+mysql_deparse_string(StringInfo buf, const char *val, bool isstr)
+{
+	const char *valptr;
+	int i = -1;
+
+	for (valptr = val; *valptr; valptr++)
+	{
+		char ch = *valptr;
+		i++;
+
+		if (i == 0 && isstr)
+			appendStringInfoChar(buf, '\'');
+
+		/*
+		 * Remove '{', '}' and \" character from the string. Because
+		 * this syntax is not recognize by the remote MySQL server.
+		 */
+		if ((ch == '{' && i == 0) || (ch == '}' && (i == (strlen(val) - 1))) || ch == '\"')
+			continue;
+
+		if (ch == ',' && isstr)
+		{
+			appendStringInfoChar(buf, '\'');
+			appendStringInfoChar(buf, ch);
+			appendStringInfoChar(buf, ' ');
+			appendStringInfoChar(buf, '\'');
+			continue;
+		}
+		appendStringInfoChar(buf, ch);
+	}
+	if (isstr)
+		appendStringInfoChar(buf, '\'');
+}
+
 /*
- * Append a SQL string literal representing "val" to buf.
- */
+* Append a SQL string literal representing "val" to buf.
+*/
 static void
 mysql_deparse_string_literal(StringInfo buf, const char *val)
 {
 	const char *valptr;
-
 	/*
-	 * Rather than making assumptions about the remote server's value of
-	 * standard_conforming_strings, always use E'foo' syntax if there are any
-	 * backslashes.  This will fail on remote servers before 8.1, but those
-	 * are long out of support.
-	 */
+	* Rather than making assumptions about the remote server's value of
+	* standard_conforming_strings, always use E'foo' syntax if there are any
+	* backslashes. This will fail on remote servers before 8.1, but those
+	* are long out of support.
+	*/
 	if (strchr(val, '\\') != NULL)
-		appendStringInfoChar(buf, ESCAPE_STRING_SYNTAX);
+	appendStringInfoChar(buf, ESCAPE_STRING_SYNTAX);
 	appendStringInfoChar(buf, '\'');
 	for (valptr = val; *valptr; valptr++)
 	{
-		char		ch = *valptr;
-
+		char	ch = *valptr;
 		if (SQL_STR_DOUBLE(ch, true))
-			appendStringInfoChar(buf, ch);
+		appendStringInfoChar(buf, ch);
 		appendStringInfoChar(buf, ch);
 	}
 	appendStringInfoChar(buf, '\'');
 }
-
 /*
  * Deparse given expression into context->buf.
  *
@@ -883,9 +915,13 @@ mysql_deparse_scalar_array_op_expr(ScalarArrayOpExpr *node, deparse_expr_cxt *co
 {
 	StringInfo        buf = context->buf;
 	HeapTuple         tuple;
-	Form_pg_operator  form;
 	Expr              *arg1;
 	Expr              *arg2;
+	Form_pg_operator  form;
+	char              *opname;
+	Oid               typoutput;
+	bool              typIsVarlena;
+	char              *extval;
 
 	/* Retrieve information about the operator from system catalog. */
 	tuple = SearchSysCache1(OPEROID, ObjectIdGetDatum(node->opno));
@@ -896,27 +932,54 @@ mysql_deparse_scalar_array_op_expr(ScalarArrayOpExpr *node, deparse_expr_cxt *co
 	/* Sanity check. */
 	Assert(list_length(node->args) == 2);
 
-	/* Always parenthesize the expression. */
-	appendStringInfoChar(buf, '(');
-
 	/* Deparse left operand. */
 	arg1 = linitial(node->args);
 	deparseExpr(arg1, context);
 	appendStringInfoChar(buf, ' ');
 
+	opname = NameStr(form->oprname);
+	if (strcmp(opname, "<>") == 0)
+		appendStringInfo(buf, " NOT ");
+
 	/* Deparse operator name plus decoration. */
-	mysql_deparse_operator_name(buf, form);
-	appendStringInfo(buf, " %s (", node->useOr ? "ANY" : "ALL");
+	appendStringInfo(buf, " IN (");
 
 	/* Deparse right operand. */
 	arg2 = lsecond(node->args);
-	deparseExpr(arg2, context);
+	switch (nodeTag((Node*)arg2))
+	{
+		case T_Const:
+		{
+			Const *c = (Const*)arg2;
+			if (!c->constisnull)
+			{
+				getTypeOutputInfo(c->consttype,
+								&typoutput, &typIsVarlena);
+				extval = OidOutputFunctionCall(typoutput, c->constvalue);
 
+				switch (c->consttype)
+				{
+					case INT4ARRAYOID:
+					case OIDARRAYOID:
+						mysql_deparse_string(buf, extval, false);
+						break;
+					default:
+						mysql_deparse_string(buf, extval, true);
+						break;
+				}
+			}
+			else
+			{
+				appendStringInfoString(buf, " NULL");
+				return;
+			}
+		}
+		break;
+		default:
+			deparseExpr(arg2, context);
+			break;
+	}
 	appendStringInfoChar(buf, ')');
-
-	/* Always parenthesize the expression. */
-	appendStringInfoChar(buf, ')');
-
 	ReleaseSysCache(tuple);
 }
 
