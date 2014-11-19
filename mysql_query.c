@@ -336,7 +336,7 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds, bool *i
 			Timestamp valueTimestamp = DatumGetTimestamp(valueDatum);
 			MYSQL_TIME* ts = palloc0(sizeof(MYSQL_TIME));
 
-			timestamp2tm(valueTimestamp, &tz, tm, &fsec, &tzn, NULL);
+			timestamp2tm(valueTimestamp, &tz, tm, &fsec, &tzn, pg_tzset("UTC"));
 
 			DATE_MYSQL_PG(ts, tt);
 
@@ -358,7 +358,7 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds, bool *i
 			fsec_t		fsec;
 			const char *tzn;
 
-			timestamp2tm(valueTimestamp, &tz, tm, &fsec, &tzn, NULL);
+			timestamp2tm(valueTimestamp, &tz, tm, &fsec, &tzn, pg_tzset("UTC"));
 
 			DATE_MYSQL_PG(ts, tt);
 
