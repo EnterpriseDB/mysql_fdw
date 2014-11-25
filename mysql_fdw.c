@@ -327,7 +327,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 
 	_mysql_query(festate->conn, "SET time_zone = '+00:00'");
 
-	/* Initalize the mysql statment */
+	/* Initialize the mysql statement */
 	festate->stmt = _mysql_stmt_init(festate->conn);
 	if (festate->stmt == NULL)
 	{
@@ -337,7 +337,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 				 errmsg("failed to execute the mysql query: \n%s", err)));
 	}
 
-	/* Prepare mysql statment */
+	/* Prepare mysql statement */
 	if (_mysql_stmt_prepare(festate->stmt, festate->query, strlen(festate->query)) != 0)
 	{
 		char *err = pstrdup(_mysql_error(festate->conn));
@@ -346,10 +346,10 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 				 errmsg("failed to execute the MySQL query: \n%s", err)));
 	}
 
-	/* Set the statment as cursor type */
+	/* Set the statement as cursor type */
 	_mysql_stmt_attr_set(festate->stmt, STMT_ATTR_CURSOR_TYPE, (void*) &type);
 
-	/* Set the prefectch rows */
+	/* Set the pre-fetch rows */
 	_mysql_stmt_attr_set(festate->stmt, STMT_ATTR_PREFETCH_ROWS, (void*) &prefetch_rows);
 
 	mysql_result_buffer = (MYSQL_BIND*) palloc0(sizeof(MYSQL_BIND) * tupleDescriptor->natts);
@@ -365,7 +365,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 		atindex++;
 	}
 
-	/* Bind the results pointers for the prepare statments */
+	/* Bind the results pointers for the prepare statements */
 	if (_mysql_stmt_bind_result(festate->stmt, mysql_result_buffer) != 0)
 	{
 		char *err = pstrdup(_mysql_error(festate->conn));

@@ -404,9 +404,10 @@ mysql_bind_result(int attnum, Datum *value, bool *isnull, MYSQL_BIND *result_val
 	result_values[attnum].is_null = isnull;
 	result_values[attnum].buffer_type = MYSQL_TYPE_VAR_STRING;
 
-	value = palloc0(MAXDATELEN);
+	/* TODO: Set the maximum data length based on the type of MySQL's column */
+	value = palloc0(MAXDATALEN);
 	result_values[attnum].buffer = value;
-	result_values[attnum].buffer_length = MAXDATELEN;
+	result_values[attnum].buffer_length = MAXDATALEN;
 	return (Datum)value;
 }
 

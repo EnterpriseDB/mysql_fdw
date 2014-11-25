@@ -30,9 +30,10 @@
 #include "nodes/relation.h"
 #include "utils/rel.h"
 
-#define MYSQL_PREFETCH_ROWS	10
+#define MYSQL_PREFETCH_ROWS	100
 #define MYSQL_BLKSIZ		(1024 * 4)
 #define MYSQL_PORT			3306
+#define MAXDATALEN			1024 * 64
 
 /*
  * Options structure to store the MySQL
