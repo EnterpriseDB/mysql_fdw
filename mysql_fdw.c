@@ -121,6 +121,8 @@ static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *sta
 #define _MYSQL_LIBNAME "libmysqlclient.so"
 
 void* mysql_dll_handle = NULL;
+static int wait_timeout = WAIT_TIMEOUT;
+static int interactive_timeout = INTERACTIVE_TIMEOUT;
 
 /*
  * mysql_load_library function dynamically load the mysql's library
@@ -202,7 +204,7 @@ mysql_load_library(void)
 }
 
 /*
- * Library load-time initalization, sets on_proc_exit() callback for
+ * Library load-time initialization, sets on_proc_exit() callback for
  * backend shutdown.
  */
 void
@@ -214,6 +216,33 @@ _PG_init(void)
 				errmsg("failed to load the mysql query: \n%s", dlerror()),
 				errhint("export LD_LIBRARY_PATH to locate the library")));
 
+	DefineCustomIntVariable("mysql_fdw.wait_timeout",
+							"Server-side wait_timeout",
+							"Set the maximum wait_timeout"
+							"use to set the MySQL session timeout",
+							&wait_timeout,
+							WAIT_TIMEOUT,
+							0,
+							INT_MAX,
+							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomIntVariable("mysql_fdw.interactive_timeout",
+							"Server-side interactive timeout",
+							"Set the maximum interactive timeout"
+							"use to set the MySQL session timeout",
+							&interactive_timeout,
+							INTERACTIVE_TIMEOUT,
+							0,
+							INT_MAX,
+							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
 	on_proc_exit(&mysql_fdw_exit, PointerGetDatum(NULL));
 }
 
@@ -281,6 +310,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	ForeignServer     *server;
 	UserMapping       *user;
 	ForeignTable      *table;
+	char              timeout[255];
 
 	/*
 	 * We'll save private state in node->fdw_state.
@@ -324,6 +354,14 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Allocate memory for the values and nulls for the results */
 	festate->tts_values = (Datum*) palloc0(sizeof(Datum) * tupleDescriptor->natts);
 	festate->tts_isnull = palloc0(sizeof(bool) * tupleDescriptor->natts);
+
+	/* Set the session timeout in seconds*/
+	sprintf(timeout, "SET wait_timeout = %d", wait_timeout);
+	_mysql_query(festate->conn, timeout);
+
+	/* Set the session timeout in seconds*/
+	sprintf(timeout, "SET interactive_timeout = %d", interactive_timeout);
+	_mysql_query(festate->conn, timeout);
 
 	_mysql_query(festate->conn, "SET time_zone = '+00:00'");
 

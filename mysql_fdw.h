@@ -34,6 +34,8 @@
 #define MYSQL_BLKSIZ		(1024 * 4)
 #define MYSQL_PORT			3306
 #define MAXDATALEN			1024 * 64
+#define WAIT_TIMEOUT		180
+#define INTERACTIVE_TIMEOUT 70
 
 /*
  * Options structure to store the MySQL
