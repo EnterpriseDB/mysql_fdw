@@ -22,6 +22,7 @@
 #include <dlfcn.h>
 
 #include <mysql.h>
+#include <errmsg.h>
 
 #include "access/reloptions.h"
 #include "catalog/pg_foreign_server.h"
@@ -177,6 +178,8 @@ mysql_load_library(void)
 	_mysql_init = dlsym(mysql_dll_handle, "mysql_init");
 	_mysql_stmt_attr_set = dlsym(mysql_dll_handle, "mysql_stmt_attr_set");
 	_mysql_store_result = dlsym(mysql_dll_handle, "mysql_store_result");
+	_mysql_stmt_errno = dlsym(mysql_dll_handle, "mysql_stmt_errno");
+	_mysql_errno = dlsym(mysql_dll_handle, "mysql_errno");
 
 	if (_mysql_stmt_bind_param == NULL ||
 		_mysql_stmt_bind_result == NULL ||
@@ -198,7 +201,9 @@ mysql_load_library(void)
 		_mysql_close == NULL ||
 		_mysql_init == NULL ||
 		_mysql_stmt_attr_set == NULL ||
-		_mysql_store_result == NULL)
+		_mysql_store_result == NULL ||
+		_mysql_stmt_errno == NULL ||
+		_mysql_errno == NULL)
 			return false;
 	return true;
 }
@@ -355,33 +360,62 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	festate->tts_values = (Datum*) palloc0(sizeof(Datum) * tupleDescriptor->natts);
 	festate->tts_isnull = palloc0(sizeof(bool) * tupleDescriptor->natts);
 
-	/* Set the session timeout in seconds*/
-	sprintf(timeout, "SET wait_timeout = %d", wait_timeout);
-	_mysql_query(festate->conn, timeout);
+	if (wait_timeout > 0)
+	{
+		/* Set the session timeout in seconds*/
+		sprintf(timeout, "SET wait_timeout = %d", wait_timeout);
+		_mysql_query(festate->conn, timeout);
+	}
 
-	/* Set the session timeout in seconds*/
-	sprintf(timeout, "SET interactive_timeout = %d", interactive_timeout);
-	_mysql_query(festate->conn, timeout);
+	if (interactive_timeout > 0)
+	{
+		/* Set the session timeout in seconds*/
+		sprintf(timeout, "SET interactive_timeout = %d", interactive_timeout);
+		_mysql_query(festate->conn, timeout);
+	}
 
 	_mysql_query(festate->conn, "SET time_zone = '+00:00'");
 
-	/* Initialize the mysql statement */
+	/* Initialize the MySQL statement */
 	festate->stmt = _mysql_stmt_init(festate->conn);
 	if (festate->stmt == NULL)
 	{
 		char *err = pstrdup(_mysql_error(festate->conn));
 		ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the mysql query: \n%s", err)));
+				 errmsg("failed to initialize the mysql query: \n%s", err)));
 	}
 
-	/* Prepare mysql statement */
+	/* Prepare MySQL statement */
 	if (_mysql_stmt_prepare(festate->stmt, festate->query, strlen(festate->query)) != 0)
 	{
-		char *err = pstrdup(_mysql_error(festate->conn));
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: \n%s", err)));
+		switch(_mysql_stmt_errno(festate->stmt))
+		{
+			case CR_NO_ERROR:
+				break;
+
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(festate->conn));
+				mysql_rel_connection(festate->conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to prepare the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(festate->conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to prepare the MySQL query: \n%s", err)));
+			}
+			break;
+		}
 	}
 
 	/* Set the statement as cursor type */
@@ -406,22 +440,67 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Bind the results pointers for the prepare statements */
 	if (_mysql_stmt_bind_result(festate->stmt, mysql_result_buffer) != 0)
 	{
-		char *err = pstrdup(_mysql_error(festate->conn));
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: \n%s", err)));
-	}
+		switch(_mysql_stmt_errno(festate->stmt))
+		{
+			case CR_NO_ERROR:
+				break;
 
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(festate->conn));
+				mysql_rel_connection(festate->conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to bind the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(festate->conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to bind the MySQL query: \n%s", err)));
+			}
+			break;
+		}
+	}
 	/*
 	 * Finally execute the query and result will be placed in the
 	 * array we already bind
 	 */
 	if (_mysql_stmt_execute(festate->stmt) != 0)
 	{
-		char *err = pstrdup(_mysql_error(festate->conn));
-		ereport(ERROR,
-					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 	errmsg("failed to execute the MySQL query: \n%s", err)));
+		switch(_mysql_stmt_errno(festate->stmt))
+		{
+			case CR_NO_ERROR:
+				break;
+
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(festate->conn));
+				mysql_rel_connection(festate->conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg(" 7 failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(festate->conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("8 failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+		}
 	}
 }
 
@@ -568,12 +647,33 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	 */
 	if (_mysql_query(conn, sql.data) != 0)
 	{
-		char *err = pstrdup(_mysql_error(conn));
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: \n%s", err)));
-	}
+		switch(_mysql_errno(conn))
+		{
+			case CR_NO_ERROR:
+				break;
 
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			case CR_UNKNOWN_ERROR:
+			{
+				char *err = pstrdup(_mysql_error(conn));
+				mysql_rel_connection(conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+		}
+	}
 	result = _mysql_store_result(conn);
 	if (result)
 	{
@@ -736,12 +836,33 @@ mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func, BlockNu
 
 	if (_mysql_query(conn, sql.data) != 0)
 	{
-		char *err = pstrdup(_mysql_error(conn));
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: \n%s", err)));
-	}
+		switch(_mysql_errno(conn))
+		{
+			case CR_NO_ERROR:
+				break;
 
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(conn));
+				mysql_rel_connection(conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+		}
+	}
 	result = _mysql_store_result(conn);
 	if (result)
 	{
@@ -870,7 +991,6 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	UserMapping         *user;
 	ForeignTable        *table;
 
-
 	rte = rt_fetch(resultRelInfo->ri_RangeTableIndex, estate->es_range_table);
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
@@ -936,13 +1056,34 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	/* Prepare mysql statment */
 	if (_mysql_stmt_prepare(fmstate->stmt, fmstate->query, strlen(fmstate->query)) != 0)
 	{
-		char *err = pstrdup(_mysql_error(fmstate->conn));
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to prepare the MySQL query1: \n%s", err)
-				 ));
+		switch(_mysql_stmt_errno(fmstate->stmt))
+		{
+			case CR_NO_ERROR:
+				break;
+
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				mysql_rel_connection(fmstate->conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to prepare the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to prepare the MySQL query: \n%s", err)));
+			}
+			break;
+		}
 	}
-	
 	resultRelInfo->ri_FdwState = fmstate;
 }
 
@@ -987,21 +1128,65 @@ mysqlExecForeignInsert(EState *estate,
 	/* Bind values */
 	if (_mysql_stmt_bind_param(fmstate->stmt, mysql_bind_buffer) != 0)
 	{
-		char *err = pstrdup(_mysql_error(fmstate->conn));
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: \n%s", err)
-				 ));
+		switch(_mysql_stmt_errno(fmstate->stmt))
+		{
+			case CR_NO_ERROR:
+				break;
+
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				mysql_rel_connection(fmstate->conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to bind the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to bind the MySQL query: \n%s", err)));
+			}
+			break;
+		}
 	}
 
 	/* Execute the query */
 	if (_mysql_stmt_execute(fmstate->stmt) != 0)
 	{
-		char *err = pstrdup(_mysql_error(fmstate->conn));
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: \n%s", err)
-				 ));
+		switch(_mysql_stmt_errno(fmstate->stmt))
+		{
+			case CR_NO_ERROR:
+				break;
+
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				mysql_rel_connection(fmstate->conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+		}
 	}
 	MemoryContextSwitchTo(oldcontext);
 	MemoryContextReset(fmstate->temp_cxt);
@@ -1062,19 +1247,40 @@ mysqlExecForeignUpdate(EState *estate,
 		char *err = pstrdup(_mysql_error(fmstate->conn));
 		ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: %s", err)
+				 errmsg("failed to bind the MySQL query: %s", err)
 				 ));
 	}
 
 	if (_mysql_stmt_execute(fmstate->stmt) != 0)
 	{
-		char *err = pstrdup(_mysql_error(fmstate->conn));
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: %s", err)
-				 ));
-	}
+		switch(_mysql_stmt_errno(fmstate->stmt))
+		{
+			case CR_NO_ERROR:
+				break;
 
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				mysql_rel_connection(fmstate->conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+		}
+	}
 	/* Return NULL if nothing was updated on the remote end */
 	return slot;
 }
@@ -1138,7 +1344,7 @@ mysqlExecForeignDelete(EState *estate,
 	int                  bindnum = 0;
 	Oid                  typeoid;
 	Datum                value = 0;
-	
+
 	mysql_bind_buffer = (MYSQL_BIND*) palloc0(sizeof(MYSQL_BIND) * 1);
 	
 	/* Get the id that was passed up as a resjunk column */
@@ -1156,16 +1362,37 @@ mysqlExecForeignDelete(EState *estate,
 				 errmsg("failed to execute the MySQL query: %s", err)
 				 ));
 	}
-	
+
 	if (_mysql_stmt_execute(fmstate->stmt) != 0)
 	{
-		char *err = pstrdup(_mysql_error(fmstate->conn));
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: %s", err)
-				 ));
+		switch(_mysql_stmt_errno(fmstate->stmt))
+		{
+			case CR_NO_ERROR:
+				break;
+
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				mysql_rel_connection(fmstate->conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(fmstate->conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+		}
 	}
-	
 	/* Return NULL if nothing was updated on the remote end */
 	return slot;
 }

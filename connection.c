@@ -132,10 +132,26 @@ mysql_cleanup_connection(void)
 void
 mysql_rel_connection(MYSQL *conn)
 {
-	/*
-	 * We don't close the connection indvisually  here, will do all connection
-	 * cleanup on the backend exit.
-	 */
+	HASH_SEQ_STATUS	scan;
+	ConnCacheEntry *entry;
+
+	if (ConnectionHash == NULL)
+		return;
+
+	hash_seq_init(&scan, ConnectionHash);
+	while ((entry = (ConnCacheEntry *) hash_seq_search(&scan)))
+	{
+		if (entry->conn == NULL)
+			continue;
+
+		if (entry->conn == conn)
+		{
+			elog(DEBUG3, "disconnecting mysql_fdw connection %p", entry->conn);
+			_mysql_close(entry->conn);
+			entry->conn = NULL;
+			break;
+		}
+	}
 }
 
 

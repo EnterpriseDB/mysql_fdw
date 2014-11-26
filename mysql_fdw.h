@@ -34,9 +34,12 @@
 #define MYSQL_BLKSIZ		(1024 * 4)
 #define MYSQL_PORT			3306
 #define MAXDATALEN			1024 * 64
-#define WAIT_TIMEOUT		180
-#define INTERACTIVE_TIMEOUT 70
 
+#define WAIT_TIMEOUT		0
+#define INTERACTIVE_TIMEOUT 0
+
+
+#define CR_NO_ERROR 0
 /*
  * Options structure to store the MySQL
  * server information
@@ -109,10 +112,18 @@ void	((*_mysql_close)(MYSQL *sock));
 MYSQL_RES* ((*_mysql_store_result)(MYSQL *mysql));
 
 MYSQL	*((*_mysql_init)(MYSQL *mysql));
-MYSQL	*((*_mysql_real_connect)(MYSQL *mysql, const char *host, const char *user, const char *passwd, const char *db,
+MYSQL	*((*_mysql_real_connect)(MYSQL *mysql,
+								const char *host,
+								const char *user,
+								const char *passwd,
+								const char *db,
 								unsigned int port,
 								const char *unix_socket,
 								unsigned long clientflag));
+
+unsigned int ((*_mysql_stmt_errno)(MYSQL_STMT *stmt));
+unsigned int ((*_mysql_errno)(MYSQL *mysql));
+
 
 /* option.c headers */
 extern bool mysql_is_valid_option(const char *option, Oid context);
