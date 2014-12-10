@@ -66,6 +66,7 @@ static struct MySQLFdwOption valid_options[] =
 	{ "password",       UserMappingRelationId },
 	{ "dbname",         ForeignTableRelationId },
 	{ "table_name",     ForeignTableRelationId },
+	{ "cost",           ForeignTableRelationId },
 
 	/* Sentinel */
 	{ NULL,			InvalidOid }
@@ -192,6 +193,9 @@ mysql_get_options(Oid foreigntableid)
 
 		if (strcmp(def->defname, "table_name") == 0)
 			opt->svr_table = defGetString(def);
+
+		if (strcmp(def->defname, "cost") == 0)
+			opt->svr_cost = atoi(defGetString(def));
 	}
 	/* Default values, if required */
 	if (!opt->svr_address)

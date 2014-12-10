@@ -630,62 +630,69 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	/* Fetch options */
 	options = mysql_get_options(foreigntableid);
 
-	/* Connect to the server */
-	conn = mysql_get_connection(server, user, options);
+    if (options->svr_cost == 0)
+    {
+        /* Connect to the server */
+        conn = mysql_get_connection(server, user, options);
 
-	_mysql_query(conn, "SET sql_mode='ANSI_QUOTES'");
+        _mysql_query(conn, "SET sql_mode='ANSI_QUOTES'");
 
-	/* Build the query */
-	initStringInfo(&sql);
+        /* Build the query */
+        initStringInfo(&sql);
 
-	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid, &attrs_used);
+        pull_varattnos((Node *) baserel->reltargetlist, baserel->relid, &attrs_used);
 
-	appendStringInfo(&sql, "EXPLAIN ");
-	mysql_deparse_select(&sql, root, baserel, attrs_used, options->svr_table, &retrieved_attrs);
+        appendStringInfo(&sql, "EXPLAIN ");
+        mysql_deparse_select(&sql, root, baserel, attrs_used, options->svr_table, &retrieved_attrs);
 
-	/*
-	 * TODO: MySQL seems to have some pretty unhelpful EXPLAIN output, which only
-	 * gives a row estimate for each relation in the statement. We'll use the
-	 * sum of the rows as our cost estimate - it's not great (in fact, in some
-	 * cases it sucks), but it's all we've got for now.
-	 */
-	if (_mysql_query(conn, sql.data) != 0)
-	{
-		switch(_mysql_errno(conn))
-		{
-			case CR_NO_ERROR:
-				break;
+        /*
+         * TODO: MySQL seems to have some pretty unhelpful EXPLAIN output, which only
+         * gives a row estimate for each relation in the statement. We'll use the
+         * sum of the rows as our cost estimate - it's not great (in fact, in some
+         * cases it sucks), but it's all we've got for now.
+         */
+        if (_mysql_query(conn, sql.data) != 0)
+        {
+            switch(_mysql_errno(conn))
+            {
+                case CR_NO_ERROR:
+                    break;
 
-			case CR_OUT_OF_MEMORY:
-			case CR_SERVER_GONE_ERROR:
-			case CR_SERVER_LOST:
-			case CR_UNKNOWN_ERROR:
-			{
-				char *err = pstrdup(_mysql_error(conn));
-				mysql_rel_connection(conn);
-				ereport(ERROR,
-							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-							errmsg("failed to execute the MySQL query: \n%s", err)));
-			}
-			break;
-			case CR_COMMANDS_OUT_OF_SYNC:
-			default:
-			{
-				char *err = pstrdup(_mysql_error(conn));
-				ereport(ERROR,
-							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-							errmsg("failed to execute the MySQL query: \n%s", err)));
-			}
-		}
-	}
-	result = _mysql_store_result(conn);
-	if (result)
-	{
-		while ((row = _mysql_fetch_row(result)))
-			rows += row[8] ? atof(row[8]) : 2;
+                case CR_OUT_OF_MEMORY:
+                case CR_SERVER_GONE_ERROR:
+                case CR_SERVER_LOST:
+                case CR_UNKNOWN_ERROR:
+                {
+                    char *err = pstrdup(_mysql_error(conn));
+                    mysql_rel_connection(conn);
+                    ereport(ERROR,
+                                (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+                                errmsg("failed to execute the MySQL query: \n%s", err)));
+                }
+                break;
+                case CR_COMMANDS_OUT_OF_SYNC:
+                default:
+                {
+                    char *err = pstrdup(_mysql_error(conn));
+                    ereport(ERROR,
+                                (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+                                errmsg("failed to execute the MySQL query: \n%s", err)));
+                }
+            }
+        }
+        result = _mysql_store_result(conn);
+        if (result)
+        {
+            while ((row = _mysql_fetch_row(result)))
+                rows += row[8] ? atof(row[8]) : 2;
 
-		_mysql_free_result(result);
-	}
+            _mysql_free_result(result);
+        }
+    }
+    else
+    {
+        rows = options->svr_cost;
+    }
 	baserel->rows = rows;
 	baserel->tuples = rows;
 }
