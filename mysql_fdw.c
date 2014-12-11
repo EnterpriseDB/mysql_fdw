@@ -375,6 +375,8 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	}
 
 	_mysql_query(festate->conn, "SET time_zone = '+00:00'");
+	_mysql_query(festate->conn, "SET sql_mode='ANSI_QUOTES'");
+
 
 	/* Initialize the MySQL statement */
 	festate->stmt = _mysql_stmt_init(festate->conn);
@@ -630,6 +632,8 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 
 	/* Connect to the server */
 	conn = mysql_get_connection(server, user, options);
+
+	_mysql_query(conn, "SET sql_mode='ANSI_QUOTES'");
 
 	/* Build the query */
 	initStringInfo(&sql);
@@ -1112,6 +1116,7 @@ mysqlExecForeignInsert(EState *estate,
 	mysql_bind_buffer = (MYSQL_BIND*) palloc0(sizeof(MYSQL_BIND) * n_params);
 
 	_mysql_query(fmstate->conn, "SET time_zone = '+00:00'");
+	_mysql_query(fmstate->conn, "SET sql_mode='ANSI_QUOTES'");
 
 	foreach(lc, fmstate->retrieved_attrs)
 	{
@@ -1156,7 +1161,6 @@ mysqlExecForeignInsert(EState *estate,
 			break;
 		}
 	}
-
 	/* Execute the query */
 	if (_mysql_stmt_execute(fmstate->stmt) != 0)
 	{
