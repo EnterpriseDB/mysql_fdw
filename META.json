@@ -24,11 +24,11 @@
    },
    "resources": {
       "bugtracker": {
-         "web": "https://github.com/dpage/mysql_fdw/issues"
+         "web": "https://github.com/EnterpriseDB/mysql_fdw/issues"
       },
       "repository": {
-        "url":  "git://github.com/dpage/mysql_fdw.git",
-        "web":  "http://github.com/dpage/mysql_fdw/",
+        "url":  "https://github.com/EnterpriseDB/mysql_fdw.git",
+        "web":  "https://github.com/EnterpriseDB/mysql_fdw",
         "type": "git"
       }
    },
