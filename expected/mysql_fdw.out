@@ -169,7 +169,7 @@ SELECT * FROM employee WHERE emp_id NOT IN (10000,1000) LIMIT 5;
 (5 rows)
 
 SELECT * FROM employee WHERE emp_id NOT IN (SELECT emp_id FROM employee WHERE emp_id IN (1,10));
-ERROR:  ----unsupported expression type for deparse: 317
+ERROR:  unsupported expression type for deparse: 317
 SELECT * FROM employee WHERE emp_name NOT IN ('emp - 1', 'emp - 2') LIMIT 5;
  emp_id | emp_name | emp_dept_id 
 --------+----------+-------------
@@ -196,4 +196,4 @@ DROP FOREIGN TABLE department;
 DROP FOREIGN TABLE employee;
 DROP USER MAPPING FOR postgres SERVER mysql_svr;
 DROP SERVER mysql_svr;
-DROP EXTENSION mysql_fdw;
+DROP EXTENSION mysql_fdw CASCADE;

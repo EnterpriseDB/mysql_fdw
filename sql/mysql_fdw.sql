@@ -50,4 +50,4 @@ DROP FOREIGN TABLE department;
 DROP FOREIGN TABLE employee;
 DROP USER MAPPING FOR ibrar SERVER mysql_svr;
 DROP SERVER mysql_svr;
-DROP EXTENSION mysql_fdw;
+DROP EXTENSION mysql_fdw CASCADE;

@@ -119,7 +119,11 @@ static ForeignScan *mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, 
 static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *startup_cost, Cost *total_cost,
 							   Oid foreigntableid);
 
-#define _MYSQL_LIBNAME "libmysqlclient.so"
+#ifdef __APPLE__
+	#define _MYSQL_LIBNAME "libmysqlclient.dylib"
+#else
+	#define _MYSQL_LIBNAME "libmysqlclient.so"
+#endif
 
 void* mysql_dll_handle = NULL;
 static int wait_timeout = WAIT_TIMEOUT;
@@ -153,7 +157,15 @@ static int interactive_timeout = INTERACTIVE_TIMEOUT;
 bool
 mysql_load_library(void)
 {
+#ifdef __APPLE__
+	/*
+	 * Mac OS does not support RTLD_DEEPBIND, but it still
+	 * works without the RTLD_DEEPBIND on Mac OS
+	 */
+	mysql_dll_handle = dlopen(_MYSQL_LIBNAME, RTLD_LAZY);
+#else
 	mysql_dll_handle = dlopen(_MYSQL_LIBNAME, RTLD_LAZY | RTLD_DEEPBIND);
+#endif
 	if(mysql_dll_handle == NULL)
 		return false;
 
