@@ -1,7 +1,7 @@
-\c postgres
+\c postgres postgres
 CREATE EXTENSION mysql_fdw;
 CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw;
-CREATE USER MAPPING FOR ibrar SERVER mysql_svr OPTIONS(username 'ibrar', password 'pakistan');
+CREATE USER MAPPING FOR postgres SERVER mysql_svr OPTIONS(username 'foo', password 'bar');
 
 CREATE FOREIGN TABLE department(department_id int, department_name text) SERVER mysql_svr OPTIONS(dbname 'testdb', table_name 'department');
 CREATE FOREIGN TABLE employee(emp_id int, emp_name text, emp_dept_id int) SERVER mysql_svr OPTIONS(dbname 'testdb', table_name 'employee');
@@ -48,6 +48,6 @@ DELETE FROM department;
 
 DROP FOREIGN TABLE department;
 DROP FOREIGN TABLE employee;
-DROP USER MAPPING FOR ibrar SERVER mysql_svr;
+DROP USER MAPPING FOR postgres SERVER mysql_svr;
 DROP SERVER mysql_svr;
 DROP EXTENSION mysql_fdw CASCADE;

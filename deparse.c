@@ -36,6 +36,8 @@
 #include "utils/syscache.h"
 
 
+static char *mysql_quote_identifier(const char *s, char q);
+
 /*
  * Global context for foreign_expr_walker's search of an expression tree.
  */
@@ -141,7 +143,26 @@ mysql_deparse_relation(StringInfo buf, Relation rel)
 	if (relname == NULL)
 		relname = RelationGetRelationName(rel);
 
-	appendStringInfo(buf, "%s.%s", quote_identifier(nspname), quote_identifier(relname));
+	appendStringInfo(buf, "%s.%s", mysql_quote_identifier(nspname, '`'), mysql_quote_identifier(relname, '`'));
+}
+
+static char *
+mysql_quote_identifier(const char *s , char q)
+{
+	char  *result = palloc(strlen(s) * 2 + 3);
+	char  *r = result;
+
+	*r++ = q;
+	while (*s)
+	{
+		if (*s == q)
+			*r++ = *s;
+		*r++ = *s;
+		s++;
+	}
+	*r++ = q;
+	*r++ = '\0';
+	return result;
 }
 
 
@@ -384,7 +405,7 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *r
 	if (colname == NULL)
 		colname = get_relid_attribute_name(rte->relid, varattno);
 
-	appendStringInfoString(buf, quote_identifier(colname));
+	appendStringInfoString(buf, mysql_quote_identifier(colname, '`'));
 }
 
 
@@ -788,7 +809,7 @@ mysql_deparse_func_expr(FuncExpr *node, deparse_expr_cxt *context)
 
 	/* Deparse the function name ... */
 	proname = NameStr(procform->proname);
-	appendStringInfo(buf, "%s(", quote_identifier(proname));
+	appendStringInfo(buf, "%s(", mysql_quote_identifier(proname, '`'));
 	
 	/* ... and all the arguments */
 	first = true;
@@ -874,7 +895,7 @@ mysql_deparse_operator_name(StringInfo buf, Form_pg_operator opform)
 		opnspname = get_namespace_name(opform->oprnamespace);
 		/* Print fully qualified operator name. */
 		appendStringInfo(buf, "OPERATOR(%s.%s)",
-						 quote_identifier(opnspname), opname);
+						 mysql_quote_identifier(opnspname, '`'), opname);
 	}
 	else
 	{

@@ -1,4 +1,4 @@
-\c postgres
+\c postgres postgres
 CREATE EXTENSION mysql_fdw;
 CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw;
 CREATE USER MAPPING FOR postgres SERVER mysql_svr OPTIONS(username 'foo', password 'bar');

@@ -572,12 +572,13 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	options = mysql_get_options(RelationGetRelid(node->ss.ss_currentRelation));
 
 	/* Give some possibly useful info about startup costs */
-	if (es->costs)
+	if (es->verbose)
 	{
 		if (strcmp(options->svr_address, "127.0.0.1") == 0 || strcmp(options->svr_address, "localhost") == 0)
 			ExplainPropertyLong("Local server startup cost", 10, es);
 		else
 			ExplainPropertyLong("Remote server startup cost", 25, es);
+
 		ExplainPropertyText("Remote query", festate->query, es);
 	}
 }
