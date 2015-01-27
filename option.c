@@ -66,6 +66,7 @@ static struct MySQLFdwOption valid_options[] =
 	{ "password",       UserMappingRelationId },
 	{ "dbname",         ForeignTableRelationId },
 	{ "table_name",     ForeignTableRelationId },
+        { "max_blob_size",  ForeignTableRelationId },
 
 	/* Sentinel */
 	{ NULL,			InvalidOid }
@@ -192,6 +193,9 @@ mysql_get_options(Oid foreigntableid)
 
 		if (strcmp(def->defname, "table_name") == 0)
 			opt->svr_table = defGetString(def);
+
+		if (strcmp(def->defname, "max_blob_size") == 0)
+                  	opt->max_blob_size = strtoul(defGetString(def), NULL, 0);
 	}
 	/* Default values, if required */
 	if (!opt->svr_address)

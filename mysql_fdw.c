@@ -180,6 +180,7 @@ mysql_load_library(void)
 	_mysql_stmt_store_result = dlsym(mysql_dll_handle, "mysql_stmt_store_result");
 	_mysql_fetch_row = dlsym(mysql_dll_handle, "mysql_fetch_row");
 	_mysql_fetch_field = dlsym(mysql_dll_handle, "mysql_fetch_field");
+	_mysql_fetch_fields = dlsym(mysql_dll_handle, "mysql_fetch_fields");
 	_mysql_stmt_close = dlsym(mysql_dll_handle, "mysql_stmt_close");
 	_mysql_stmt_reset = dlsym(mysql_dll_handle, "mysql_stmt_reset");
 	_mysql_free_result = dlsym(mysql_dll_handle, "mysql_free_result");
@@ -204,6 +205,7 @@ mysql_load_library(void)
 		_mysql_stmt_store_result == NULL ||
 		_mysql_fetch_row == NULL ||
 		_mysql_fetch_field == NULL ||
+		_mysql_fetch_fields == NULL ||
 		_mysql_stmt_close == NULL ||
 		_mysql_stmt_reset == NULL ||
 		_mysql_free_result == NULL ||
@@ -319,7 +321,6 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	ForeignScan       *fsplan = (ForeignScan *) node->ss.ps.plan;
 	mysql_opt         *options;
 	ListCell          *lc = NULL;
-	MYSQL_BIND        *mysql_result_buffer = NULL;
 	int               atindex = 0;
 	unsigned long     prefetch_rows = MYSQL_PREFETCH_ROWS;
 	unsigned long     type = (unsigned long) CURSOR_TYPE_READ_ONLY;
@@ -367,10 +368,6 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 											  ALLOCSET_SMALL_MINSIZE,
 											  ALLOCSET_SMALL_INITSIZE,
 											  ALLOCSET_SMALL_MAXSIZE);
-
-	/* Allocate memory for the values and nulls for the results */
-	festate->tts_values = (Datum*) palloc0(sizeof(Datum) * tupleDescriptor->natts);
-	festate->tts_isnull = palloc0(sizeof(bool) * tupleDescriptor->natts);
 
 	if (wait_timeout > 0)
 	{
@@ -432,27 +429,49 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 		}
 	}
 
+    /* int column_count = mysql_num_fields(festate->meta); */
+
 	/* Set the statement as cursor type */
 	_mysql_stmt_attr_set(festate->stmt, STMT_ATTR_CURSOR_TYPE, (void*) &type);
 
 	/* Set the pre-fetch rows */
 	_mysql_stmt_attr_set(festate->stmt, STMT_ATTR_PREFETCH_ROWS, (void*) &prefetch_rows);
 
-	mysql_result_buffer = (MYSQL_BIND*) palloc0(sizeof(MYSQL_BIND) * tupleDescriptor->natts);
+    festate->table = (mysql_table*) palloc0(sizeof(mysql_table));
+    festate->table->column = (mysql_column *) palloc0(sizeof(mysql_column) * tupleDescriptor->natts);
+    festate->table->_mysql_bind = (MYSQL_BIND*) palloc0(sizeof(MYSQL_BIND) * tupleDescriptor->natts);
+
+    festate->table->_mysql_res = _mysql_stmt_result_metadata(festate->stmt);
+    if (NULL == festate->table->_mysql_res)
+    {
+			char *err = pstrdup(_mysql_error(festate->conn));
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("failed to retrieve query result set metadata: \n%s", err)));
+	}
+
+    festate->table->_mysql_fields = _mysql_fetch_fields(festate->table->_mysql_res);
+
+	
 	foreach(lc, festate->retrieved_attrs)
 	{
 		int attnum = lfirst_int(lc) - 1;
+        Oid pgtype = tupleDescriptor->attrs[attnum]->atttypid;
+        int32 pgtypmod = tupleDescriptor->attrs[attnum]->atttypmod;
+
 
 		if (tupleDescriptor->attrs[attnum]->attisdropped)
 			continue;
 
-		festate->tts_values[atindex] = mysql_bind_result(atindex, &festate->tts_values[atindex],
-												   (bool*)&festate->tts_isnull[atindex], mysql_result_buffer);
+		festate->table->column[atindex]._mysql_bind = &festate->table->_mysql_bind[atindex];
+        
+		mysql_bind_result(pgtype, pgtypmod, &festate->table->_mysql_fields[atindex],
+						  &festate->table->column[atindex]);
 		atindex++;
 	}
 
 	/* Bind the results pointers for the prepare statements */
-	if (_mysql_stmt_bind_result(festate->stmt, mysql_result_buffer) != 0)
+	if (_mysql_stmt_bind_result(festate->stmt, festate->table->_mysql_bind) != 0)
 	{
 		switch(_mysql_stmt_errno(festate->stmt))
 		{
@@ -530,6 +549,7 @@ mysqlIterateForeignScan(ForeignScanState *node)
 	TupleDesc           tupleDescriptor = tupleSlot->tts_tupleDescriptor;
 	int                 attid = 0;
 	ListCell            *lc = NULL;
+	int                 rc = 0;
 
 	memset (tupleSlot->tts_values, 0, sizeof(Datum) * tupleDescriptor->natts);
 	memset (tupleSlot->tts_isnull, true, sizeof(bool) * tupleDescriptor->natts);
@@ -537,7 +557,8 @@ mysqlIterateForeignScan(ForeignScanState *node)
 	ExecClearTuple(tupleSlot);
 
 	attid = 0;
-	if (_mysql_stmt_fetch(festate->stmt) == 0)
+	rc = _mysql_stmt_fetch(festate->stmt);
+	if (0 == rc)
 	{
 		foreach(lc, festate->retrieved_attrs)
 		{
@@ -545,14 +566,41 @@ mysqlIterateForeignScan(ForeignScanState *node)
 			Oid pgtype = tupleDescriptor->attrs[attnum]->atttypid;
 			int32 pgtypmod = tupleDescriptor->attrs[attnum]->atttypmod;
 
-			tupleSlot->tts_isnull[attnum] = festate->tts_isnull[attid];
-			if (!festate->tts_isnull[attid])
+			tupleSlot->tts_isnull[attnum] = festate->table->column[attid].is_null;
+			if (!festate->table->column[attid].is_null)
 				tupleSlot->tts_values[attnum] = mysql_convert_to_pg(pgtype, pgtypmod,
-																	festate->tts_values[attid], festate);
+                                                                    &festate->table->column[attid]);
 
 			attid++;
 		}
 		ExecStoreVirtualTuple(tupleSlot);
+	}
+	else if (1 == rc)
+	{
+			/*
+			  Error occurred. Error code and message can be obtained
+			  by calling mysql_stmt_errno() and mysql_stmt_error().
+			*/
+	}
+	else if (MYSQL_NO_DATA == rc)
+	{
+            /*
+              No more rows/data exists
+            */
+	}
+	else if (MYSQL_DATA_TRUNCATED == rc)
+	{
+            /* Data truncation occurred */
+            /*
+              MYSQL_DATA_TRUNCATED is returned when truncation
+              reporting is enabled. To determine which column values
+              were truncated when this value is returned, check the
+              error members of the MYSQL_BIND structures used for
+              fetching values. Truncation reporting is enabled by
+              default, but can be controlled by calling
+              mysql_options() with the MYSQL_REPORT_DATA_TRUNCATION
+              option.
+            */
 	}
 	
 	return tupleSlot;
@@ -590,13 +638,21 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 static void
 mysqlEndForeignScan(ForeignScanState *node)
 {
+  
 	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
+
+    if (festate->table)
+    {
+	  if (festate->table->_mysql_res) {
+		_mysql_free_result(festate->table->_mysql_res);
+		festate->table->_mysql_res = NULL;
+	  }
+	}
 	if (festate->stmt)
 	{
-		_mysql_stmt_close(festate->stmt);
-		festate->stmt = NULL;
+			_mysql_stmt_close(festate->stmt);
+			festate->stmt = NULL;
 	}
-
 	if (festate->query)
 	{
 		pfree(festate->query);

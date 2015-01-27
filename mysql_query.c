@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include <mysql.h>
+#include <mysql_com.h>
 
 #include "access/reloptions.h"
 #include "catalog/pg_type.h"
@@ -106,56 +107,47 @@ static int bin_dec(int n);
  * convert_mysql_to_pg: Convert MySQL data into PostgreSQL's compatible data types
  */
 Datum
-mysql_convert_to_pg(Oid pgtyp, int pgtypmod, Datum data, MySQLFdwExecState *festate)
+mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 {
-	Datum value_datum = 0;
-	Datum valueDatum = 0;
-	regproc typeinput;
-	HeapTuple tuple;
-	int typemod;
-	char str[MAXDATELEN];
 
-	/* get the type's output function */
-	tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(pgtyp));
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for type%u", pgtyp);
+	switch (pgtyp) {
+		case BYTEAOID:
+			SET_VARSIZE(column->value, column->length + VARHDRSZ);
+			return PointerGetDatum(column->value);
 
-	typeinput = ((Form_pg_type)GETSTRUCT(tuple))->typinput;
-	typemod  = ((Form_pg_type)GETSTRUCT(tuple))->typtypmod;
-	ReleaseSysCache(tuple);
-
-	switch (pgtyp)
-	{
-		/*
-		 * MySQL gives BIT / BIT(n) data type as decimal value. The only way to
-		 * retrieve this value is to use BIN, OCT or HEX function in MySQL, otherwise
-		 * mysql client shows the actual decimal value, which could be a non - printable character.
-		 * For exmple in MySQL
-		 *
-		 * CREATE TABLE t (b BIT(8));
-		 * INSERT INTO t SET b = b'1001';
-		 * SELECT BIN(b) FROM t;
-		 * +--------+
-		 * | BIN(b) |
-		 * +--------+
-		 * | 1001   |
-		 * +--------+
-		 *
-		 * PostgreSQL expacts all binary data to be composed of either '0' or '1'. MySQL gives
-		 * value 9 hence PostgreSQL reports error. The solution is to convert the decimal number
-		 * into equivalent binary string.
-		 */
-
-		case BITOID:
-			sprintf(str, "%d", dec_bin(*((int*)data)));
-			valueDatum = CStringGetDatum((char*)str);
-		break;
 		default:
-			valueDatum = CStringGetDatum((char*)data);
+		{
+			regproc typeinput;
+			HeapTuple tuple;
+			int typemod;
+			char str[MAXDATELEN];
+      
+			/* get the type's output function */
+			tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(pgtyp));
+			if (!HeapTupleIsValid(tuple))
+					elog(ERROR, "cache lookup failed for type%u", pgtyp);
+			
+			typeinput = ((Form_pg_type)GETSTRUCT(tuple))->typinput;
+			typemod  = ((Form_pg_type)GETSTRUCT(tuple))->typtypmod;
+			ReleaseSysCache(tuple);
+			
+			switch (pgtyp) {
+
+				case BITOID:
+					sprintf(str, "%d", dec_bin(*((int*)column->value)));
+					return OidFunctionCall3(typeinput,
+										CStringGetDatum((char*)str),
+										ObjectIdGetDatum(InvalidOid), Int32GetDatum(typemod));
+				default:
+					return OidFunctionCall3(typeinput,
+										CStringGetDatum((char*)column->value),
+										ObjectIdGetDatum(InvalidOid), Int32GetDatum(typemod));
+        
+			}
+		}
 	}
-	value_datum = OidFunctionCall3(typeinput, valueDatum, ObjectIdGetDatum(InvalidOid), Int32GetDatum(typemod));
-	return value_datum;
 }
+  
 
 /*
  * mysql_from_pgtyp: Give MySQL data type for PG type
@@ -179,7 +171,7 @@ mysql_from_pgtyp(Oid type)
 
 		case FLOAT8OID:
 			return MYSQL_TYPE_DOUBLE;
-
+	
 		case NUMERICOID:
 			return MYSQL_TYPE_DOUBLE;
 
@@ -398,17 +390,31 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds, bool *i
  * mysql_bind_result: Bind the value and null pointers to get
  * the data from remote mysql table (SELECT)
  */
-Datum
-mysql_bind_result(int attnum, Datum *value, bool *isnull, MYSQL_BIND *result_values)
+void
+mysql_bind_result(Oid pgtyp, int pgtypmod, MYSQL_FIELD *field, mysql_column *column)
 {
-	result_values[attnum].is_null = isnull;
-	result_values[attnum].buffer_type = MYSQL_TYPE_VAR_STRING;
-
-	/* TODO: Set the maximum data length based on the type of MySQL's column */
-	value = palloc0(MAXDATALEN);
-	result_values[attnum].buffer = value;
-	result_values[attnum].buffer_length = MAXDATALEN;
-	return (Datum)value;
+    MYSQL_BIND *mbind = column->_mysql_bind;
+		
+	mbind->is_null = &column->is_null;
+	mbind->length = &column->length;
+	mbind->error = &column->error;
+  
+	switch (pgtyp)
+	{
+			case BYTEAOID:
+					mbind->buffer_type = MYSQL_TYPE_BLOB;
+					/* leave room at front for bytea buffer length prefix */
+					column->value = (Datum) palloc0(MAX_BLOB_WIDTH + VARHDRSZ);
+					mbind->buffer = VARDATA(column->value);
+					mbind->buffer_length = MAX_BLOB_WIDTH;
+					break;
+					
+			default:
+					mbind->buffer_type = MYSQL_TYPE_VAR_STRING;
+					column->value = (Datum) palloc0(MAXDATALEN);
+					mbind->buffer = (char *) column->value;
+					mbind->buffer_length = MAXDATALEN;
+	}
 }
 
 static
