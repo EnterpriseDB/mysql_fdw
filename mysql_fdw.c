@@ -511,7 +511,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 				char *err = pstrdup(_mysql_error(festate->conn));
 				ereport(ERROR,
 							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-							errmsg("8 failed to execute the MySQL query: \n%s", err)));
+							errmsg("failed to execute the MySQL query: \n%s", err)));
 			}
 			break;
 		}
