@@ -52,6 +52,7 @@ typedef struct mysql_opt
 	char    *svr_password;		/* MySQL password */
 	char    *svr_database;		/* MySQL database name */
 	char    *svr_table;			/* MySQL table name */
+	int     svr_cost;			/* MySQL table cost */
 } mysql_opt;
 
 /*
