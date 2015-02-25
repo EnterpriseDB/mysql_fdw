@@ -46,12 +46,13 @@
  */
 typedef struct mysql_opt
 {
-	int     svr_port;			/* MySQL port number */
-	char    *svr_address;		/* MySQL server ip address */
-	char    *svr_username;		/* MySQL user name */
-	char    *svr_password;		/* MySQL password */
-	char    *svr_database;		/* MySQL database name */
-	char    *svr_table;			/* MySQL table name */
+	int     svr_port;               /* MySQL port number */
+	char    *svr_address;           /* MySQL server ip address */
+	char    *svr_username;          /* MySQL user name */
+	char    *svr_password;          /* MySQL password */
+	char    *svr_database;          /* MySQL database name */
+	char    *svr_table;             /* MySQL table name */
+	bool    svr_sa;                 /* MySQL secure authentication */
 } mysql_opt;
 
 /*
@@ -142,7 +143,7 @@ extern void mysql_deparse_analyze(StringInfo buf, char *dbname, char *relname);
 
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt);
-MYSQL *mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *svr_database, int svr_port);
+MYSQL *mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *svr_database, int svr_port, bool svr_sa);
 void  mysql_cleanup_connection(void);
 void mysql_rel_connection(MYSQL *conn);
 #endif /* POSTGRES_FDW_H */

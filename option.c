@@ -66,6 +66,7 @@ static struct MySQLFdwOption valid_options[] =
 	{ "password",       UserMappingRelationId },
 	{ "dbname",         ForeignTableRelationId },
 	{ "table_name",     ForeignTableRelationId },
+	{ "secure_auth",    ForeignServerRelationId },
 
 	/* Sentinel */
 	{ NULL,			InvalidOid }
@@ -170,6 +171,9 @@ mysql_get_options(Oid foreigntableid)
 	options = list_concat(options, f_server->options);
 	options = list_concat(options, f_mapping->options);
 
+	/* Default secure authentication is true */
+	opt->svr_sa = true;
+
 	/* Loop through the options, and get the server/port */
 	foreach(lc, options)
 	{
@@ -192,6 +196,9 @@ mysql_get_options(Oid foreigntableid)
 
 		if (strcmp(def->defname, "table_name") == 0)
 			opt->svr_table = defGetString(def);
+
+		if (strcmp(def->defname, "secure_auth") == 0)
+			opt->svr_sa = defGetBoolean(def);
 	}
 	/* Default values, if required */
 	if (!opt->svr_address)
