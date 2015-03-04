@@ -901,7 +901,35 @@ mysql_deparse_operator_name(StringInfo buf, Form_pg_operator opform)
 	{
 		if (strcmp(opname, "~~") == 0)
 		{
-			appendStringInfoString(buf, "like");
+			appendStringInfoString(buf, "LIKE BINARY");
+		}
+		else if (strcmp(opname, "~~*") == 0)
+		{
+			appendStringInfoString(buf, "LIKE");
+		}
+		else if (strcmp(opname, "!~~") == 0)
+		{
+			appendStringInfoString(buf, "NOT LIKE BINARY");
+		}
+		else if (strcmp(opname, "!~~*") == 0)
+		{
+			appendStringInfoString(buf, "NOT LIKE");
+		}
+		else if (strcmp(opname, "~") == 0)
+		{
+			appendStringInfoString(buf, "REGEXP BINARY");
+		}
+		else if (strcmp(opname, "~*") == 0)
+		{
+			appendStringInfoString(buf, "REGEXP");
+		}
+		else if (strcmp(opname, "!~") == 0)
+		{
+			appendStringInfoString(buf, "NOT REGEXP BINARY");
+		}
+		else if (strcmp(opname, "!~*") == 0)
+		{
+			appendStringInfoString(buf, "NOT REGEXP");
 		}
 		else
 		{
