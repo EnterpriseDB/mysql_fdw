@@ -94,7 +94,7 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 	}
 	if (entry->conn == NULL)
 	{
-		entry->conn = mysql_connect(opt->svr_address, opt->svr_username, opt->svr_password, opt->svr_database, opt->svr_port, opt->svr_sa);
+		entry->conn = mysql_connect(opt->svr_address, opt->svr_username, opt->svr_password, opt->svr_database, opt->svr_port, opt->svr_sa, opt->svr_init_command);
 		elog(DEBUG3, "new mysql_fdw connection %p for server \"%s\"",
 			 entry->conn, server->servername);
 	}
@@ -156,7 +156,7 @@ mysql_rel_connection(MYSQL *conn)
 
 
 MYSQL*
-mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *svr_database, int svr_port, bool svr_sa)
+mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *svr_database, int svr_port, bool svr_sa, char *svr_init_command)
 {
 	MYSQL *conn = NULL;
 	my_bool secure_auth = svr_sa;
@@ -173,7 +173,10 @@ mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *s
 	_mysql_options(conn, MYSQL_SECURE_AUTH, &secure_auth);
 
 	if (!svr_sa)
-	  elog(WARNING, "MySQL secure authentication is off");
+		elog(WARNING, "MySQL secure authentication is off");
+    
+	if (svr_init_command != NULL)
+        	_mysql_options(conn, MYSQL_INIT_COMMAND, svr_init_command);
 
 	if (!_mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
