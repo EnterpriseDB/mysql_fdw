@@ -91,6 +91,10 @@ typedef struct MySQLColumn
 	int   atttype;         /* Attribute type */
 } MySQLColumn;
 
+extern bool is_foreign_expr(PlannerInfo *root,
+                                RelOptInfo *baserel,
+                                Expr *expr);
+
 
 int ((*_mysql_options)(MYSQL *mysql,enum mysql_option option, const void *arg));
 int ((*_mysql_stmt_prepare)(MYSQL_STMT *stmt, const char *query, unsigned long length));

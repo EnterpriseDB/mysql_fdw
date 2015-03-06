@@ -628,7 +628,6 @@ mysql_deparse_var(Var *node, deparse_expr_cxt *context)
 				pindex++;
 				*context->params_list = lappend(*context->params_list, node);
 			}
-
 			mysql_print_remote_param(pindex, node->vartype, node->vartypmod, context);
 		}
 		else
@@ -1039,10 +1038,6 @@ static void
 mysql_deparse_relabel_type(RelabelType *node, deparse_expr_cxt *context)
 {
 	deparseExpr(node->arg, context);
-	if (node->relabelformat != COERCE_IMPLICIT_CAST)
-		appendStringInfo(context->buf, "::%s",
-						 format_type_with_typemod(node->resulttype,
-												  node->resulttypmod));
 }
 
 /*
@@ -1121,11 +1116,6 @@ mysql_deparse_array_expr(ArrayExpr *node, deparse_expr_cxt *context)
 		first = false;
 	}
 	appendStringInfoChar(buf, ']');
-
-	/* If the array is empty, we need an explicit cast to the array type. */
-	if (node->elements == NIL)
-		appendStringInfo(buf, "::%s",
-						 format_type_with_typemod(node->array_typeid, -1));
 }
 
 /*
@@ -1141,9 +1131,8 @@ mysql_print_remote_param(int paramindex, Oid paramtype, int32 paramtypmod,
 				 deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
-	char	   *ptypename = format_type_with_typemod(paramtype, paramtypmod);
 
-	appendStringInfo(buf, "$%d::%s", paramindex, ptypename);
+	appendStringInfo(buf, "?");
 }
 
 static void
@@ -1153,3 +1142,474 @@ mysql_print_remote_placeholder(Oid paramtype, int32 paramtypmod,
 	StringInfo	buf = context->buf;
 	appendStringInfo(buf, "(SELECT null)");
 }
+
+/*
+ * Return true if given object is one of PostgreSQL's built-in objects.
+ *
+ * We use FirstBootstrapObjectId as the cutoff, so that we only consider
+ * objects with hand-assigned OIDs to be "built in", not for instance any
+ * function or type defined in the information_schema.
+ *
+ * Our constraints for dealing with types are tighter than they are for
+ * functions or operators: we want to accept only types that are in pg_catalog,
+ * else format_type might incorrectly fail to schema-qualify their names.
+ * (This could be fixed with some changes to format_type, but for now there's
+ * no need.)  Thus we must exclude information_schema types.
+ *
+ * XXX there is a problem with this, which is that the set of built-in
+ * objects expands over time.  Something that is built-in to us might not
+ * be known to the remote server, if it's of an older version.  But keeping
+ * track of that would be a huge exercise.
+ */
+static bool
+is_builtin(Oid oid)
+{
+	return (oid < FirstBootstrapObjectId);
+}
+
+
+/*
+ * Check if expression is safe to execute remotely, and return true if so.
+ *
+ * In addition, *outer_cxt is updated with collation information.
+ *
+ * We must check that the expression contains only node types we can deparse,
+ * that all types/functions/operators are safe to send (which we approximate
+ * as being built-in), and that all collations used in the expression derive
+ * from Vars of the foreign table.  Because of the latter, the logic is
+ * pretty close to assign_collations_walker() in parse_collate.c, though we
+ * can assume here that the given expression is valid.
+ */
+static bool
+foreign_expr_walker(Node *node,
+					foreign_glob_cxt *glob_cxt,
+					foreign_loc_cxt *outer_cxt)
+{
+	bool		check_type = true;
+	foreign_loc_cxt inner_cxt;
+	Oid			collation;
+	FDWCollateState state;
+
+	/* Need do nothing for empty subexpressions */
+	if (node == NULL)
+		return true;
+
+	/* Set up inner_cxt for possible recursion to child nodes */
+	inner_cxt.collation = InvalidOid;
+	inner_cxt.state = FDW_COLLATE_NONE;
+
+	switch (nodeTag(node))
+	{
+		case T_Var:
+			{
+				Var		   *var = (Var *) node;
+
+				/*
+				 * If the Var is from the foreign table, we consider its
+				 * collation (if any) safe to use.  If it is from another
+				 * table, we treat its collation the same way as we would a
+				 * Param's collation, ie it's not safe for it to have a
+				 * non-default collation.
+				 */
+				if (var->varno == glob_cxt->foreignrel->relid &&
+					var->varlevelsup == 0)
+				{
+					/* Var belongs to foreign table */
+					collation = var->varcollid;
+					state = OidIsValid(collation) ? FDW_COLLATE_SAFE : FDW_COLLATE_NONE;
+				}
+				else
+				{
+					/* Var belongs to some other table */
+					if (var->varcollid != InvalidOid &&
+						var->varcollid != DEFAULT_COLLATION_OID)
+						return false;
+
+					/* We can consider that it doesn't set collation */
+					collation = InvalidOid;
+					state = FDW_COLLATE_NONE;
+				}
+			}
+			break;
+		case T_Const:
+			{
+				Const	   *c = (Const *) node;
+
+				/*
+				 * If the constant has nondefault collation, either it's of a
+				 * non-builtin type, or it reflects folding of a CollateExpr;
+				 * either way, it's unsafe to send to the remote.
+				 */
+				if (c->constcollid != InvalidOid &&
+					c->constcollid != DEFAULT_COLLATION_OID)
+					return false;
+
+				/* Otherwise, we can consider that it doesn't set collation */
+				collation = InvalidOid;
+				state = FDW_COLLATE_NONE;
+			}
+			break;
+		case T_Param:
+			{
+				/* We are not supporting param push down*/
+				return false;
+			}
+			break;
+		case T_ArrayRef:
+			{
+				ArrayRef   *ar = (ArrayRef *) node;;
+
+				/* Assignment should not be in restrictions. */
+				if (ar->refassgnexpr != NULL)
+					return false;
+
+				/*
+				 * Recurse to remaining subexpressions.  Since the array
+				 * subscripts must yield (noncollatable) integers, they won't
+				 * affect the inner_cxt state.
+				 */
+				if (!foreign_expr_walker((Node *) ar->refupperindexpr,
+										 glob_cxt, &inner_cxt))
+					return false;
+				if (!foreign_expr_walker((Node *) ar->reflowerindexpr,
+										 glob_cxt, &inner_cxt))
+					return false;
+				if (!foreign_expr_walker((Node *) ar->refexpr,
+										 glob_cxt, &inner_cxt))
+					return false;
+
+				/*
+				 * Array subscripting should yield same collation as input,
+				 * but for safety use same logic as for function nodes.
+				 */
+				collation = ar->refcollid;
+				if (collation == InvalidOid)
+					state = FDW_COLLATE_NONE;
+				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+						 collation == inner_cxt.collation)
+					state = FDW_COLLATE_SAFE;
+				else
+					state = FDW_COLLATE_UNSAFE;
+			}
+			break;
+		case T_FuncExpr:
+			{
+				FuncExpr   *fe = (FuncExpr *) node;
+
+				/*
+				 * If function used by the expression is not built-in, it
+				 * can't be sent to remote because it might have incompatible
+				 * semantics on remote side.
+				 */
+				if (!is_builtin(fe->funcid))
+					return false;
+
+				/*
+				 * Recurse to input subexpressions.
+				 */
+				if (!foreign_expr_walker((Node *) fe->args,
+										 glob_cxt, &inner_cxt))
+					return false;
+
+				/*
+				 * If function's input collation is not derived from a foreign
+				 * Var, it can't be sent to remote.
+				 */
+				if (fe->inputcollid == InvalidOid)
+					 /* OK, inputs are all noncollatable */ ;
+				else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+						 fe->inputcollid != inner_cxt.collation)
+					return false;
+
+				/*
+				 * Detect whether node is introducing a collation not derived
+				 * from a foreign Var.  (If so, we just mark it unsafe for now
+				 * rather than immediately returning false, since the parent
+				 * node might not care.)
+				 */
+				collation = fe->funccollid;
+				if (collation == InvalidOid)
+					state = FDW_COLLATE_NONE;
+				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+						 collation == inner_cxt.collation)
+					state = FDW_COLLATE_SAFE;
+				else
+					state = FDW_COLLATE_UNSAFE;
+			}
+			break;
+		case T_OpExpr:
+		case T_DistinctExpr:	/* struct-equivalent to OpExpr */
+			{
+				OpExpr	   *oe = (OpExpr *) node;
+
+				/*
+				 * Similarly, only built-in operators can be sent to remote.
+				 * (If the operator is, surely its underlying function is
+				 * too.)
+				 */
+				if (!is_builtin(oe->opno))
+					return false;
+
+				/*
+				 * Recurse to input subexpressions.
+				 */
+				if (!foreign_expr_walker((Node *) oe->args,
+										 glob_cxt, &inner_cxt))
+					return false;
+
+				/*
+				 * If operator's input collation is not derived from a foreign
+				 * Var, it can't be sent to remote.
+				 */
+				if (oe->inputcollid == InvalidOid)
+					 /* OK, inputs are all noncollatable */ ;
+				else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+						 oe->inputcollid != inner_cxt.collation)
+					return false;
+
+				/* Result-collation handling is same as for functions */
+				collation = oe->opcollid;
+				if (collation == InvalidOid)
+					state = FDW_COLLATE_NONE;
+				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+						 collation == inner_cxt.collation)
+					state = FDW_COLLATE_SAFE;
+				else
+					state = FDW_COLLATE_UNSAFE;
+			}
+			break;
+		case T_ScalarArrayOpExpr:
+			{
+				ScalarArrayOpExpr *oe = (ScalarArrayOpExpr *) node;
+
+				/*
+				 * Again, only built-in operators can be sent to remote.
+				 */
+				if (!is_builtin(oe->opno))
+					return false;
+
+				/*
+				 * Recurse to input subexpressions.
+				 */
+				if (!foreign_expr_walker((Node *) oe->args,
+										 glob_cxt, &inner_cxt))
+					return false;
+
+				/*
+				 * If operator's input collation is not derived from a foreign
+				 * Var, it can't be sent to remote.
+				 */
+				if (oe->inputcollid == InvalidOid)
+					 /* OK, inputs are all noncollatable */ ;
+				else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+						 oe->inputcollid != inner_cxt.collation)
+					return false;
+
+				/* Output is always boolean and so noncollatable. */
+				collation = InvalidOid;
+				state = FDW_COLLATE_NONE;
+			}
+			break;
+		case T_RelabelType:
+			{
+				RelabelType *r = (RelabelType *) node;
+
+				/*
+				 * Recurse to input subexpression.
+				 */
+				if (!foreign_expr_walker((Node *) r->arg,
+										 glob_cxt, &inner_cxt))
+					return false;
+
+				/*
+				 * RelabelType must not introduce a collation not derived from
+				 * an input foreign Var.
+				 */
+				collation = r->resultcollid;
+				if (collation == InvalidOid)
+					state = FDW_COLLATE_NONE;
+				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+						 collation == inner_cxt.collation)
+					state = FDW_COLLATE_SAFE;
+				else
+					state = FDW_COLLATE_UNSAFE;
+			}
+			break;
+		case T_BoolExpr:
+			{
+				BoolExpr   *b = (BoolExpr *) node;
+
+				/*
+				 * Recurse to input subexpressions.
+				 */
+				if (!foreign_expr_walker((Node *) b->args,
+										 glob_cxt, &inner_cxt))
+					return false;
+
+				/* Output is always boolean and so noncollatable. */
+				collation = InvalidOid;
+				state = FDW_COLLATE_NONE;
+			}
+			break;
+		case T_NullTest:
+			{
+				NullTest   *nt = (NullTest *) node;
+
+				/*
+				 * Recurse to input subexpressions.
+				 */
+				if (!foreign_expr_walker((Node *) nt->arg,
+										 glob_cxt, &inner_cxt))
+					return false;
+
+				/* Output is always boolean and so noncollatable. */
+				collation = InvalidOid;
+				state = FDW_COLLATE_NONE;
+			}
+			break;
+		case T_ArrayExpr:
+			{
+				ArrayExpr  *a = (ArrayExpr *) node;
+
+				/*
+				 * Recurse to input subexpressions.
+				 */
+				if (!foreign_expr_walker((Node *) a->elements,
+										 glob_cxt, &inner_cxt))
+					return false;
+
+				/*
+				 * ArrayExpr must not introduce a collation not derived from
+				 * an input foreign Var.
+				 */
+				collation = a->array_collid;
+				if (collation == InvalidOid)
+					state = FDW_COLLATE_NONE;
+				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+						 collation == inner_cxt.collation)
+					state = FDW_COLLATE_SAFE;
+				else
+					state = FDW_COLLATE_UNSAFE;
+			}
+			break;
+		case T_List:
+			{
+				List	   *l = (List *) node;
+				ListCell   *lc;
+
+				/*
+				 * Recurse to component subexpressions.
+				 */
+				foreach(lc, l)
+				{
+					if (!foreign_expr_walker((Node *) lfirst(lc),
+											 glob_cxt, &inner_cxt))
+						return false;
+				}
+
+				/*
+				 * When processing a list, collation state just bubbles up
+				 * from the list elements.
+				 */
+				collation = inner_cxt.collation;
+				state = inner_cxt.state;
+
+				/* Don't apply exprType() to the list. */
+				check_type = false;
+			}
+			break;
+		default:
+
+			/*
+			 * If it's anything else, assume it's unsafe.  This list can be
+			 * expanded later, but don't forget to add deparse support below.
+			 */
+			return false;
+	}
+
+	/*
+	 * If result type of given expression is not built-in, it can't be sent to
+	 * remote because it might have incompatible semantics on remote side.
+	 */
+	if (check_type && !is_builtin(exprType(node)))
+		return false;
+
+	/*
+	 * Now, merge my collation information into my parent's state.
+	 */
+	if (state > outer_cxt->state)
+	{
+		/* Override previous parent state */
+		outer_cxt->collation = collation;
+		outer_cxt->state = state;
+	}
+	else if (state == outer_cxt->state)
+	{
+		/* Merge, or detect error if there's a collation conflict */
+		switch (state)
+		{
+			case FDW_COLLATE_NONE:
+				/* Nothing + nothing is still nothing */
+				break;
+			case FDW_COLLATE_SAFE:
+				if (collation != outer_cxt->collation)
+				{
+					/*
+					 * Non-default collation always beats default.
+					 */
+					if (outer_cxt->collation == DEFAULT_COLLATION_OID)
+					{
+						/* Override previous parent state */
+						outer_cxt->collation = collation;
+					}
+					else if (collation != DEFAULT_COLLATION_OID)
+					{
+						/*
+						 * Conflict; show state as indeterminate.  We don't
+						 * want to "return false" right away, since parent
+						 * node might not care about collation.
+						 */
+						outer_cxt->state = FDW_COLLATE_UNSAFE;
+					}
+				}
+				break;
+			case FDW_COLLATE_UNSAFE:
+				/* We're still conflicted ... */
+				break;
+		}
+	}
+
+	/* It looks OK */
+	return true;
+}
+
+/*
+ * Returns true if given expr is safe to evaluate on the foreign server.
+ */
+bool
+is_foreign_expr(PlannerInfo *root,
+                                RelOptInfo *baserel,
+                                Expr *expr)
+{
+        foreign_glob_cxt glob_cxt;
+        foreign_loc_cxt loc_cxt;
+
+        /*
+         * Check that the expression consists of nodes that are safe to execute
+         * remotely.
+         */
+        glob_cxt.root = root;
+        glob_cxt.foreignrel = baserel;
+        loc_cxt.collation = InvalidOid;
+        loc_cxt.state = FDW_COLLATE_NONE;
+        if (!foreign_expr_walker((Node *) expr, &glob_cxt, &loc_cxt))
+                return false;
+
+        /* Expressions examined here should be boolean, ie noncollatable */
+        Assert(loc_cxt.collation == InvalidOid);
+        Assert(loc_cxt.state == FDW_COLLATE_NONE);
+
+        /* OK to evaluate on the remote server */
+        return true;
+}
+

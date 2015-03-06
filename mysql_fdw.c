@@ -80,6 +80,19 @@
 
 PG_MODULE_MAGIC;
 
+
+typedef struct MySQLFdwRelationInfo
+{
+	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
+	List	   *remote_conds;
+	List	   *local_conds;
+
+	/* Bitmap of attr numbers we need to fetch from the remote server. */
+	Bitmapset  *attrs_used;
+
+} MySQLFdwRelationInfo;
+
+
 extern Datum mysql_fdw_handler(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT void _PG_init(void);
 
@@ -623,18 +636,23 @@ mysqlReScanForeignScan(ForeignScanState *node)
 static void
 mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
 {
-	StringInfoData  sql;
-	double          rows = 0;
-	MYSQL           *conn = NULL;
-	MYSQL_RES       *result = NULL;
-	MYSQL_ROW       row;
-	Bitmapset       *attrs_used = NULL;
-	List            *retrieved_attrs = NULL;
-	mysql_opt       *options = NULL;
-	Oid             userid =  GetUserId();
-	ForeignServer   *server;
-	UserMapping     *user;
-	ForeignTable    *table;
+	StringInfoData       sql;
+	double               rows = 0;
+	MYSQL                *conn = NULL;
+	MYSQL_RES            *result = NULL;
+	MYSQL_ROW            row;
+	Bitmapset            *attrs_used = NULL;
+	List                 *retrieved_attrs = NULL;
+	mysql_opt            *options = NULL;
+	Oid                  userid =  GetUserId();
+	ForeignServer        *server;
+	UserMapping          *user;
+	ForeignTable         *table;
+	MySQLFdwRelationInfo *fpinfo;
+	ListCell             *lc;
+
+	fpinfo = (MySQLFdwRelationInfo *) palloc0(sizeof(MySQLFdwRelationInfo));
+	baserel->fdw_private = (void *) fpinfo;
 
 	table = GetForeignTable(foreigntableid);
 	server = GetForeignServer(table->serverid);
@@ -642,7 +660,6 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 
 	/* Fetch the options */
 	options = mysql_get_options(foreigntableid);
-
 
 	/* Fetch options */
 	options = mysql_get_options(foreigntableid);
@@ -660,6 +677,22 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	appendStringInfo(&sql, "EXPLAIN ");
 	mysql_deparse_select(&sql, root, baserel, attrs_used, options->svr_table, &retrieved_attrs);
 
+	foreach(lc, baserel->baserestrictinfo)
+	{
+		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
+
+		if (is_foreign_expr(root, baserel, ri->clause))
+			fpinfo->remote_conds = lappend(fpinfo->remote_conds, ri);
+		else
+			fpinfo->local_conds = lappend(fpinfo->local_conds, ri);
+	}
+
+	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid, &fpinfo->attrs_used);
+	foreach(lc, fpinfo->local_conds)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		pull_varattnos((Node *) rinfo->clause, baserel->relid, &fpinfo->attrs_used);
+	}
 	/*
 	 * TODO: MySQL seems to have some pretty unhelpful EXPLAIN output, which only
 	 * gives a row estimate for each relation in the statement. We'll use the
@@ -833,14 +866,17 @@ mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid)
 static ForeignScan *
 mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel, Oid foreigntableid, ForeignPath *best_path, List * tlist, List *scan_clauses)
 {
+	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) baserel->fdw_private;
 	Index          scan_relid = baserel->relid;
 	List           *fdw_private;
 	List           *local_exprs = NULL;
 	List           *params_list = NULL;
+	List           *remote_conds = NIL;
+
 	StringInfoData sql;
 	mysql_opt      *options;
-	Bitmapset      *attrs_used = NULL;
 	List           *retrieved_attrs;
+	ListCell       *lc;
 
 	/* Fetch options */
 	options = mysql_get_options(foreigntableid);
@@ -853,12 +889,49 @@ mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel, Oid foreigntableid, F
 	/* Build the query */
 	initStringInfo(&sql);
 
-	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid, &attrs_used);
+	/*
+	 * Separate the scan_clauses into those that can be executed remotely and
+	 * those that can't.  baserestrictinfo clauses that were previously
+	 * determined to be safe or unsafe by classifyConditions are shown in
+	 * fpinfo->remote_conds and fpinfo->local_conds.  Anything else in the
+	 * scan_clauses list will be a join clause, which we have to check for
+	 * remote-safety.
+	 *
+	 * Note: the join clauses we see here should be the exact same ones
+	 * previously examined by postgresGetForeignPaths.  Possibly it'd be worth
+	 * passing forward the classification work done then, rather than
+	 * repeating it here.
+	 *
+	 * This code must match "extract_actual_clauses(scan_clauses, false)"
+	 * except for the additional decision about remote versus local execution.
+	 * Note however that we only strip the RestrictInfo nodes from the
+	 * local_exprs list, since appendWhereClause expects a list of
+	 * RestrictInfos.
+	 */
+	foreach(lc, scan_clauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 
-	mysql_deparse_select(&sql, root, baserel, attrs_used, options->svr_table, &retrieved_attrs);
+		Assert(IsA(rinfo, RestrictInfo));
 
-	if (scan_clauses)
-		mysql_append_where_clause(&sql, root, baserel, scan_clauses,
+		/* Ignore any pseudoconstants, they're dealt with elsewhere */
+		if (rinfo->pseudoconstant)
+			continue;
+
+		if (list_member_ptr(fpinfo->remote_conds, rinfo))
+			remote_conds = lappend(remote_conds, rinfo);
+		else if (list_member_ptr(fpinfo->local_conds, rinfo))
+			local_exprs = lappend(local_exprs, rinfo->clause);
+		else if (is_foreign_expr(root, baserel, rinfo->clause))
+			remote_conds = lappend(remote_conds, rinfo);
+		else
+			local_exprs = lappend(local_exprs, rinfo->clause);
+	}
+
+	mysql_deparse_select(&sql, root, baserel, fpinfo->attrs_used, options->svr_table, &retrieved_attrs);
+	
+	if (remote_conds)
+		mysql_append_where_clause(&sql, root, baserel, remote_conds,
 						  true, &params_list);
 
 	if (baserel->relid == root->parse->resultRelation &&

@@ -169,7 +169,108 @@ SELECT * FROM employee WHERE emp_id NOT IN (10000,1000) LIMIT 5;
 (5 rows)
 
 SELECT * FROM employee WHERE emp_id NOT IN (SELECT emp_id FROM employee WHERE emp_id IN (1,10));
-ERROR:  unsupported expression type for deparse: 317
+ emp_id |  emp_name   | emp_dept_id 
+--------+-------------+-------------
+      2 | emp - 2     |           2
+      3 | emp - 3     |           3
+      4 | emp - 4     |           4
+      5 | emp - 5     |           5
+      6 | emp - 6     |           6
+      7 | emp - 7     |           7
+      8 | emp - 8     |           8
+      9 | emp - 9     |           9
+     11 | emp - 11    |          11
+     12 | emp - 12    |          12
+     13 | emp - 13    |          13
+     14 | emp - 14    |          14
+     15 | emp - 15    |          15
+     16 | emp - 16    |          16
+     17 | emp - 17    |          17
+     18 | emp - 18    |          18
+     19 | emp - 19    |          19
+     20 | Updated emp |          20
+     21 | emp - 21    |          21
+     22 | emp - 22    |          22
+     23 | emp - 23    |          23
+     24 | emp - 24    |          24
+     25 | emp - 25    |          25
+     26 | emp - 26    |          26
+     27 | emp - 27    |          27
+     28 | emp - 28    |          28
+     29 | emp - 29    |          29
+     30 | emp - 30    |          30
+     31 | emp - 31    |          31
+     32 | emp - 32    |          32
+     33 | emp - 33    |          33
+     34 | emp - 34    |          34
+     35 | emp - 35    |          35
+     36 | emp - 36    |          36
+     37 | emp - 37    |          37
+     38 | emp - 38    |          38
+     39 | emp - 39    |          39
+     40 | emp - 40    |          40
+     41 | emp - 41    |          41
+     42 | emp - 42    |          42
+     43 | emp - 43    |          43
+     44 | emp - 44    |          44
+     45 | emp - 45    |          45
+     46 | emp - 46    |          46
+     47 | emp - 47    |          47
+     48 | emp - 48    |          48
+     49 | emp - 49    |          49
+     50 | emp - 50    |          50
+     51 | emp - 51    |          51
+     52 | emp - 52    |          52
+     53 | emp - 53    |          53
+     54 | emp - 54    |          54
+     55 | emp - 55    |          55
+     56 | emp - 56    |          56
+     57 | emp - 57    |          57
+     58 | emp - 58    |          58
+     59 | emp - 59    |          59
+     60 | emp - 60    |          60
+     61 | emp - 61    |          61
+     62 | emp - 62    |          62
+     63 | emp - 63    |          63
+     64 | emp - 64    |          64
+     65 | emp - 65    |          65
+     66 | emp - 66    |          66
+     67 | emp - 67    |          67
+     68 | emp - 68    |          68
+     69 | emp - 69    |          69
+     70 | emp - 70    |          70
+     71 | emp - 71    |          71
+     72 | emp - 72    |          72
+     73 | emp - 73    |          73
+     74 | emp - 74    |          74
+     75 | emp - 75    |          75
+     76 | emp - 76    |          76
+     77 | emp - 77    |          77
+     78 | emp - 78    |          78
+     79 | emp - 79    |          79
+     80 | emp - 80    |          80
+     81 | emp - 81    |          81
+     82 | emp - 82    |          82
+     83 | emp - 83    |          83
+     84 | emp - 84    |          84
+     85 | emp - 85    |          85
+     86 | emp - 86    |          86
+     87 | emp - 87    |          87
+     88 | emp - 88    |          88
+     89 | emp - 89    |          89
+     90 | emp - 90    |          90
+     91 | emp - 91    |          91
+     92 | emp - 92    |          92
+     93 | emp - 93    |          93
+     94 | emp - 94    |          94
+     95 | emp - 95    |          95
+     96 | emp - 96    |          96
+     97 | emp - 97    |          97
+     98 | emp - 98    |          98
+     99 | emp - 99    |          99
+    100 | emp - 100   |         100
+(98 rows)
+
 SELECT * FROM employee WHERE emp_name NOT IN ('emp - 1', 'emp - 2') LIMIT 5;
  emp_id | emp_name | emp_dept_id 
 --------+----------+-------------
