@@ -38,6 +38,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
+#include "utils/lsyscache.h"
 
 #include "optimizer/pathnode.h"
 #include "optimizer/restrictinfo.h"
@@ -210,6 +211,9 @@ mysql_get_options(Oid foreigntableid)
 
 	if (!opt->svr_port)
 		opt->svr_port = MYSQL_PORT;
+
+	if (!opt->svr_table)
+		opt->svr_table = get_rel_name(foreigntableid);
 
 	return opt;
 }

@@ -119,6 +119,8 @@ static ForeignScan *mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, 
 static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *startup_cost, Cost *total_cost,
 							   Oid foreigntableid);
 
+static bool mysql_is_column_unique(Oid foreigntableid);
+
 #ifdef __APPLE__
 	#define _MYSQL_LIBNAME "libmysqlclient.dylib"
 #else
@@ -192,6 +194,7 @@ mysql_load_library(void)
 	_mysql_store_result = dlsym(mysql_dll_handle, "mysql_store_result");
 	_mysql_stmt_errno = dlsym(mysql_dll_handle, "mysql_stmt_errno");
 	_mysql_errno = dlsym(mysql_dll_handle, "mysql_errno");
+	_mysql_num_fields = dlsym(mysql_dll_handle, "mysql_num_fields");
 
 	if (_mysql_stmt_bind_param == NULL ||
 		_mysql_stmt_bind_result == NULL ||
@@ -215,7 +218,8 @@ mysql_load_library(void)
 		_mysql_stmt_attr_set == NULL ||
 		_mysql_store_result == NULL ||
 		_mysql_stmt_errno == NULL ||
-		_mysql_errno == NULL)
+		_mysql_errno == NULL ||
+		_mysql_num_fields == NULL)
 			return false;
 	return true;
 }
@@ -696,13 +700,87 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	{
 		while ((row = _mysql_fetch_row(result)))
 			rows += row[8] ? atof(row[8]) : 2;
-
 		_mysql_free_result(result);
 	}
 	baserel->rows = rows;
 	baserel->tuples = rows;
 }
 
+
+static bool
+mysql_is_column_unique(Oid foreigntableid)
+{
+	StringInfoData       sql;
+	MYSQL                *conn = NULL;
+	MYSQL_RES            *result = NULL;
+	MYSQL_ROW            row;
+	mysql_opt            *options = NULL;
+	Oid                  userid =  GetUserId();
+	ForeignServer        *server;
+	UserMapping          *user;
+	ForeignTable         *table;
+
+	table = GetForeignTable(foreigntableid);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
+
+	/* Fetch the options */
+	options = mysql_get_options(foreigntableid);
+
+	/* Connect to the server */
+	conn = mysql_get_connection(server, user, options);
+
+	/* Build the query */
+	initStringInfo(&sql);
+
+	appendStringInfo(&sql, "EXPLAIN %s", options->svr_table);
+	if (_mysql_query(conn, sql.data) != 0)
+	{
+		switch(_mysql_errno(conn))
+		{
+			case CR_NO_ERROR:
+				break;
+
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			case CR_UNKNOWN_ERROR:
+			{
+				char *err = pstrdup(_mysql_error(conn));
+				mysql_rel_connection(conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+		}
+	}
+
+	result = _mysql_store_result(conn);
+	if (result)
+	{
+		int num_fields = _mysql_num_fields(result);
+		row = _mysql_fetch_row(result);
+		if (row && num_fields > 3)
+		{
+			if ((strcmp(row[3], "PRI") == 0) || (strcmp(row[3], "UNI")) == 0)
+			{
+				_mysql_free_result(result);
+				return true;
+			}
+		}
+		_mysql_free_result(result);
+	}
+	return false;
+}
 
 /*
  * mysqlEstimateCosts: Estimate the remote query cost
@@ -907,12 +985,17 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	Oid             foreignTableId;
 
 	initStringInfo(&sql);
-	
+
 	/*
 	 * Core code already has some lock on each rel being planned, so we can
 	 * use NoLock here.
 	 */
 	rel = heap_open(rte->relid, NoLock);
+
+	foreignTableId = RelationGetRelid(rel);
+
+	if (!mysql_is_column_unique(foreignTableId))
+		elog(ERROR, "first column of remote table must be unique for INSERT/UPDATE/DELETE operation");
 
 	if (operation == CMD_INSERT)
 	{
@@ -953,7 +1036,6 @@ mysqlPlanForeignModify(PlannerInfo *root,
 		targetAttrs = lcons_int(1, targetAttrs);
 	}
 
-	foreignTableId = RelationGetRelid(rel);
 	attname = get_relid_attribute_name(foreignTableId, 1);
 
 	/*

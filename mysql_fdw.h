@@ -125,6 +125,7 @@ MYSQL	*((*_mysql_real_connect)(MYSQL *mysql,
 
 unsigned int ((*_mysql_stmt_errno)(MYSQL_STMT *stmt));
 unsigned int ((*_mysql_errno)(MYSQL *mysql));
+unsigned int ((*_mysql_num_fields)(MYSQL_RES *result));
 
 
 /* option.c headers */
