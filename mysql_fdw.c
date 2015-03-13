@@ -613,12 +613,6 @@ mysqlEndForeignScan(ForeignScanState *node)
 		_mysql_stmt_close(festate->stmt);
 		festate->stmt = NULL;
 	}
-
-	if (festate->query)
-	{
-		pfree(festate->query);
-		festate->query = 0;
-	}
 }
 
 /*
