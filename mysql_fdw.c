@@ -652,9 +652,6 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(userid, server->serverid);
 
-	/* Fetch the options */
-	options = mysql_get_options(foreigntableid);
-
 	/* Fetch options */
 	options = mysql_get_options(foreigntableid);
 
