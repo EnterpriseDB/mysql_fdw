@@ -149,10 +149,10 @@ mysql_is_valid_option(const char *option, Oid context)
  * Fetch the options for a mysql_fdw foreign table.
  */
 mysql_opt*
-mysql_get_options(Oid foreigntableid)
+mysql_get_options(Oid foreignoid)
 {
-	ForeignTable *f_table;
-	ForeignServer *f_server;
+	ForeignTable *f_table = NULL;
+	ForeignServer *f_server = NULL;
 	UserMapping *f_mapping;
 	List *options;
 	ListCell *lc;
@@ -164,12 +164,23 @@ mysql_get_options(Oid foreigntableid)
 	/*
 	 * Extract options from FDW objects.
 	 */
-	f_table = GetForeignTable(foreigntableid);
-	f_server = GetForeignServer(f_table->serverid);
-	f_mapping = GetUserMapping(GetUserId(), f_table->serverid);
+	PG_TRY();
+	{
+		f_table = GetForeignTable(foreignoid);
+		f_server = GetForeignServer(f_table->serverid);
+	}
+	PG_CATCH();
+	{
+		f_table = NULL;
+		f_server = GetForeignServer(foreignoid);
+	}
+	PG_END_TRY();
+
+	f_mapping = GetUserMapping(GetUserId(), f_server->serverid);
 
 	options = NIL;
-	options = list_concat(options, f_table->options);
+	if (f_table)
+		options = list_concat(options, f_table->options);
 	options = list_concat(options, f_server->options);
 	options = list_concat(options, f_mapping->options);
 
@@ -212,8 +223,8 @@ mysql_get_options(Oid foreigntableid)
 	if (!opt->svr_port)
 		opt->svr_port = MYSQL_PORT;
 
-	if (!opt->svr_table)
-		opt->svr_table = get_rel_name(foreigntableid);
+	if (!opt->svr_table && f_table)
+		opt->svr_table = get_rel_name(foreignoid);
 
 	return opt;
 }
