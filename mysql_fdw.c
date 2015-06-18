@@ -942,11 +942,15 @@ mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel, Oid foreigntableid, F
 	 * field of the finished plan node; we can't keep them in private state
 	 * because then they wouldn't be subject to later planner processing.
 	 */
-	return make_foreignscan(tlist,
-							local_exprs,
-							scan_relid,
-							params_list,
-							fdw_private);
+	return make_foreignscan(tlist
+	                       ,local_exprs
+	                       ,scan_relid
+	                       ,params_list
+	                       ,fdw_private
+#if PG_VERSION_NUM >= 90500
+	                       ,NIL
+#endif
+	                       );
 }
 
 /*
@@ -1070,7 +1074,11 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	}
 	else if (operation == CMD_UPDATE)
 	{
+#if PG_VERSION_NUM >= 90500
+		Bitmapset *tmpset = bms_copy(rte->updatedCols);
+#else
 		Bitmapset *tmpset = bms_copy(rte->modifiedCols);
+#endif
 		AttrNumber	col;
 
 		while ((col = bms_first_member(tmpset)) >= 0)
