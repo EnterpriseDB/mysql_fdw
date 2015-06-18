@@ -134,12 +134,6 @@ static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *sta
 
 static bool mysql_is_column_unique(Oid foreigntableid);
 
-#ifdef __APPLE__
-	#define _MYSQL_LIBNAME "libmysqlclient.dylib"
-#else
-	#define _MYSQL_LIBNAME "libmysqlclient.so"
-#endif
-
 void* mysql_dll_handle = NULL;
 static int wait_timeout = WAIT_TIMEOUT;
 static int interactive_timeout = INTERACTIVE_TIMEOUT;
