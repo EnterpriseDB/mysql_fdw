@@ -149,6 +149,7 @@ mysql_rel_connection(MYSQL *conn)
 			elog(DEBUG3, "disconnecting mysql_fdw connection %p", entry->conn);
 			_mysql_close(entry->conn);
 			entry->conn = NULL;
+			hash_seq_term(&scan);
 			break;
 		}
 	}
