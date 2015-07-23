@@ -21,7 +21,6 @@ DATA = mysql_fdw--1.0.sql
 REGRESS = mysql_fdw
 
 MYSQL_CONFIG = mysql_config
-SHLIB_LINK := $(shell $(MYSQL_CONFIG) --libs)
 PG_CPPFLAGS := $(shell $(MYSQL_CONFIG) --include)
 
 # In Debian based distros, libmariadbclient-dev provides mariadbclient (rather than mysqlclient)
