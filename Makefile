@@ -22,9 +22,10 @@ REGRESS = mysql_fdw
 
 MYSQL_CONFIG = mysql_config
 PG_CPPFLAGS := $(shell $(MYSQL_CONFIG) --include)
+LIB := $(shell $(MYSQL_CONFIG) --libs)
 
 # In Debian based distros, libmariadbclient-dev provides mariadbclient (rather than mysqlclient)
-ifneq ($(findstring mariadbclient,$(SHLIB_LINK)),)
+ifneq ($(findstring mariadbclient,$(LIB)),)
 MYSQL_LIB = mariadbclient
 else
 MYSQL_LIB = mysqlclient
@@ -47,8 +48,8 @@ include $(PGXS)
 ifndef MAJORVERSION
 MAJORVERSION := $(basename $(VERSION))
 endif
-ifeq (,$(findstring $(MAJORVERSION), 9.3 9.4 9.5))
-$(error PostgreSQL 9.3, 9.4 or 9.5 is required to compile this extension)
+ifeq (,$(findstring $(MAJORVERSION), 9.3 9.4 9.5 9.6))
+$(error PostgreSQL 9.3, 9.4, 9.5 or 9.6 is required to compile this extension)
 endif
 
 else
