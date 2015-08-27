@@ -54,7 +54,27 @@ typedef struct mysql_opt
 	char    *svr_table;             /* MySQL table name */
 	bool    svr_sa;                 /* MySQL secure authentication */
 	char    *svr_init_command;	/* MySQL SQL statement to execute when connecting to the MySQL server. */
-} mysql_opt;
+       unsigned long max_blob_size;         /* Max blob size to read without truncation */
+ } mysql_opt;
+
+typedef struct mysql_column
+{
+               Datum value;
+               unsigned long length;
+               bool is_null;
+               bool error;
+
+               MYSQL_BIND *_mysql_bind;
+} mysql_column;
+
+typedef struct mysql_table
+{
+               MYSQL_RES *_mysql_res;
+               MYSQL_FIELD *_mysql_fields;
+
+               mysql_column *column;
+               MYSQL_BIND *_mysql_bind;
+} mysql_table;
 
 /*
  * FDW-specific information for ForeignScanState 
@@ -64,6 +84,7 @@ typedef struct MySQLFdwExecState
 {
 	MYSQL           *conn;              /* MySQL connection handle */
 	MYSQL_STMT      *stmt;              /* MySQL prepared stament handle */
+		mysql_table *table;
 	char            *query;             /* Query string */
 	Relation        rel;                /* relcache entry for the foreign table */
 	List            *retrieved_attrs;   /* list of target attribute numbers */
@@ -73,8 +94,6 @@ typedef struct MySQLFdwExecState
 
 	mysql_opt       *mysqlFdwOptions;   /* MySQL FDW options */
 
-	Datum           *tts_values;        /* Values datum to bind for results */
-	bool            *tts_isnull;        /* Nulls array bind for results */
 	List            *attr_list;         /* query attribute list */
 	List            *column_list;       /* Column list of MySQL Column structures */
 
@@ -113,6 +132,7 @@ MYSQL_RES	*((*_mysql_stmt_result_metadata)(MYSQL_STMT *stmt));
 int ((*_mysql_stmt_store_result)(MYSQL *mysql));
 MYSQL_ROW	((*_mysql_fetch_row)(MYSQL_RES *result));
 MYSQL_FIELD	*((*_mysql_fetch_field)(MYSQL_RES *result));
+MYSQL_FIELD	*((*_mysql_fetch_fields)(MYSQL_RES *result));
 const char	*((*_mysql_error)(MYSQL *mysql));
 void	((*_mysql_close)(MYSQL *sock));
 MYSQL_RES* ((*_mysql_store_result)(MYSQL *mysql));
