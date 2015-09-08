@@ -211,6 +211,9 @@ mysql_from_pgtyp(Oid type)
 		case BITOID:
 			return MYSQL_TYPE_LONG;
 
+		case BYTEAOID:
+			return MYSQL_TYPE_BLOB;
+
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
@@ -387,6 +390,28 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds, bool *i
 			dat = bin_dec(atoi(outputString));
 			memcpy(bufptr, (char*)&dat, sizeof(int32));
 			binds[attnum].buffer = bufptr;
+			break;
+		}
+		case BYTEAOID:
+		{
+			int  len;
+			char *dat = NULL;
+			char *bufptr;
+			char *result = DatumGetPointer(value);
+			if (VARATT_IS_1B(result))
+			{
+				len = VARSIZE_1B(result) - VARHDRSZ_SHORT;
+				dat = VARDATA_1B(result);
+			}
+			else
+			{
+				len = VARSIZE_4B(result) - VARHDRSZ;
+				dat = VARDATA_4B(result);
+			}
+			bufptr = palloc0(len);
+			memcpy(bufptr, (char*)dat, len);
+			binds[attnum].buffer = bufptr;
+			binds[attnum].buffer_length = len;
 			break;
 		}
 
