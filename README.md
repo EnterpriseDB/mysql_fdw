@@ -37,7 +37,7 @@ To compile the [MySQL][1] foreign data wrapper, MySQL's C client library is need
     $ make USE_PGXS=1 install
     ```
 
-Not that we have tested the `mysql_fdw` extenion only on MacOS and Ubuntu systems, but other \*NIX's should also work.
+Not that we have tested the `mysql_fdw` extension only on MacOS and Ubuntu systems, but other \*NIX's should also work.
 
 Enhancements
 ------------
