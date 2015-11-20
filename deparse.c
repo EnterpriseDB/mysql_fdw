@@ -786,6 +786,19 @@ mysql_deparse_array_ref(ArrayRef *node, deparse_expr_cxt *context)
 }
 
 /*
+ * This possible that name of function in PostgreSQL and
+ * mysql differ, so return the mysql equelent function name
+ */
+static char*
+mysql_replace_function(char *in)
+{
+	if (strcmp(in, "btrim") == 0)
+	{
+		return "trim";
+	}
+	return in;
+}
+/*
  * Deparse a function call.
  */
 static void
@@ -806,8 +819,10 @@ mysql_deparse_func_expr(FuncExpr *node, deparse_expr_cxt *context)
 		elog(ERROR, "cache lookup failed for function %u", node->funcid);
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
 
+	/* Translate PostgreSQL function into mysql function */
+	proname = mysql_replace_function(NameStr(procform->proname));
+
 	/* Deparse the function name ... */
-	proname = NameStr(procform->proname);
 	appendStringInfo(buf, "%s(", proname);
 	
 	/* ... and all the arguments */
