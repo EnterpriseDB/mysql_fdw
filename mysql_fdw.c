@@ -128,7 +128,11 @@ static void mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid f
 static void mysqlGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
 static bool mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func, BlockNumber *totalpages);
 static ForeignScan *mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid,
-										ForeignPath *best_path, List * tlist, List *scan_clauses);
+										ForeignPath *best_path, List * tlist, List *scan_clauses
+#if PG_VERSION_NUM >= 90500
+		                                ,Plan * outer_plan
+#endif
+);
 static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *startup_cost, Cost *total_cost,
 							   Oid foreigntableid);
 
@@ -903,8 +907,9 @@ mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid)
 									 baserel->rows,
 									 startup_cost,
 									 total_cost,
-									 NULL,	/* no pathkeys */
+									 NIL,	/* no pathkeys */
 									 NULL,	/* no outer rel either */
+									 NULL,	/* no extra plan */
 									 NULL));	/* no fdw_private data */
 }
 
@@ -913,7 +918,17 @@ mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid)
  * mysqlGetForeignPlan: Get a foreign scan plan node
  */
 static ForeignScan *
-mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel, Oid foreigntableid, ForeignPath *best_path, List * tlist, List *scan_clauses)
+mysqlGetForeignPlan(
+		PlannerInfo *root
+		,RelOptInfo *baserel
+		,Oid foreigntableid
+		,ForeignPath *best_path
+		,List * tlist
+		,List *scan_clauses
+#if PG_VERSION_NUM >= 90500
+		,Plan * outer_plan
+#endif
+)
 {
 	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) baserel->fdw_private;
 	Index          scan_relid = baserel->relid;
@@ -1014,6 +1029,7 @@ mysqlGetForeignPlan(PlannerInfo *root,RelOptInfo *baserel, Oid foreigntableid, F
 #if PG_VERSION_NUM >= 90500
 	                       ,NIL
 	                       ,NIL
+	                       ,outer_plan
 #endif
 	                       );
 }
