@@ -909,7 +909,9 @@ mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid)
 									 total_cost,
 									 NIL,	/* no pathkeys */
 									 NULL,	/* no outer rel either */
+#if PG_VERSION_NUM >= 90500
 									 NULL,	/* no extra plan */
+#endif
 									 NULL));	/* no fdw_private data */
 }
 
