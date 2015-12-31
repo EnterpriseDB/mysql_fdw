@@ -69,7 +69,8 @@ static struct MySQLFdwOption valid_options[] =
 	{ "dbname",         ForeignTableRelationId },
 	{ "table_name",     ForeignTableRelationId },
 	{ "secure_auth",    ForeignServerRelationId },
-        { "max_blob_size",  ForeignTableRelationId },
+	{ "max_blob_size",  ForeignTableRelationId },
+	{ "use_remote_estimate",    ForeignServerRelationId },
 
 	/* Sentinel */
 	{ NULL,			InvalidOid }
@@ -188,6 +189,8 @@ mysql_get_options(Oid foreignoid)
 	/* Default secure authentication is true */
 	opt->svr_sa = true;
 
+	opt->use_remote_estimate = false;
+
 	/* Loop through the options, and get the server/port */
 	foreach(lc, options)
 	{
@@ -216,8 +219,12 @@ mysql_get_options(Oid foreignoid)
 		
 		if (strcmp(def->defname, "init_command") == 0)
 			opt->svr_init_command = defGetString(def);
+
 		if (strcmp(def->defname, "max_blob_size") == 0)
                        opt->max_blob_size = strtoul(defGetString(def), NULL, 0);
+
+		if (strcmp(def->defname, "use_remote_estimate") == 0)
+			opt->use_remote_estimate = defGetBoolean(def);
 
 	}
 	/* Default values, if required */

@@ -46,34 +46,34 @@
  */
 typedef struct mysql_opt
 {
-	int     svr_port;               /* MySQL port number */
-	char    *svr_address;           /* MySQL server ip address */
-	char    *svr_username;          /* MySQL user name */
-	char    *svr_password;          /* MySQL password */
-	char    *svr_database;          /* MySQL database name */
-	char    *svr_table;             /* MySQL table name */
-	bool    svr_sa;                 /* MySQL secure authentication */
-	char    *svr_init_command;	/* MySQL SQL statement to execute when connecting to the MySQL server. */
-       unsigned long max_blob_size;         /* Max blob size to read without truncation */
- } mysql_opt;
+	int           svr_port;               /* MySQL port number */
+	char          *svr_address;           /* MySQL server ip address */
+	char          *svr_username;          /* MySQL user name */
+	char          *svr_password;          /* MySQL password */
+	char          *svr_database;          /* MySQL database name */
+	char          *svr_table;             /* MySQL table name */
+	bool          svr_sa;                 /* MySQL secure authentication */
+	char          *svr_init_command;      /* MySQL SQL statement to execute when connecting to the MySQL server. */
+	unsigned long max_blob_size;          /* Max blob size to read without truncation */
+	bool          use_remote_estimate;    /* use remote estimate for rows */
+} mysql_opt;
 
 typedef struct mysql_column
 {
-               Datum value;
-               unsigned long length;
-               bool is_null;
-               bool error;
-
-               MYSQL_BIND *_mysql_bind;
+	Datum         value;
+	unsigned long length;
+	bool          is_null;
+	bool          error;
+	MYSQL_BIND    *_mysql_bind;
 } mysql_column;
 
 typedef struct mysql_table
 {
-               MYSQL_RES *_mysql_res;
-               MYSQL_FIELD *_mysql_fields;
+	MYSQL_RES *_mysql_res;
+	MYSQL_FIELD *_mysql_fields;
 
-               mysql_column *column;
-               MYSQL_BIND *_mysql_bind;
+	mysql_column *column;
+	MYSQL_BIND *_mysql_bind;
 } mysql_table;
 
 /*

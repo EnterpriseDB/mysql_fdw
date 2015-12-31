@@ -78,6 +78,8 @@
 
 #include "mysql_query.h"
 
+#define DEFAULTE_NUM_ROWS    1000
+
 PG_MODULE_MAGIC;
 
 
@@ -694,6 +696,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 {
 	StringInfoData       sql;
 	double               rows = 0;
+	double               filtered = 0;
 	MYSQL                *conn = NULL;
 	MYSQL_RES            *result = NULL;
 	MYSQL_ROW            row;
@@ -706,6 +709,10 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 	ForeignTable         *table;
 	MySQLFdwRelationInfo *fpinfo;
 	ListCell             *lc;
+	MYSQL_FIELD          *field;
+	int                  i;
+	int                  num_fields;
+	List                *params_list = NULL;
 
 	fpinfo = (MySQLFdwRelationInfo *) palloc0(sizeof(MySQLFdwRelationInfo));
 	baserel->fdw_private = (void *) fpinfo;
@@ -722,13 +729,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 
 	_mysql_query(conn, "SET sql_mode='ANSI_QUOTES'");
 
-	/* Build the query */
-	initStringInfo(&sql);
-
 	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid, &attrs_used);
-
-	appendStringInfo(&sql, "EXPLAIN ");
-	mysql_deparse_select(&sql, root, baserel, attrs_used, options->svr_table, &retrieved_attrs);
 
 	foreach(lc, baserel->baserestrictinfo)
 	{
@@ -746,48 +747,83 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 		pull_varattnos((Node *) rinfo->clause, baserel->relid, &fpinfo->attrs_used);
 	}
-	/*
-	 * TODO: MySQL seems to have some pretty unhelpful EXPLAIN output, which only
-	 * gives a row estimate for each relation in the statement. We'll use the
-	 * sum of the rows as our cost estimate - it's not great (in fact, in some
-	 * cases it sucks), but it's all we've got for now.
-	 */
-	if (_mysql_query(conn, sql.data) != 0)
-	{
-		switch(_mysql_errno(conn))
-		{
-			case CR_NO_ERROR:
-				break;
 
-			case CR_OUT_OF_MEMORY:
-			case CR_SERVER_GONE_ERROR:
-			case CR_SERVER_LOST:
-			case CR_UNKNOWN_ERROR:
+	if (options->use_remote_estimate)
+	{
+		initStringInfo(&sql);
+		appendStringInfo(&sql, "EXPLAIN ");
+
+		mysql_deparse_select(&sql, root, baserel, fpinfo->attrs_used, options->svr_table, &retrieved_attrs);
+
+		if (fpinfo->remote_conds)
+			mysql_append_where_clause(&sql, root, baserel, fpinfo->remote_conds,
+						  true, &params_list);
+
+		if (_mysql_query(conn, sql.data) != 0)
+		{
+			switch(_mysql_errno(conn))
 			{
-				char *err = pstrdup(_mysql_error(conn));
-				mysql_rel_connection(conn);
-				ereport(ERROR,
-							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-							errmsg("failed to execute the MySQL query: \n%s", err)));
-			}
-			break;
-			case CR_COMMANDS_OUT_OF_SYNC:
-			default:
-			{
-				char *err = pstrdup(_mysql_error(conn));
-				ereport(ERROR,
-							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-							errmsg("failed to execute the MySQL query: \n%s", err)));
+				case CR_NO_ERROR:
+					break;
+
+				case CR_OUT_OF_MEMORY:
+				case CR_SERVER_GONE_ERROR:
+				case CR_SERVER_LOST:
+				case CR_UNKNOWN_ERROR:
+				{
+					char *err = pstrdup(_mysql_error(conn));
+					mysql_rel_connection(conn);
+					ereport(ERROR,
+								(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+								errmsg("failed to execute the MySQL query: \n%s", err)));
+				}
+				break;
+				case CR_COMMANDS_OUT_OF_SYNC:
+				default:
+				{
+					char *err = pstrdup(_mysql_error(conn));
+					ereport(ERROR,
+								(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+								errmsg("failed to execute the MySQL query: \n%s", err)));
+				}
 			}
 		}
+		result = _mysql_store_result(conn);
+		if (result)
+		{
+			/*
+			 * MySQL provide numbers of rows per table invole in
+			 * the statment, but we don't have problem with it
+			 * because we are sending separate query per table
+			 * in FDW.
+			 */
+			row = _mysql_fetch_row(result);
+			num_fields = _mysql_num_fields(result);
+			if (row)
+			{
+				for (i = 0; i < num_fields; i++)
+				{
+					field = _mysql_fetch_field(result);
+					if (strcmp(field->name, "rows") == 0)
+					{
+						if (row[i])
+							rows = atof(row[i]);
+					}
+					else if (strcmp(field->name, "filtered") == 0)
+					{
+						if (row[i])
+							filtered = atof(row[i]);
+					}
+				}
+			}
+			_mysql_free_result(result);
+		}
 	}
-	result = _mysql_store_result(conn);
-	if (result)
-	{
-		while ((row = _mysql_fetch_row(result)))
-			rows += row[8] ? atof(row[8]) : 2;
-		_mysql_free_result(result);
-	}
+	if (rows > 0)
+		rows = ((rows + 1) * filtered) / 100;
+	else
+		rows  = DEFAULTE_NUM_ROWS;
+
 	baserel->rows = rows;
 	baserel->tuples = rows;
 }
