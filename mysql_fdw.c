@@ -1845,7 +1845,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
             else
                 appendStringInfoString(&buf, ", ");
 
-            appendStringInfo(&buf, "%s", rv->relname);
+            appendStringInfo(&buf, "'%s'", rv->relname);
         }
         appendStringInfoChar(&buf, ')');
     }
