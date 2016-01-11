@@ -1819,7 +1819,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
                      " JOIN"
                      "  information_schema.COLUMNS AS c"
                      " ON"
-                     "  t.TABLE_CATALOG = c.TABLE_CATALOG AND t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME"
+                     "  t.TABLE_CATALOG <=> c.TABLE_CATALOG AND t.TABLE_SCHEMA <=> c.TABLE_SCHEMA AND t.TABLE_NAME <=> c.TABLE_NAME"
                      " WHERE"
                      "  t.TABLE_SCHEMA = '%s'",
                      stmt->remote_schema);
@@ -1845,7 +1845,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
             else
                 appendStringInfoString(&buf, ", ");
 
-            appendStringInfo(&buf, "%s", rv->relname);
+            appendStringInfo(&buf, "'%s'", rv->relname);
         }
         appendStringInfoChar(&buf, ')');
     }
