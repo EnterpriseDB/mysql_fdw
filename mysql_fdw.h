@@ -56,6 +56,13 @@ typedef struct mysql_opt
 	char          *svr_init_command;      /* MySQL SQL statement to execute when connecting to the MySQL server. */
 	unsigned long max_blob_size;          /* Max blob size to read without truncation */
 	bool          use_remote_estimate;    /* use remote estimate for rows */
+	
+	// SSL parameters; unused options may be given as NULL
+	char          *ssl_key;               /* MySQL SSL: path to the key file */
+	char          *ssl_cert;              /* MySQL SSL: path to the certificate file */
+	char          *ssl_ca;                /* MySQL SSL: path to the certificate authority file */
+	char          *ssl_capath;            /* MySQL SSL: path to a directory that contains trusted SSL CA certificates in PEM format */
+	char          *ssl_cipher;            /* MySQL SSL: list of permissible ciphers to use for SSL encryption */
 } mysql_opt;
 
 typedef struct mysql_column
@@ -138,6 +145,7 @@ void	((*_mysql_close)(MYSQL *sock));
 MYSQL_RES* ((*_mysql_store_result)(MYSQL *mysql));
 
 MYSQL	*((*_mysql_init)(MYSQL *mysql));
+bool ((*_mysql_ssl_set)(MYSQL *mysql, const char *key, const char *cert, const char *ca, const char *capath, const char *cipher));
 MYSQL	*((*_mysql_real_connect)(MYSQL *mysql,
 								const char *host,
 								const char *user,
@@ -146,6 +154,10 @@ MYSQL	*((*_mysql_real_connect)(MYSQL *mysql,
 								unsigned int port,
 								const char *unix_socket,
 								unsigned long clientflag));
+
+const char *((*_mysql_get_host_info)(MYSQL *mysql));
+const char *((*_mysql_get_server_info)(MYSQL *mysql));
+int ((*_mysql_get_proto_info)(MYSQL *mysql));
 
 unsigned int ((*_mysql_stmt_errno)(MYSQL_STMT *stmt));
 unsigned int ((*_mysql_errno)(MYSQL *mysql));
@@ -170,7 +182,10 @@ extern void mysql_deparse_analyze(StringInfo buf, char *dbname, char *relname);
 
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt);
-MYSQL *mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *svr_database, int svr_port, bool svr_sa, char *svr_init_command);
+MYSQL *mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *svr_database,
+							 int svr_port, bool svr_sa, char *svr_init_command,
+							 char *ssl_key, char *ssl_cert, char *ssl_ca, char *ssl_capath,
+							 char *ssl_cipher);
 void  mysql_cleanup_connection(void);
 void mysql_rel_connection(MYSQL *conn);
 #endif /* MYSQL_FDW_H */

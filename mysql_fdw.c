@@ -205,6 +205,7 @@ mysql_load_library(void)
 	_mysql_free_result = dlsym(mysql_dll_handle, "mysql_free_result");
 	_mysql_error = dlsym(mysql_dll_handle, "mysql_error");
 	_mysql_options = dlsym(mysql_dll_handle, "mysql_options");
+	_mysql_ssl_set = dlsym(mysql_dll_handle, "mysql_ssl_set");
 	_mysql_real_connect = dlsym(mysql_dll_handle, "mysql_real_connect");
 	_mysql_close = dlsym(mysql_dll_handle, "mysql_close");
 	_mysql_init = dlsym(mysql_dll_handle, "mysql_init");
@@ -214,7 +215,10 @@ mysql_load_library(void)
 	_mysql_errno = dlsym(mysql_dll_handle, "mysql_errno");
 	_mysql_num_fields = dlsym(mysql_dll_handle, "mysql_num_fields");
 	_mysql_num_rows = dlsym(mysql_dll_handle, "mysql_num_rows");
-
+	_mysql_get_host_info = dlsym(mysql_dll_handle, "mysql_get_host_info");
+	_mysql_get_server_info = dlsym(mysql_dll_handle, "mysql_get_server_info");
+	_mysql_get_proto_info = dlsym(mysql_dll_handle, "mysql_get_proto_info");
+	
 	if (_mysql_stmt_bind_param == NULL ||
 		_mysql_stmt_bind_result == NULL ||
 		_mysql_stmt_init == NULL ||
@@ -232,6 +236,7 @@ mysql_load_library(void)
 		_mysql_free_result == NULL ||
 		_mysql_error == NULL ||
 		_mysql_options == NULL ||
+		_mysql_ssl_set == NULL ||
 		_mysql_real_connect == NULL ||
 		_mysql_close == NULL ||
 		_mysql_init == NULL ||
@@ -240,7 +245,10 @@ mysql_load_library(void)
 		_mysql_stmt_errno == NULL ||
 		_mysql_errno == NULL ||
 		_mysql_num_fields == NULL ||
-		_mysql_num_rows == NULL)
+		_mysql_num_rows == NULL ||
+		_mysql_get_host_info == NULL ||
+		_mysql_get_server_info == NULL ||
+		_mysql_get_proto_info == NULL)
 			return false;
 	return true;
 }
