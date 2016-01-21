@@ -153,8 +153,8 @@ The following parameters need to supplied while creating user mapping.
 
 Contributing
 ------------
-If you experince any bug and have a fix for that, or have a new idea, send the detail along with the patch directly to mysql_fdw @ enterprisedb.com.
-Before submitting a bugfix or new feature, please read the [contributing guidlines][4].
+If you experince any bug and have a fix for that, or have a new idea, create a ticket on github page Before creating
+a pull request please read the [contributing guidlines][4].
 
 Support
 -------
@@ -163,6 +163,70 @@ This project will be modified to maintain compatibility with new PostgreSQL rele
 
 As with many open source projects, you may be able to obtain support via the public mailing list (mysql_fdw @ enterprisedb.com).
 If you require commercial support, please contact the EnterpriseDB sales team, or check whether your existing PostgreSQL support provider can also support mysql_fdw.
+
+Changelog
+---------
+
+Version 2.0.1
+-------------
+The following features are added as part of this mysql_fdw release :
+
+1) Support for PostgreSQL 9.5.
+
+2) `IMPORT FOREIGN SCHEMA` support. Now mysql_fdw can use the import foreign schema functionality to import the remote server schema
+metadata in PostgreSQL. (pull request #62)
+
+3) DML support for binary data. Binary data (longblob) in MySQL can mapped to PostgreSQL's bytea datatype. (#66)
+
+4) Support and map the MySQL datatype 'mediumblob' to BYTEA in PostgreSQL. (pull request #82)
+
+5) Support for JSON data type. (#58)
+
+6) Added MariaDB client library compatibility. (pull request #59)
+
+7) Added init_command server option which is used as MYSQL_INIT_COMMAND and may be used as OPTION in CREATE SERVER statement.
+
+8) Introduced new server option "use_remote_estimate". (#75)
+
+A new foreign server option "use_remote_estimate" is
+added. If this option is true for a server then server gets the
+number of rows from remote MySQL server. Server issues
+an "EXPLAIN" call for the query to remote MySQL server and
+gets the rows column and filtered column. Using the rows
+and filtered column, it calculates the actual number of rows for
+the query.
+
+9) Adding mysql regression's init script.
+
+10) Script create database and all the required table in MySQL's database. Script need to be run before running the regression.
+
+11) Enable / Disable secure authentication by using MYSQL option flag MYSQL_SECURE_AUTH. By default secure authentication is true. This option is
+added for legacy systems which does not support secure authentication. (#39)
+
+
+The following bug fixes are done as part of this mysql_fdw release:
+
+
+1) Fix IMPORT FOREIGN SCHEMA issues with LIMIT/EXCLUDE (pull request #84)
+
+2) Wrapped table names for LIMIT/EXCLUDE in single quotes so these keywords can be used as table names.
+
+3) Modified foreign schema query to use null-safe equals operator
+
+4) Don't send "E" for regular expression. This is needed so regular expressions can work properly. (#77)
+
+5) Builtin functions have different names in PostgreSQL and MySQL. Current implementation is for translating PostgreSQL's
+btrim to MySQL' trim. To do the translation mysql_deparse_func_expr function performs the replacement. (#70)
+
+6) Don't quote functions in WHERE clause while push down to remote server. The mysql server doesn't execute them as a function if they functions
+names are quoted. (#42)
+
+7) Don't push WHERE clause in case of PARAM value. Since the param values are not available at the remote server, this ends up causing an error. (#44)
+
+8) Added a check, that forces that the first column of MySQL table must have a unique constraint. (#45)
+
+9) Improvements to pattern matching algorithm
+
 
 
 License
