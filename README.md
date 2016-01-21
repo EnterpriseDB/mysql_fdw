@@ -167,7 +167,7 @@ If you require commercial support, please contact the EnterpriseDB sales team, o
 Changelog
 ---------
 
-Version 2.0.1
+Version 2.1.0
 -------------
 The following features are added as part of this mysql_fdw release :
 
