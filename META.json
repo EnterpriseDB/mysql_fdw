@@ -2,7 +2,7 @@
    "name": "mysql_fdw",
    "abstract": "MySQL FDW for PostgreSQL 9.3+",
    "description": "This extension implements a Foreign Data Wrapper for MySQL. It is supported on PostgreSQL 9.3 and above.",
-   "version": "2.0.1",
+   "version": "2.1.0",
    "maintainer": [
       "mysql_fdw@enterprisedb.com"
    ],
@@ -12,7 +12,7 @@
          "abstract": "MySQL FDW for PostgreSQL 9.3+",
          "file": "mysql_fdw--1.0.sql",
          "docfile": "README.md",
-         "version": "2.0.1"
+         "version": "2.1.0"
       }
    },
    "prereqs": {
