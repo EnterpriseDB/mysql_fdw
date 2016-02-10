@@ -71,6 +71,11 @@ static struct MySQLFdwOption valid_options[] =
 	{ "secure_auth",    ForeignServerRelationId },
 	{ "max_blob_size",  ForeignTableRelationId },
 	{ "use_remote_estimate",    ForeignServerRelationId },
+	{ "ssl_key",        ForeignServerRelationId },
+	{ "ssl_cert",       ForeignServerRelationId },
+	{ "ssl_ca",         ForeignServerRelationId },
+	{ "ssl_capath",     ForeignServerRelationId },
+	{ "ssl_cipher",     ForeignServerRelationId },
 
 	/* Sentinel */
 	{ NULL,			InvalidOid }
@@ -225,6 +230,21 @@ mysql_get_options(Oid foreignoid)
 
 		if (strcmp(def->defname, "use_remote_estimate") == 0)
 			opt->use_remote_estimate = defGetBoolean(def);
+		
+		if (strcmp(def->defname, "ssl_key") == 0)
+			opt->ssl_key = defGetString(def);
+
+		if (strcmp(def->defname, "ssl_cert") == 0)
+			opt->ssl_cert = defGetString(def);
+
+		if (strcmp(def->defname, "ssl_ca") == 0)
+			opt->ssl_ca = defGetString(def);
+
+		if (strcmp(def->defname, "ssl_capath") == 0)
+			opt->ssl_capath = defGetString(def);
+
+		if (strcmp(def->defname, "ssl_cipher") == 0)
+			opt->ssl_cipher = defGetString(def);
 
 	}
 	/* Default values, if required */

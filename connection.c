@@ -94,7 +94,20 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 	}
 	if (entry->conn == NULL)
 	{
-		entry->conn = mysql_connect(opt->svr_address, opt->svr_username, opt->svr_password, opt->svr_database, opt->svr_port, opt->svr_sa, opt->svr_init_command);
+		entry->conn = mysql_connect(
+			opt->svr_address,
+			opt->svr_username,
+			opt->svr_password,
+			opt->svr_database,
+			opt->svr_port,
+			opt->svr_sa,
+			opt->svr_init_command,
+			opt->ssl_key,
+			opt->ssl_cert,
+			opt->ssl_ca,
+			opt->ssl_capath,
+			opt->ssl_cipher
+		);
 		elog(DEBUG3, "new mysql_fdw connection %p for server \"%s\"",
 			 entry->conn, server->servername);
 	}
@@ -157,7 +170,19 @@ mysql_rel_connection(MYSQL *conn)
 
 
 MYSQL*
-mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *svr_database, int svr_port, bool svr_sa, char *svr_init_command)
+mysql_connect(
+	char *svr_address,
+	char *svr_username,
+	char *svr_password,
+	char *svr_database,
+	int svr_port,
+	bool svr_sa,
+	char *svr_init_command,
+	char *ssl_key,
+	char *ssl_cert,
+	char *ssl_ca,
+	char *ssl_capath,
+	char *ssl_cipher)
 {
 	MYSQL *conn = NULL;
 	my_bool secure_auth = svr_sa;
@@ -179,10 +204,25 @@ mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *s
 	if (svr_init_command != NULL)
         	_mysql_options(conn, MYSQL_INIT_COMMAND, svr_init_command);
 
+	_mysql_ssl_set(conn, ssl_key, ssl_cert, ssl_ca, ssl_capath, ssl_cipher);
+   
 	if (!_mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
 			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
 			errmsg("failed to connect to MySQL: %s", _mysql_error(conn))
 			));
+
+	// useful for verifying that the connection's secured
+	elog(INFO,
+		"Successfully connected to MySQL database %s "
+		"at server %s with cipher %s "
+		"(server version: %s, protocol version: %d) ",
+		(svr_database != NULL) ? svr_database : "<none>",
+		_mysql_get_host_info (conn),
+		(ssl_cipher != NULL) ?  ssl_cipher : "<none>",
+		_mysql_get_server_info (conn),
+		_mysql_get_proto_info (conn)
+	);
+
 	return conn;
 }
