@@ -1916,6 +1916,10 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 
             attname = row[1];
             typename = row[2];
+
+		if (strcmp(typename,"char") == 0 || strcmp(typename,"varchar") == 0)
+		typename = row[3];
+
             typedfn = row[3];
             attnotnull = row[4];
             attdefault = row[5] == NULL ? (char *) NULL : row[5];
