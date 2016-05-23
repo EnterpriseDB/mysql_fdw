@@ -4,9 +4,7 @@ MySQL Foreign Data Wrapper for PostgreSQL
 This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for
 [MySQL][1].
 
-Please note that this version of mysql_fdw only works with PostgreSQL Version 9.3 and greater, for previous version support please download from PG_92 branch.
-
-We have added a number of significant enhancements to the mysql fdw, some of the major enhancements are listed in the “enhancements” section of this document.
+Please note that this version of mysql_fdw works with PostgreSQL and EDB Postgres Advanced Server 9.3, 9.4 and 9.5. Work is underway for certification with 9.6Beta.
 
 1. Installation
 ---------------
@@ -158,10 +156,8 @@ a pull request please read the [contributing guidlines][4].
 
 Support
 -------
+This project will be modified to maintain compatibility with new PostgreSQL and EDB Postgres Advanced Server releases.
 
-This project will be modified to maintain compatibility with new PostgreSQL releases. 
-
-As with many open source projects, you may be able to obtain support via the public mailing list (mysql_fdw @ enterprisedb.com).
 If you require commercial support, please contact the EnterpriseDB sales team, or check whether your existing PostgreSQL support provider can also support mysql_fdw.
 
 Changelog
@@ -231,7 +227,7 @@ names are quoted. (#42)
 
 License
 -------
-Copyright (c) 2011 - 2014, EnterpriseDB Corporation
+Copyright (c) 2011 - 2016, EnterpriseDB Corporation
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written agreement is
