@@ -737,7 +737,11 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 
 	_mysql_query(conn, "SET sql_mode='ANSI_QUOTES'");
 
+#if PG_VERSION_NUM >= 90600
+	pull_varattnos((Node *) baserel->reltarget->exprs, baserel->relid, &attrs_used);
+#else
 	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid, &attrs_used);
+#endif
 
 	foreach(lc, baserel->baserestrictinfo)
 	{
@@ -749,7 +753,11 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntablei
 			fpinfo->local_conds = lappend(fpinfo->local_conds, ri);
 	}
 
+#if PG_VERSION_NUM >= 90600
+	pull_varattnos((Node *) baserel->reltarget->exprs, baserel->relid, &fpinfo->attrs_used);
+#else
 	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid, &fpinfo->attrs_used);
+#endif
 	foreach(lc, fpinfo->local_conds)
 	{
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
@@ -948,6 +956,9 @@ mysqlGetForeignPaths(PlannerInfo *root,RelOptInfo *baserel,Oid foreigntableid)
 	/* Create a ForeignPath node and add it as only possible path */
 	add_path(baserel, (Path *)
 			 create_foreignscan_path(root, baserel,
+#if PG_VERSION_NUM >= 90600
+									 NULL,		/* default pathtarget */
+#endif
 									 baserel->rows,
 									 startup_cost,
 									 total_cost,
