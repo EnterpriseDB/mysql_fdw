@@ -17,6 +17,8 @@
 
 #include "mysql_fdw.h"
 
+#include "pgtime.h"
+
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/sysattr.h"
@@ -27,6 +29,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "datatype/timestamp.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/var.h"
@@ -34,6 +37,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "utils/timestamp.h"
 
 
 static char *mysql_quote_identifier(const char *s, char q);
@@ -103,7 +107,15 @@ static void mysql_deparse_target_list(StringInfo buf, PlannerInfo *root, Index r
 					Bitmapset *attrs_used, List **retrieved_attrs);
 static void mysql_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *root);
 
+/*
+ * Functions to construct string representation of a specific types.
+ */
+static void deparse_interval(StringInfo buf, Datum datum);
 
+/*
+ * Local variables.
+ */
+static char *cur_opname = NULL;
 
 /*
  * Append remote name of specified foreign table to buf.
@@ -522,6 +534,60 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 	}
 }
 
+/*
+ * Deparse Interval type into MySQL Interval representation.
+ */
+static void
+deparse_interval(StringInfo buf, Datum datum)
+{
+	struct pg_tm tm;
+	fsec_t		fsec;
+	bool		is_first = true;
+
+#define append_interval(expr, unit) \
+do { \
+	if (!is_first) \
+		appendStringInfo(buf, " %s ", cur_opname); \
+	appendStringInfo(buf, "INTERVAL %d %s", expr, unit); \
+	is_first = false; \
+} while (0)
+
+	/* Check saved opname. It could be only "+" and "-" */
+	Assert(cur_opname);
+
+	if (interval2tm(*DatumGetIntervalP(datum), &tm, &fsec) != 0)
+		elog(ERROR, "could not convert interval to tm");
+
+	if (tm.tm_year > 0)
+		append_interval(tm.tm_year, "YEAR");
+
+	if (tm.tm_mon > 0)
+		append_interval(tm.tm_mon, "MONTH");
+
+	if (tm.tm_mday > 0)
+		append_interval(tm.tm_mday, "DAY");
+
+	if (tm.tm_hour > 0)
+		append_interval(tm.tm_hour, "HOUR");
+
+	if (tm.tm_min > 0)
+		append_interval(tm.tm_min, "MINUTE");
+
+	if (tm.tm_sec > 0)
+		append_interval(tm.tm_sec, "SECOND");
+
+	if (fsec > 0)
+	{
+		if (!is_first)
+			appendStringInfo(buf, " %s ", cur_opname);
+#ifdef HAVE_INT64_TIMESTAMP
+		appendStringInfo(buf, "INTERVAL %d MICROSECOND", fsec);
+#else
+		appendStringInfo(buf, "INTERVAL %f MICROSECOND", fsec);
+#endif
+	}
+}
+
 
 /*
  * deparse remote UPDATE statement
@@ -650,7 +716,6 @@ mysql_deparse_const(Const *node, deparse_expr_cxt *context)
 
 	getTypeOutputInfo(node->consttype,
 					  &typoutput, &typIsVarlena);
-	extval = OidOutputFunctionCall(typoutput, node->constvalue);
 
 	switch (node->consttype)
 	{
@@ -662,6 +727,7 @@ mysql_deparse_const(Const *node, deparse_expr_cxt *context)
 		case FLOAT8OID:
 		case NUMERICOID:
 			{
+				extval = OidOutputFunctionCall(typoutput, node->constvalue);
 				/*
 				 * No need to quote unless it's a special value such as 'NaN'.
 				 * See comments in get_const_expr().
@@ -679,15 +745,21 @@ mysql_deparse_const(Const *node, deparse_expr_cxt *context)
 			break;
 		case BITOID:
 		case VARBITOID:
+			extval = OidOutputFunctionCall(typoutput, node->constvalue);
 			appendStringInfo(buf, "B'%s'", extval);
 			break;
 		case BOOLOID:
+			extval = OidOutputFunctionCall(typoutput, node->constvalue);
 			if (strcmp(extval, "t") == 0)
 				appendStringInfoString(buf, "true");
 			else
 				appendStringInfoString(buf, "false");
 			break;
+		case INTERVALOID:
+			deparse_interval(buf, node->constvalue);
+			break;
 		default:
+			extval = OidOutputFunctionCall(typoutput, node->constvalue);
 			mysql_deparse_string_literal(buf, extval);
 			break;
 	}
@@ -888,10 +960,8 @@ mysql_deparse_op_expr(OpExpr *node, deparse_expr_cxt *context)
 static void
 mysql_deparse_operator_name(StringInfo buf, Form_pg_operator opform)
 {
-	char *opname;
-
 	/* opname is not a SQL identifier, so we should not quote it. */
-	opname = NameStr(opform->oprname);
+	cur_opname = NameStr(opform->oprname);
 
 	/* Print schema name only if it's not pg_catalog */
 	if (opform->oprnamespace != PG_CATALOG_NAMESPACE)
@@ -901,45 +971,45 @@ mysql_deparse_operator_name(StringInfo buf, Form_pg_operator opform)
 		opnspname = get_namespace_name(opform->oprnamespace);
 		/* Print fully qualified operator name. */
 		appendStringInfo(buf, "OPERATOR(%s.%s)",
-						 mysql_quote_identifier(opnspname, '`'), opname);
+						 mysql_quote_identifier(opnspname, '`'), cur_opname);
 	}
 	else
 	{
-		if (strcmp(opname, "~~") == 0)
+		if (strcmp(cur_opname, "~~") == 0)
 		{
 			appendStringInfoString(buf, "LIKE BINARY");
 		}
-		else if (strcmp(opname, "~~*") == 0)
+		else if (strcmp(cur_opname, "~~*") == 0)
 		{
 			appendStringInfoString(buf, "LIKE");
 		}
-		else if (strcmp(opname, "!~~") == 0)
+		else if (strcmp(cur_opname, "!~~") == 0)
 		{
 			appendStringInfoString(buf, "NOT LIKE BINARY");
 		}
-		else if (strcmp(opname, "!~~*") == 0)
+		else if (strcmp(cur_opname, "!~~*") == 0)
 		{
 			appendStringInfoString(buf, "NOT LIKE");
 		}
-		else if (strcmp(opname, "~") == 0)
+		else if (strcmp(cur_opname, "~") == 0)
 		{
 			appendStringInfoString(buf, "REGEXP BINARY");
 		}
-		else if (strcmp(opname, "~*") == 0)
+		else if (strcmp(cur_opname, "~*") == 0)
 		{
 			appendStringInfoString(buf, "REGEXP");
 		}
-		else if (strcmp(opname, "!~") == 0)
+		else if (strcmp(cur_opname, "!~") == 0)
 		{
 			appendStringInfoString(buf, "NOT REGEXP BINARY");
 		}
-		else if (strcmp(opname, "!~*") == 0)
+		else if (strcmp(cur_opname, "!~*") == 0)
 		{
 			appendStringInfoString(buf, "NOT REGEXP");
 		}
 		else
 		{
-			appendStringInfoString(buf, opname);
+			appendStringInfoString(buf, cur_opname);
 		}
 	}
 }
