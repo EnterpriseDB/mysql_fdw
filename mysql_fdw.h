@@ -96,6 +96,13 @@ typedef struct MySQLFdwExecState
 	Relation        rel;                /* relcache entry for the foreign table */
 	List            *retrieved_attrs;   /* list of target attribute numbers */
 
+	bool		cursor_exists;	    /* have we created the cursor? */
+	int		numParams;	    /* number of parameters passed to query */
+	FmgrInfo	*param_flinfo;	    /* output conversion functions for them */
+	List		*param_exprs;	    /* executable expressions for param values */
+	const char	**param_values;	    /* textual values of query parameters */
+	Oid		*param_types;	    /* type of query parameters */
+
 	int             p_nums;             /* number of parameters to transmit */
 	FmgrInfo        *p_flinfo;          /* output conversion functions for them */
 

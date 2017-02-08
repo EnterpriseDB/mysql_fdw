@@ -144,6 +144,23 @@ static List *mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverO
 
 static bool mysql_is_column_unique(Oid foreigntableid);
 
+static void prepare_query_params(PlanState *node,
+					 List *fdw_exprs,
+					 int numParams,
+					 FmgrInfo **param_flinfo,
+					 List **param_exprs,
+					 const char ***param_values,
+					 Oid **param_types);
+
+static void process_query_params(ExprContext *econtext,
+					 FmgrInfo *param_flinfo,
+					 List *param_exprs,
+					 const char **param_values,
+					 MYSQL_BIND **mysql_bind_buf,
+					 Oid *param_types);
+
+static void create_cursor(ForeignScanState *node);
+
 void* mysql_dll_handle = NULL;
 static int wait_timeout = WAIT_TIMEOUT;
 static int interactive_timeout = INTERACTIVE_TIMEOUT;
@@ -364,6 +381,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	UserMapping       *user;
 	ForeignTable      *table;
 	char              timeout[255];
+	int               numParams;
 
 	/*
 	 * We'll save private state in node->fdw_state.
@@ -397,6 +415,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	festate->query = strVal(list_nth(fsplan->fdw_private, 0));
 	festate->retrieved_attrs = list_nth(fsplan->fdw_private, 1);
 	festate->conn = conn;
+	festate->cursor_exists = false;
 
 	festate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
 											  "mysql_fdw temporary data",
@@ -463,6 +482,25 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 			break;
 		}
 	}
+
+	/* Prepare for output conversion of parameters used in remote query. */
+	numParams = list_length(fsplan->fdw_exprs);
+	festate->numParams = numParams;
+	if (numParams > 0)
+		prepare_query_params((PlanState *) node,
+							 fsplan->fdw_exprs,
+							 numParams,
+							 &festate->param_flinfo,
+							 &festate->param_exprs,
+							 &festate->param_values,
+							 &festate->param_types);
+
+	/*
+	 * If this is the first call after Begin or ReScan, we need to create the
+	 * cursor on the remote side.
+	 */
+	if (!festate->cursor_exists)
+		create_cursor(node);
 
     /* int column_count = mysql_num_fields(festate->meta); */
 
@@ -991,6 +1029,7 @@ mysqlGetForeignPlan(
 	Index          scan_relid = baserel->relid;
 	List           *fdw_private;
 	List           *local_exprs = NULL;
+	List           *remote_exprs = NULL;
 	List           *params_list = NULL;
 	List           *remote_conds = NIL;
 
@@ -1040,11 +1079,17 @@ mysqlGetForeignPlan(
 			continue;
 
 		if (list_member_ptr(fpinfo->remote_conds, rinfo))
+		{
 			remote_conds = lappend(remote_conds, rinfo);
+			remote_exprs = lappend(remote_exprs, rinfo->clause);
+		}
 		else if (list_member_ptr(fpinfo->local_conds, rinfo))
 			local_exprs = lappend(local_exprs, rinfo->clause);
 		else if (is_foreign_expr(root, baserel, rinfo->clause))
+		{
 			remote_conds = lappend(remote_conds, rinfo);
+			remote_exprs = lappend(remote_exprs, rinfo->clause);
+		}
 		else
 			local_exprs = lappend(local_exprs, rinfo->clause);
 	}
@@ -1986,3 +2031,138 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
     return commands;
 }
 #endif
+
+/*
+ * Prepare for processing of parameters used in remote query.
+ */
+static void
+prepare_query_params(PlanState *node,
+					 List *fdw_exprs,
+					 int numParams,
+					 FmgrInfo **param_flinfo,
+					 List **param_exprs,
+					 const char ***param_values,
+					 Oid **param_types)
+{
+	int			i;
+	ListCell   *lc;
+
+	Assert(numParams > 0);
+
+	/* Prepare for output conversion of parameters used in remote query. */
+	*param_flinfo = (FmgrInfo *) palloc0(sizeof(FmgrInfo) * numParams);
+
+	*param_types = (Oid *) palloc0(sizeof(Oid) * numParams);
+
+	i = 0;
+	foreach(lc, fdw_exprs)
+	{
+		Node	   *param_expr = (Node *) lfirst(lc);
+		Oid			typefnoid;
+		bool		isvarlena;
+
+		*param_types[i] = exprType(param_expr);
+
+		getTypeOutputInfo(exprType(param_expr), &typefnoid, &isvarlena);
+		fmgr_info(typefnoid, &(*param_flinfo)[i]);
+		i++;
+	}
+
+	/*
+	 * Prepare remote-parameter expressions for evaluation.  (Note: in
+	 * practice, we expect that all these expressions will be just Params, so
+	 * we could possibly do something more efficient than using the full
+	 * expression-eval machinery for this.  But probably there would be little
+	 * benefit, and it'd require postgres_fdw to know more than is desirable
+	 * about Param evaluation.)
+	 */
+	*param_exprs = (List *) ExecInitExpr((Expr *) fdw_exprs, node);
+
+	/* Allocate buffer for text form of query parameters. */
+	*param_values = (const char **) palloc0(numParams * sizeof(char *));
+}
+
+/*
+ * Construct array of query parameter values in text format.
+ */
+static void
+process_query_params(ExprContext *econtext,
+					 FmgrInfo *param_flinfo,
+					 List *param_exprs,
+					 const char **param_values,
+					 MYSQL_BIND **mysql_bind_buf,
+					 Oid *param_types)
+{
+//	int			nestlevel;
+	int			i;
+	ListCell   *lc;
+
+//	nestlevel = set_transmission_modes();
+
+	i = 0;
+	foreach(lc, param_exprs)
+	{
+		ExprState  *expr_state = (ExprState *) lfirst(lc);
+		Datum		expr_value;
+		bool		isNull;
+
+		/* Evaluate the parameter expression */
+		expr_value = ExecEvalExpr(expr_state, econtext, &isNull, NULL);
+
+		mysql_bind_sql_var(param_types[i], i, expr_value, *mysql_bind_buf, &isNull);
+
+		/*
+		 * Get string representation of each parameter value by invoking
+		 * type-specific output function, unless the value is null.
+		 */
+		if (isNull)
+			param_values[i] = NULL;
+		else
+			param_values[i] = OutputFunctionCall(&param_flinfo[i], expr_value);
+		i++;
+	}
+
+//	reset_transmission_modes(nestlevel);
+}
+
+/*
+ * Create cursor for node's query with current parameter values.
+ */
+static void
+create_cursor(ForeignScanState *node)
+{
+	MySQLFdwExecState   *festate = (MySQLFdwExecState *) node->fdw_state;
+	ExprContext *econtext = node->ss.ps.ps_ExprContext;
+	int			numParams = festate->numParams;
+	const char **values = festate->param_values;
+	MYSQL_BIND *mysql_bind_buffer = NULL;
+
+	/*
+	 * Construct array of query parameter values in text format.  We do the
+	 * conversions in the short-lived per-tuple context, so as not to cause a
+	 * memory leak over repeated scans.
+	 */
+	if (numParams > 0)
+	{
+		MemoryContext oldcontext;
+
+		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+
+		mysql_bind_buffer = (MYSQL_BIND*) palloc0(sizeof(MYSQL_BIND) * numParams);
+
+		process_query_params(econtext,
+							 festate->param_flinfo,
+							 festate->param_exprs,
+							 values,
+							 &mysql_bind_buffer,
+							 festate->param_types);
+
+		_mysql_stmt_bind_param(festate->stmt, mysql_bind_buffer);
+
+		/* Mark the cursor as created, and show no tuples have been retrieved */
+		festate->cursor_exists = true;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+}
+

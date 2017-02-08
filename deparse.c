@@ -1328,8 +1328,17 @@ foreign_expr_walker(Node *node,
 			break;
 		case T_Param:
 			{
-				/* We are not supporting param push down*/
-				return false;
+				Param	   *p = (Param *) node;
+
+				/*
+				 * Collation rule is same as for Consts and non-foreign Vars.
+				 */
+				collation = p->paramcollid;
+				if (collation == InvalidOid ||
+					collation == DEFAULT_COLLATION_OID)
+					state = FDW_COLLATE_NONE;
+				else
+					state = FDW_COLLATE_UNSAFE;
 			}
 			break;
 		case T_ArrayRef:
