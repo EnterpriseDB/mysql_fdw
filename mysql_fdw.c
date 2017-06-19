@@ -2107,8 +2107,11 @@ process_query_params(ExprContext *econtext,
 		bool		isNull;
 
 		/* Evaluate the parameter expression */
+#if PG_VERSION_NUM >= 100000
+		expr_value = ExecEvalExpr(expr_state, econtext, &isNull);
+#else
 		expr_value = ExecEvalExpr(expr_state, econtext, &isNull, NULL);
-
+#endif
 		mysql_bind_sql_var(param_types[i], i, expr_value, *mysql_bind_buf, &isNull);
 
 		/*
