@@ -591,7 +591,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 				mysql_rel_connection(festate->conn);
 				ereport(ERROR,
 							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-							errmsg(" 7 failed to execute the MySQL query: \n%s", err)));
+							errmsg("failed to execute the MySQL query: \n%s", err)));
 			}
 			break;
 			case CR_COMMANDS_OUT_OF_SYNC:
@@ -731,7 +731,38 @@ mysqlEndForeignScan(ForeignScanState *node)
 static void
 mysqlReScanForeignScan(ForeignScanState *node)
 {
-	/* TODO: Need to implement rescan */
+        MySQLFdwExecState  *festate = (MySQLFdwExecState *) node->fdw_state;
+	if (_mysql_stmt_execute(festate->stmt) != 0)
+	{
+		switch(_mysql_stmt_errno(festate->stmt))
+		{
+			case CR_NO_ERROR:
+				break;
+
+			case CR_OUT_OF_MEMORY:
+			case CR_SERVER_GONE_ERROR:
+			case CR_SERVER_LOST:
+			{
+				char *err = pstrdup(_mysql_error(festate->conn));
+				mysql_rel_connection(festate->conn);
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_UNKNOWN_ERROR:
+			default:
+			{
+				char *err = pstrdup(_mysql_error(festate->conn));
+				ereport(ERROR,
+							(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+							errmsg("failed to execute the MySQL query: \n%s", err)));
+			}
+			break;
+		}
+	}
+        return;
 }
 
 /*
