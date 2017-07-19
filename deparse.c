@@ -758,6 +758,14 @@ mysql_deparse_const(Const *node, deparse_expr_cxt *context)
 		case INTERVALOID:
 			deparse_interval(buf, node->constvalue);
 			break;
+                case BYTEAOID:
+                        //the string for BYTEA always seems to be in the format "\\x##"
+                        //where # is a hex digit, Even if the value passed in is 'hi'::bytea
+                        //we will receive "\x6869". Making this assumption allows us to
+                        //quickly convert postgres escaped strings to mysql ones for comparison
+                        extval = OidOutputFunctionCall(typoutput, node->constvalue);
+                        appendStringInfo(buf, "X\'%s\'", extval + 2);
+                        break;			
 		default:
 			extval = OidOutputFunctionCall(typoutput, node->constvalue);
 			mysql_deparse_string_literal(buf, extval);
