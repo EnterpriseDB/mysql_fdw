@@ -94,7 +94,7 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 	}
 	if (entry->conn == NULL)
 	{
-		entry->conn = mysql_connect(
+		entry->conn = mysql_connect_fdw(
 			opt->svr_address,
 			opt->svr_username,
 			opt->svr_password,
@@ -170,7 +170,7 @@ mysql_rel_connection(MYSQL *conn)
 
 
 MYSQL*
-mysql_connect(
+mysql_connect_fdw(
 	char *svr_address,
 	char *svr_username,
 	char *svr_password,

@@ -189,7 +189,7 @@ extern void mysql_deparse_analyze(StringInfo buf, char *dbname, char *relname);
 
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt);
-MYSQL *mysql_connect(char *svr_address, char *svr_username, char *svr_password, char *svr_database,
+MYSQL *mysql_connect_fdw(char *svr_address, char *svr_username, char *svr_password, char *svr_database,
 							 int svr_port, bool svr_sa, char *svr_init_command,
 							 char *ssl_key, char *ssl_cert, char *ssl_ca, char *ssl_capath,
 							 char *ssl_cipher);
