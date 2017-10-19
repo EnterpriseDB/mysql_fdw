@@ -437,7 +437,6 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 		_mysql_query(festate->conn, timeout);
 	}
 
-	_mysql_query(festate->conn, "SET time_zone = '+00:00'");
 	_mysql_query(festate->conn, "SET sql_mode='ANSI_QUOTES'");
 
 
@@ -1490,7 +1489,6 @@ mysqlExecForeignInsert(EState *estate,
 
 	mysql_bind_buffer = (MYSQL_BIND*) palloc0(sizeof(MYSQL_BIND) * n_params);
 
-	_mysql_query(fmstate->conn, "SET time_zone = '+00:00'");
 	_mysql_query(fmstate->conn, "SET sql_mode='ANSI_QUOTES'");
 
 	foreach(lc, fmstate->retrieved_attrs)
