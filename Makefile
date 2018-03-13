@@ -16,7 +16,7 @@ MODULE_big = mysql_fdw
 OBJS = connection.o option.o deparse.o mysql_query.o mysql_fdw.o
 
 EXTENSION = mysql_fdw
-DATA = mysql_fdw--1.0.sql
+DATA = mysql_fdw--1.0.sql mysql_fdw--1.1.sql mysql_fdw--1.0--1.1.sql
 
 REGRESS = mysql_fdw
 

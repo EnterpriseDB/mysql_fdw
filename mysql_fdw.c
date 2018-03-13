@@ -80,6 +80,12 @@
 
 #define DEFAULTE_NUM_ROWS    1000
 
+/*
+ * In PG 9.5.1 the number will be 90501,
+ * our version is 2.4.0 so number will be 20400
+ */
+#define CODE_VERSION   20400
+
 PG_MODULE_MAGIC;
 
 
@@ -102,6 +108,7 @@ bool mysql_load_library(void);
 static void mysql_fdw_exit(int code, Datum arg);
 
 PG_FUNCTION_INFO_V1(mysql_fdw_handler);
+PG_FUNCTION_INFO_V1(mysql_fdw_version);
 
 /*
  * FDW callback routines
@@ -2198,3 +2205,8 @@ create_cursor(ForeignScanState *node)
 	}
 }
 
+Datum
+mysql_fdw_version(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT32(CODE_VERSION);
+}

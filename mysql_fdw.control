@@ -13,6 +13,6 @@
 ##########################################################################
 
 comment = 'Foreign data wrapper for querying a MySQL server'
-default_version = '1.0'
+default_version = '1.1'
 module_pathname = '$libdir/mysql_fdw'
 relocatable = true
