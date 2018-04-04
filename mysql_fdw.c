@@ -1908,6 +1908,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
                      "    WHEN c.DATA_TYPE = 'datetime' THEN 'timestamp'"
                      "    WHEN c.DATA_TYPE = 'longtext' THEN 'text'"
                      "    WHEN c.DATA_TYPE = 'mediumtext' THEN 'text'"
+                     "    WHEN c.DATA_TYPE = 'tinytext' THEN 'text'"
                      "    WHEN c.DATA_TYPE = 'blob' THEN 'bytea'"
                      "    WHEN c.DATA_TYPE = 'mediumblob' THEN 'bytea'"
                      "    ELSE c.DATA_TYPE"
