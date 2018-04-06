@@ -2112,7 +2112,11 @@ prepare_query_params(PlanState *node,
 	 * benefit, and it'd require postgres_fdw to know more than is desirable
 	 * about Param evaluation.)
 	 */
+#if PG_VERSION_NUM >= 100000
+	*param_exprs = (List *) ExecInitExprList(fdw_exprs, node);
+#else
 	*param_exprs = (List *) ExecInitExpr((Expr *) fdw_exprs, node);
+#endif
 
 	/* Allocate buffer for text form of query parameters. */
 	*param_values = (const char **) palloc0(numParams * sizeof(char *));
