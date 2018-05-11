@@ -67,6 +67,7 @@ The following parameters can be set on a MySQL foreign server object:
   * `host`: Address or hostname of the MySQL server. Defaults to `127.0.0.1`
   * `port`: Port number of the MySQL server. Defaults to `3306`
   * `secure_auth`: Enable or disable secure authentication. Default is `true`
+
 The following parameters can be set on a MySQL foreign table object:
 
   * `dbname`: Name of the MySQL database to query. This is a mandatory option.
