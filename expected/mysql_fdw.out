@@ -7,7 +7,6 @@ CREATE FOREIGN TABLE employee(emp_id int, emp_name text, emp_dept_id int) SERVER
 CREATE FOREIGN TABLE empdata(emp_id int, emp_dat bytea) SERVER mysql_svr OPTIONS(dbname 'testdb', table_name 'empdata');
 CREATE FOREIGN TABLE numbers(a int, b varchar(255)) SERVER mysql_svr OPTIONS (dbname 'testdb', table_name 'numbers');
 SELECT * FROM department LIMIT 10;
-INFO:  Successfully connected to MySQL database testdb at server 127.0.0.1 via TCP/IP with cipher <none> (server version: 5.7.17, protocol version: 10) 
  department_id | department_name 
 ---------------+-----------------
 (0 rows)
