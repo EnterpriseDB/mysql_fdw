@@ -185,7 +185,9 @@ mysql_connect(
 	char *ssl_cipher)
 {
 	MYSQL *conn = NULL;
+#if	MYSQL_VERSION_ID < 80000
 	my_bool secure_auth = svr_sa;
+#endif
 
 	/* Connect to the server */
 	conn = _mysql_init(NULL);
@@ -196,7 +198,9 @@ mysql_connect(
 			));
 
 	_mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
+#if MYSQL_VERSION_ID < 80000
 	_mysql_options(conn, MYSQL_SECURE_AUTH, &secure_auth);
+#endif
 
 	if (!svr_sa)
 		elog(WARNING, "MySQL secure authentication is off");
