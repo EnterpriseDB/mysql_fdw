@@ -25,6 +25,7 @@
 #undef list_delete
 #undef list_free
 
+#include "access/tupdesc.h"
 #include "foreign/foreign.h"
 #include "lib/stringinfo.h"
 #include "nodes/relation.h"
@@ -195,4 +196,9 @@ MYSQL *mysql_connect(char *svr_address, char *svr_username, char *svr_password, 
 							 char *ssl_cipher);
 void  mysql_cleanup_connection(void);
 void mysql_rel_connection(MYSQL *conn);
+
+#if PG_VERSION_NUM < 110000 /* TupleDescAttr is defined from PG version 11 */ 
+	#define TupleDescAttr(tupdesc, i) ((tupdesc)->attrs[(i)])
+#endif
+
 #endif /* MYSQL_FDW_H */
