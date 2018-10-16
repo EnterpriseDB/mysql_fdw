@@ -1930,6 +1930,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
                      "    WHEN c.DATA_TYPE = 'tinytext' THEN 'text'"
                      "    WHEN c.DATA_TYPE = 'blob' THEN 'bytea'"
                      "    WHEN c.DATA_TYPE = 'mediumblob' THEN 'bytea'"
+                     "    WHEN c.DATA_TYPE = 'longblob' THEN 'bytea'"
                      "    ELSE c.DATA_TYPE"
                      "  END,"
                      "  c.COLUMN_TYPE,"
