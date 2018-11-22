@@ -200,9 +200,9 @@ static int interactive_timeout = INTERACTIVE_TIMEOUT;
 bool
 mysql_load_library(void)
 {
-#if defined(__APPLE__) || defined(__FreeBSD__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__sun)
 	/*
-	 * Mac OS/BSD does not support RTLD_DEEPBIND, but it still
+	 * Mac OS/BSD/illumos does not support RTLD_DEEPBIND, but it still
 	 * works without the RTLD_DEEPBIND
 	 */
 	mysql_dll_handle = dlopen(_MYSQL_LIBNAME, RTLD_LAZY);
