@@ -2118,7 +2118,7 @@ prepare_query_params(PlanState *node,
 		Oid			typefnoid;
 		bool		isvarlena;
 
-		*param_types[i] = exprType(param_expr);
+		(*param_types)[i] = exprType(param_expr);
 
 		getTypeOutputInfo(exprType(param_expr), &typefnoid, &isvarlena);
 		fmgr_info(typefnoid, &(*param_flinfo)[i]);

@@ -76,12 +76,19 @@ $$ LANGUAGE plpgsql;
 
 SELECT test_param_where();
 
+create or replace function test_param_where2(integer, text) returns integer as '
+  select a from numbers where a=$1 and b=$2;
+' LANGUAGE sql;
+
+SELECT test_param_where2(1, 'One');
+
 DELETE FROM employee;
 DELETE FROM department;
 DELETE FROM empdata;
 DELETE FROM numbers;
 
 DROP FUNCTION test_param_where();
+DROP FUNCTION test_param_where2(integer, text);
 DROP FOREIGN TABLE numbers;
 
 DROP FOREIGN TABLE department;

@@ -353,11 +353,21 @@ NOTICE:  Found number Nine
  
 (1 row)
 
+create or replace function test_param_where2(integer, text) returns integer as '
+  select a from numbers where a=$1 and b=$2;
+' LANGUAGE sql;
+SELECT test_param_where2(1, 'One');
+ test_param_where2 
+-------------------
+                 1
+(1 row)
+
 DELETE FROM employee;
 DELETE FROM department;
 DELETE FROM empdata;
 DELETE FROM numbers;
 DROP FUNCTION test_param_where();
+DROP FUNCTION test_param_where2(integer, text);
 DROP FOREIGN TABLE numbers;
 DROP FOREIGN TABLE department;
 DROP FOREIGN TABLE employee;
