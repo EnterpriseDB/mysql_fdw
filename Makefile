@@ -41,21 +41,13 @@ endif
 
 PG_CPPFLAGS += -D _MYSQL_LIBNAME=\"lib$(MYSQL_LIB)$(DLSUFFIX)\"
 
-ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
+
 ifndef MAJORVERSION
 MAJORVERSION := $(basename $(VERSION))
 endif
 ifeq (,$(findstring $(MAJORVERSION), 9.3 9.4 9.5 9.6 10 11))
 $(error PostgreSQL 9.3, 9.4, 9.5, 9.6 10 or 11 is required to compile this extension)
 endif
-
-else
-subdir = contrib/mysql_fdw
-top_builddir = ../..
-include $(top_builddir)/src/Makefile.global
-include $(top_srcdir)/contrib/contrib-global.mk
-endif
-
