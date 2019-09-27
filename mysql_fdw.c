@@ -89,9 +89,9 @@
 
 /*
  * In PG 9.5.1 the number will be 90501,
- * our version is 2.5.1 so number will be 20501
+ * our version is 2.5.2 so number will be 20502
  */
-#define CODE_VERSION   20501
+#define CODE_VERSION   20502
 
 PG_MODULE_MAGIC;
 
