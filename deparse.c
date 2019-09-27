@@ -32,7 +32,11 @@
 #include "datatype/timestamp.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
-#include "optimizer/var.h"
+#if PG_VERSION_NUM < 120000
+	#include "optimizer/var.h"
+#else
+	#include "optimizer/optimizer.h"
+#endif
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -87,7 +91,7 @@ static void deparseExpr(Expr *expr, deparse_expr_cxt *context);
 static void mysql_deparse_var(Var *node, deparse_expr_cxt *context);
 static void mysql_deparse_const(Const *node, deparse_expr_cxt *context);
 static void mysql_deparse_param(Param *node, deparse_expr_cxt *context);
-static void mysql_deparse_array_ref(ArrayRef *node, deparse_expr_cxt *context);
+static void mysql_deparse_array_ref(SubscriptingRef *node, deparse_expr_cxt *context);
 static void mysql_deparse_func_expr(FuncExpr *node, deparse_expr_cxt *context);
 static void mysql_deparse_op_expr(OpExpr *node, deparse_expr_cxt *context);
 static void mysql_deparse_operator_name(StringInfo buf, Form_pg_operator opform);
@@ -504,8 +508,8 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 		case T_Param:
 			mysql_deparse_param((Param *) node, context);
 			break;
-		case T_ArrayRef:
-			mysql_deparse_array_ref((ArrayRef *) node, context);
+		case T_SubscriptingRef:
+			mysql_deparse_array_ref((SubscriptingRef *) node, context);
 			break;
 		case T_FuncExpr:
 			mysql_deparse_func_expr((FuncExpr *) node, context);
@@ -821,7 +825,7 @@ mysql_deparse_param(Param *node, deparse_expr_cxt *context)
  * Deparse an array subscript expression.
  */
 static void
-mysql_deparse_array_ref(ArrayRef *node, deparse_expr_cxt *context)
+mysql_deparse_array_ref(SubscriptingRef *node, deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
 	ListCell   *lowlist_item;
@@ -1355,9 +1359,9 @@ foreign_expr_walker(Node *node,
 					state = FDW_COLLATE_UNSAFE;
 			}
 			break;
-		case T_ArrayRef:
+		case T_SubscriptingRef:
 			{
-				ArrayRef   *ar = (ArrayRef *) node;;
+				SubscriptingRef   *ar = (SubscriptingRef *) node;;
 
 				/* Assignment should not be in restrictions. */
 				if (ar->refassgnexpr != NULL)
