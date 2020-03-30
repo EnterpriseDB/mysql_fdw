@@ -104,6 +104,13 @@ The following parameters need to supplied while creating user mapping.
     SERVER mysql_server
          OPTIONS (dbname 'db', table_name 'warehouse');
 
+-- create foreign table (another way after Version 2.1.0, `limit` is optional)
+
+    CREATE SCHEMA IF NOT EXISTS mysql;
+    IMPORT FOREIGN SCHEMA db
+    LIMIT TO (warehouse)
+    FROM SERVER mysql_server
+    INTO mysql
 
 -- insert new rows in table
 
@@ -116,7 +123,7 @@ The following parameters need to supplied while creating user mapping.
 
     SELECT * FROM warehouse;
 
-    warehouse_id | warehouse_name | warehouse_created  
+    warehouse_id | warehouse_name | warehouse_created
 
     --------------+----------------+--------------------
 
@@ -141,7 +148,7 @@ The following parameters need to supplied while creating user mapping.
 
     EXPLAIN SELECT warehouse_id, warehouse_name FROM warehouse WHERE warehouse_name LIKE 'TV' limit 1;
 
-                                       QUERY PLAN                                                   
+                                       QUERY PLAN
     Limit  (cost=10.00..11.00 rows=1 width=36)
     ->  Foreign Scan on warehouse  (cost=10.00..13.00 rows=3 width=36)
          Local server startup cost: 10
