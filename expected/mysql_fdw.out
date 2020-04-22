@@ -362,6 +362,23 @@ SELECT test_param_where2(1, 'One');
                  1
 (1 row)
 
+CREATE FUNCTION
+CREATE TRIGGER
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Update on public.employee
+   ->  Foreign Scan on public.employee
+         Output: emp_id, emp_name, 0, emp_id, employee.*
+         Local server startup cost: 10
+         Remote query: SELECT `emp_id`, `emp_name`, `emp_dept_id` FROM `testdb`.`employee` WHERE ((`emp_id` = 1)) FOR UPDATE
+(5 rows)
+
+UPDATE 1
+ emp_id |         emp_name         | emp_dept_id 
+--------+--------------------------+-------------
+      1 | emp - 1 trigger updated! |           0
+(1 row)
+
 DELETE FROM employee;
 DELETE FROM department;
 DELETE FROM empdata;

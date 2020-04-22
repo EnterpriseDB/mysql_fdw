@@ -1301,7 +1301,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	if (!mysql_is_column_unique(foreignTableId))
 		elog(ERROR, "first column of remote table must be unique for INSERT/UPDATE/DELETE operation");
 
-	if (operation == CMD_INSERT)
+	if (operation == CMD_INSERT || (operation == CMD_UPDATE && rel->trigdesc && rel->trigdesc->trig_update_before_row))
 	{
 		TupleDesc tupdesc = RelationGetDescr(rel);
 		int attnum;

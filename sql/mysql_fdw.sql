@@ -82,6 +82,22 @@ create or replace function test_param_where2(integer, text) returns integer as '
 
 SELECT test_param_where2(1, 'One');
 
+CREATE FUNCTION trig_row_before_insupdate() RETURNS TRIGGER AS $$
+BEGIN
+	NEW.emp_name := NEW.emp_name || ' trigger updated!';
+		RETURN NEW;
+	END
+$$ language plpgsql;
+
+CREATE TRIGGER trig_row_before_insupd
+BEFORE INSERT OR UPDATE ON employee
+FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
+
+
+EXPLAIN (verbose, costs off)
+UPDATE employee set emp_dept_id = 0 where emp_id = 1;
+UPDATE employee set emp_dept_id = 0 where emp_id = 1;          -- all columns should be transmitted, emp_name should have trigger updated appended
+SELECT * from employee where emp_id = 1;
 DELETE FROM employee;
 DELETE FROM department;
 DELETE FROM empdata;
