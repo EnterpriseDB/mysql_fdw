@@ -1290,7 +1290,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	 * Core code already has some lock on each rel being planned, so we can
 	 * use NoLock here.
 	 */
-#if PG_VERSION_NUM < 120000
+#if PG_VERSION_NUM < 130000
 	rel = heap_open(rte->relid, NoLock);
 #else
 	rel = table_open(rte->relid, NoLock);
@@ -1372,7 +1372,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	if (plan->returningLists)
 		elog(ERROR, "RETURNING is not supported by this FDW");
 
-#if PG_VERSION_NUM < 120000
+#if PG_VERSION_NUM < 130000
 	heap_close(rel, NoLock);
 #else
 	table_close(rel, NoLock);

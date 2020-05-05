@@ -17,6 +17,9 @@
 #include "mysql_fdw.h"
 
 #include "access/xact.h"
+#if PG_VERSION_NUM >= 130000
+#include "common/hashfn.h"
+#endif
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "utils/hsearch.h"

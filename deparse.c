@@ -203,7 +203,11 @@ mysql_deparse_select(StringInfo buf,
 	 * Core code already has some lock on each rel being planned, so we can
 	 * use NoLock here.
 	 */
+#if PG_VERSION_NUM < 130000
 	rel = heap_open(rte->relid, NoLock);
+#else
+	rel = table_open(rte->relid, NoLock);
+#endif
 
 	appendStringInfoString(buf, "SELECT ");
 	mysql_deparse_target_list(buf, root, baserel->relid, rel, attrs_used, retrieved_attrs);
@@ -213,7 +217,11 @@ mysql_deparse_select(StringInfo buf,
 	 */
 	appendStringInfoString(buf, " FROM ");
 	mysql_deparse_relation(buf, rel);
+#if PG_VERSION_NUM < 130000
 	heap_close(rel, NoLock);
+#else
+	table_close(rel, NoLock);
+#endif
 }
 
 /*
@@ -871,7 +879,11 @@ mysql_deparse_array_ref(SubscriptingRef *node, deparse_expr_cxt *context)
 		{
 			deparseExpr(lfirst(lowlist_item), context);
 			appendStringInfoChar(buf, ':');
+#if PG_VERSION_NUM < 130000
 			lowlist_item = lnext(lowlist_item);
+#else
+			lowlist_item = lnext(node->reflowerindexpr, lowlist_item);
+#endif
 		}
 		deparseExpr(lfirst(uplist_item), context);
 		appendStringInfoChar(buf, ']');
