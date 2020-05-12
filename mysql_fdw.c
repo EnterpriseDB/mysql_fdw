@@ -21,6 +21,10 @@
 #include <unistd.h>
 #include <dlfcn.h>
 
+#ifndef RTLD_DEEPBIND
+#define RTLD_DEEPBIND 0
+#endif
+
 #include <mysql.h>
 #include <errmsg.h>
 
