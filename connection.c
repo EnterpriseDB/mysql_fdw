@@ -23,8 +23,10 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "utils/hsearch.h"
+#include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/resowner.h"
+#include "utils/syscache.h"
 
 /* Length of host */
 #define HOST_LEN 256
@@ -46,12 +48,17 @@ typedef struct ConnCacheEntry
 {
 	ConnCacheKey key;       /* hash key (must be first) */
 	MYSQL *conn;            /* connection to foreign server, or NULL */
+	bool		invalidated;	/* true if reconnect is pending */
+	uint32		server_hashvalue;	/* hash value of foreign server OID */
+	uint32		mapping_hashvalue;  /* hash value of user mapping OID */
 } ConnCacheEntry;
 
 /*
  * Connection cache (initialized on first use)
  */
 static HTAB *ConnectionHash = NULL;
+
+static void mysql_inval_callback(Datum arg, int cacheid, uint32 hashvalue);
 
 /*
  * mysql_get_connection:
@@ -80,6 +87,15 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 		ConnectionHash = hash_create("mysql_fdw connections", 8,
 									&ctl,
 									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+
+		/*
+		 * Register some callback functions that manage connection cleanup.
+		 * This should be done just once in each backend.
+		 */
+		CacheRegisterSyscacheCallback(FOREIGNSERVEROID,
+									  mysql_inval_callback, (Datum) 0);
+		CacheRegisterSyscacheCallback(USERMAPPINGOID,
+									  mysql_inval_callback, (Datum) 0);
 	}
 
 	/* Create hash key for the entry.  Assume no pad bytes in key struct */
@@ -95,8 +111,22 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 		/* initialize new hashtable entry (key is already filled in) */
 		entry->conn = NULL;
 	}
+
+	/* If an existing entry has invalid connection then release it */
+	if (entry->conn != NULL && entry->invalidated)
+	{
+		elog(DEBUG3, "disconnecting mysql_fdw connection %p for option changes to take effect",
+			 entry->conn);
+		_mysql_close(entry->conn);
+		entry->conn = NULL;
+	}
+
 	if (entry->conn == NULL)
 	{
+#if PG_VERSION_NUM < 90600
+		Oid			umoid;
+#endif
+
 		entry->conn = mysql_connect(
 			opt->svr_address,
 			opt->svr_username,
@@ -113,6 +143,35 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 		);
 		elog(DEBUG3, "new mysql_fdw connection %p for server \"%s\"",
 			 entry->conn, server->servername);
+
+		/*
+		 * Once the connection is established, then set the connection
+		 * invalidation flag to false, also set the server and user mapping
+		 * hash values.
+		 */
+		entry->invalidated = false;
+		entry->server_hashvalue =
+			GetSysCacheHashValue1(FOREIGNSERVEROID,
+								  ObjectIdGetDatum(server->serverid));
+#if PG_VERSION_NUM >= 90600
+		entry->mapping_hashvalue =
+			GetSysCacheHashValue1(USERMAPPINGOID,
+								  ObjectIdGetDatum(user->umid));
+#else
+		/* Pre-9.6, UserMapping doesn't store its OID, so look it up again */
+		umoid = GetSysCacheOid2(USERMAPPINGUSERSERVER,
+								ObjectIdGetDatum(user->userid),
+								ObjectIdGetDatum(user->serverid));
+		if (!OidIsValid(umoid))
+		{
+			/* Not found for the specific user -- try PUBLIC */
+			umoid = GetSysCacheOid2(USERMAPPINGUSERSERVER,
+									ObjectIdGetDatum(InvalidOid),
+									ObjectIdGetDatum(user->serverid));
+		}
+		entry->mapping_hashvalue =
+			GetSysCacheHashValue1(USERMAPPINGOID, ObjectIdGetDatum(umoid));
+#endif
 	}
 	return entry->conn;
 }
@@ -232,4 +291,37 @@ mysql_connect(
 	);
 
 	return conn;
+}
+
+/*
+ * Connection invalidation callback function for mysql.
+ *
+ * After a change to a pg_foreign_server or pg_user_mapping catalog entry,
+ * mark connections depending on that entry as needing to be remade. This
+ * implementation is similar as pgfdw_inval_callback.
+ */
+static void
+mysql_inval_callback(Datum arg, int cacheid, uint32 hashvalue)
+{
+	HASH_SEQ_STATUS scan;
+	ConnCacheEntry *entry;
+
+	Assert(cacheid == FOREIGNSERVEROID || cacheid == USERMAPPINGOID);
+
+	/* ConnectionHash must exist already, if we're registered */
+	hash_seq_init(&scan, ConnectionHash);
+	while ((entry = (ConnCacheEntry *) hash_seq_search(&scan)))
+	{
+		/* Ignore invalid entries */
+		if (entry->conn == NULL)
+			continue;
+
+		/* hashvalue == 0 means a cache reset, must clear all state */
+		if (hashvalue == 0 ||
+			(cacheid == FOREIGNSERVEROID &&
+			 entry->server_hashvalue == hashvalue) ||
+			(cacheid == USERMAPPINGOID &&
+			 entry->mapping_hashvalue == hashvalue))
+			entry->invalidated = true;
+	}
 }

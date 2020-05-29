@@ -1,7 +1,12 @@
+\set MYSQL_HOST				   '\'localhost\''
+\set MYSQL_PORT				   '\'3306\''
+\set MYSQL_USER_NAME           '\'foo\''
+\set MYSQL_PASS                '\'bar\''
+
 \c postgres postgres
 CREATE EXTENSION mysql_fdw;
-CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw;
-CREATE USER MAPPING FOR postgres SERVER mysql_svr OPTIONS(username 'foo', password 'bar');
+CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host :MYSQL_HOST, port :MYSQL_PORT);;
+CREATE USER MAPPING FOR postgres SERVER mysql_svr OPTIONS(username :MYSQL_USER_NAME, password :MYSQL_PASS);
 
 CREATE FOREIGN TABLE department(department_id int, department_name text) SERVER mysql_svr OPTIONS(dbname 'testdb', table_name 'department');
 CREATE FOREIGN TABLE employee(emp_id int, emp_name text, emp_dept_id int) SERVER mysql_svr OPTIONS(dbname 'testdb', table_name 'employee');
@@ -81,6 +86,29 @@ create or replace function test_param_where2(integer, text) returns integer as '
 ' LANGUAGE sql;
 
 SELECT test_param_where2(1, 'One');
+
+-- FDW-121: After a change to a pg_foreign_server or pg_user_mapping catalog
+-- entry, existing connection should be invalidated and should make new
+-- connection using the updated connection details.
+
+-- Alter SERVER option.
+-- Set wrong host, subsequent operation on this server should use updated
+-- details and fail as the host address is not correct.
+ALTER SERVER mysql_svr OPTIONS (SET host 'localhos');
+SELECT * FROM numbers ORDER BY 1 LIMIT 1;
+
+-- Set the correct hostname, next operation should succeed.
+ALTER SERVER mysql_svr OPTIONS (SET host :MYSQL_HOST);
+SELECT * FROM numbers ORDER BY 1 LIMIT 1;
+
+-- Alter USER MAPPING option.
+-- Set wrong username and password, next operation should fail.
+ALTER USER MAPPING FOR postgres SERVER mysql_svr OPTIONS(SET username 'foo1', SET password 'bar1');
+SELECT * FROM numbers ORDER BY 1 LIMIT 1;
+
+-- Set correct username and password, next operation should succeed.
+ALTER USER MAPPING FOR postgres SERVER mysql_svr OPTIONS(SET username :MYSQL_USER_NAME, SET password :MYSQL_PASS);
+SELECT * FROM numbers ORDER BY 1 LIMIT 1;
 
 DELETE FROM employee;
 DELETE FROM department;
