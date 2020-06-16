@@ -12,6 +12,9 @@ CREATE FOREIGN TABLE department(department_id int, department_name text) SERVER 
 CREATE FOREIGN TABLE employee(emp_id int, emp_name text, emp_dept_id int) SERVER mysql_svr OPTIONS(dbname 'testdb', table_name 'employee');
 CREATE FOREIGN TABLE empdata(emp_id int, emp_dat bytea) SERVER mysql_svr OPTIONS(dbname 'testdb', table_name 'empdata');
 CREATE FOREIGN TABLE numbers(a int, b varchar(255)) SERVER mysql_svr OPTIONS (dbname 'testdb', table_name 'numbers');
+CREATE FOREIGN TABLE fdw126_ft1(stu_id int, stu_name varchar(255)) SERVER mysql_svr OPTIONS (dbname 'testdb1', table_name 'student');
+CREATE FOREIGN TABLE fdw126_ft2(stu_id int, stu_name varchar(255)) SERVER mysql_svr OPTIONS (table_name 'student');
+CREATE FOREIGN TABLE fdw126_ft3(a int, b varchar(255)) SERVER mysql_svr OPTIONS (dbname 'testdb1', table_name 'numbers');
 
 SELECT * FROM department LIMIT 10;
 SELECT * FROM employee LIMIT 10;
@@ -110,6 +113,38 @@ SELECT * FROM numbers ORDER BY 1 LIMIT 1;
 ALTER USER MAPPING FOR postgres SERVER mysql_svr OPTIONS(SET username :MYSQL_USER_NAME, SET password :MYSQL_PASS);
 SELECT * FROM numbers ORDER BY 1 LIMIT 1;
 
+
+-- FDW-126: Insert/update/delete statement failing in mysql_fdw by picking
+-- wrong database name.
+
+-- Verify the INSERT/UPDATE/DELETE operations on another foreign table which
+-- resides in the another database in MySQL.  The previous commands performs
+-- the operation on foreign table created for tables in testdb MySQL database.
+-- Below operations will be performed for foreign table created for table in
+-- testdb1 MySQL database.
+INSERT INTO fdw126_ft1 VALUES(1, 'One');
+UPDATE fdw126_ft1 SET stu_name = 'one' WHERE stu_id = 1;
+DELETE FROM fdw126_ft1 WHERE stu_id = 1;
+
+-- Select on employee foreign table which is created for employee table from
+-- testdb MySQL database.  This call is just to cross verify if everything is
+-- working correctly.
+SELECT * FROM employee ORDER BY 1 LIMIT 1;
+
+-- Insert into fdw126_ft2 table which does not have dbname specified while
+-- creating the foreign table, so it will consider the schema name of foreign
+-- table as database name and try to connect/lookup into that database.  Will
+-- throw an error.
+INSERT INTO fdw126_ft2 VALUES(2, 'Two');
+
+-- Check with the same table name from different database.  fdw126_ft3 is
+-- pointing to the testdb1.numbers and not testdb.numbers table.
+-- INSERT/UPDATE/DELETE should be failing.  SELECT will return no rows.
+INSERT INTO fdw126_ft3 VALUES(1, 'One');
+SELECT * FROM fdw126_ft3 ORDER BY 1 LIMIT 1;
+UPDATE fdw126_ft3 SET b = 'one' WHERE a = 1;
+DELETE FROM fdw126_ft3 WHERE a = 1;
+
 DELETE FROM employee;
 DELETE FROM department;
 DELETE FROM empdata;
@@ -122,6 +157,9 @@ DROP FOREIGN TABLE numbers;
 DROP FOREIGN TABLE department;
 DROP FOREIGN TABLE employee;
 DROP FOREIGN TABLE empdata;
+DROP FOREIGN TABLE fdw126_ft1;
+DROP FOREIGN TABLE fdw126_ft2;
+DROP FOREIGN TABLE fdw126_ft3;
 DROP USER MAPPING FOR postgres SERVER mysql_svr;
 DROP SERVER mysql_svr;
 DROP EXTENSION mysql_fdw CASCADE;

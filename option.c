@@ -254,8 +254,19 @@ mysql_get_options(Oid foreignoid)
 	if (!opt->svr_port)
 		opt->svr_port = MYSQL_PORT;
 
-	if (!opt->svr_table && f_table)
-		opt->svr_table = get_rel_name(foreignoid);
+	/*
+	 * When we don't have a table name or database name provided in the
+	 * FOREIGN TABLE options, then use a foreign table name as the target table
+	 * name and the namespace of the foreign table as a database name.
+	 */
+	if (f_table)
+	{
+		if (!opt->svr_table)
+			opt->svr_table = get_rel_name(foreignoid);
+
+		if (!opt->svr_database)
+			opt->svr_database = get_namespace_name(get_rel_namespace(foreignoid));
+	}
 
 	return opt;
 }

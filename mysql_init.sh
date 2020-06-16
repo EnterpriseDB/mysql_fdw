@@ -4,4 +4,6 @@ mysql -h 127.0.0.1 -u foo -D testdb -e "CREATE TABLE department(department_id in
 mysql -h 127.0.0.1 -u foo -D testdb -e "CREATE TABLE employee(emp_id int, emp_name text, emp_dept_id int, PRIMARY KEY (emp_id))"
 mysql -h 127.0.0.1 -u foo -D testdb -e "CREATE TABLE empdata (emp_id int, emp_dat blob, PRIMARY KEY (emp_id))"
 mysql -h 127.0.0.1 -u foo -D testdb -e "CREATE TABLE numbers (a int PRIMARY KEY, b varchar(255))"
-
+mysql -h 127.0.0.1 -u foo -D testdb -e "CREATE DATABASE testdb1"
+mysql -h 127.0.0.1 -u foo -D testdb1 -e "CREATE TABLE student (stu_id int PRIMARY KEY, stu_name text)"
+mysql -h 127.0.0.1 -u foo -D testdb1 -e "CREATE TABLE numbers (a int, b varchar(255))"

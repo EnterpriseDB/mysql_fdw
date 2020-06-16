@@ -964,7 +964,12 @@ mysql_is_column_unique(Oid foreigntableid)
 	/* Build the query */
 	initStringInfo(&sql);
 
-	appendStringInfo(&sql, "EXPLAIN %s", options->svr_table);
+	/*
+	 * Construct the query by prefixing the database name so that it can lookup
+	 * in correct database.
+	 */
+	appendStringInfo(&sql, "EXPLAIN %s.%s", options->svr_database,
+					 options->svr_table);
 	if (_mysql_query(conn, sql.data) != 0)
 	{
 		switch(_mysql_errno(conn))
