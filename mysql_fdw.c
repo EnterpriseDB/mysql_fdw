@@ -1209,7 +1209,6 @@ mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func, BlockNu
 	MYSQL_ROW      row;
 	Oid            foreignTableId = RelationGetRelid(relation);
 	mysql_opt      *options;
-	char           *relname;
 	ForeignServer  *server;
 	UserMapping    *user;
 	ForeignTable   *table;
@@ -1220,19 +1219,14 @@ mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func, BlockNu
 
 	/* Fetch options */
 	options = mysql_get_options(foreignTableId);
+	Assert(options->svr_database != NULL && options->svr_table != NULL);
 
 	/* Connect to the server */
 	conn = mysql_get_connection(server, user, options);
 
 	/* Build the query */
 	initStringInfo(&sql);
-
-	/* If no table name specified, use the foreign table name */
-	relname = options->svr_table;
-	if ( relname == NULL)
-			relname = RelationGetRelationName(relation);
-
-	mysql_deparse_analyze(&sql, options->svr_database, relname);
+	mysql_deparse_analyze(&sql, options->svr_database, options->svr_table);
 
 	if (_mysql_query(conn, sql.data) != 0)
 	{
@@ -1264,6 +1258,18 @@ mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func, BlockNu
 		}
 	}
 	result = _mysql_store_result(conn);
+
+	/*
+	 * To get the table size in ANALYZE operation, we run a SELECT query by
+	 * passing the database name and table name.  So if the remote table is not
+	 * present, then we end up getting zero rows.  Throw an error in that case.
+	 */
+	if (_mysql_num_rows(result) == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FDW_TABLE_NOT_FOUND),
+				 errmsg("relation %s.%s does not exist", options->svr_database,
+						options->svr_table)));
+
 	if (result)
 	{
 		row = _mysql_fetch_row(result);

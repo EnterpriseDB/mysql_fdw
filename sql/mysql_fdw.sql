@@ -15,6 +15,8 @@ CREATE FOREIGN TABLE numbers(a int, b varchar(255)) SERVER mysql_svr OPTIONS (db
 CREATE FOREIGN TABLE fdw126_ft1(stu_id int, stu_name varchar(255)) SERVER mysql_svr OPTIONS (dbname 'testdb1', table_name 'student');
 CREATE FOREIGN TABLE fdw126_ft2(stu_id int, stu_name varchar(255)) SERVER mysql_svr OPTIONS (table_name 'student');
 CREATE FOREIGN TABLE fdw126_ft3(a int, b varchar(255)) SERVER mysql_svr OPTIONS (dbname 'testdb1', table_name 'numbers');
+CREATE FOREIGN TABLE fdw126_ft4(a int, b varchar(255)) SERVER mysql_svr OPTIONS (dbname 'testdb1', table_name 'nosuchtable');
+CREATE FOREIGN TABLE fdw126_ft5(a int, b varchar(255)) SERVER mysql_svr OPTIONS (dbname 'testdb2', table_name 'numbers');
 
 SELECT * FROM department LIMIT 10;
 SELECT * FROM employee LIMIT 10;
@@ -145,6 +147,14 @@ SELECT * FROM fdw126_ft3 ORDER BY 1 LIMIT 1;
 UPDATE fdw126_ft3 SET b = 'one' WHERE a = 1;
 DELETE FROM fdw126_ft3 WHERE a = 1;
 
+-- Perform the ANALYZE on the foreign table which is not present on the remote
+-- side.  Should not crash.
+-- The database is present but not the target table.
+ANALYZE fdw126_ft4;
+-- The database itself is not present.
+ANALYZE fdw126_ft5;
+
+
 DELETE FROM employee;
 DELETE FROM department;
 DELETE FROM empdata;
@@ -160,6 +170,8 @@ DROP FOREIGN TABLE empdata;
 DROP FOREIGN TABLE fdw126_ft1;
 DROP FOREIGN TABLE fdw126_ft2;
 DROP FOREIGN TABLE fdw126_ft3;
+DROP FOREIGN TABLE fdw126_ft4;
+DROP FOREIGN TABLE fdw126_ft5;
 DROP USER MAPPING FOR postgres SERVER mysql_svr;
 DROP SERVER mysql_svr;
 DROP EXTENSION mysql_fdw CASCADE;
