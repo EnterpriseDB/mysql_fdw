@@ -49,7 +49,7 @@
 struct MySQLFdwOption
 {
 	const char *optname;
-	Oid optcontext; /* Oid of catalog in which option may appear */
+	Oid			optcontext;		/* Oid of catalog in which option may appear */
 };
 
 
@@ -60,24 +60,24 @@ struct MySQLFdwOption
 static struct MySQLFdwOption valid_options[] =
 {
 	/* Connection options */
-	{ "host",           ForeignServerRelationId },
-	{ "port",           ForeignServerRelationId },
-	{ "init_command",   ForeignServerRelationId },
-	{ "username",       UserMappingRelationId },
-	{ "password",       UserMappingRelationId },
-	{ "dbname",         ForeignTableRelationId },
-	{ "table_name",     ForeignTableRelationId },
-	{ "secure_auth",    ForeignServerRelationId },
-	{ "max_blob_size",  ForeignTableRelationId },
-	{ "use_remote_estimate",    ForeignServerRelationId },
-	{ "ssl_key",        ForeignServerRelationId },
-	{ "ssl_cert",       ForeignServerRelationId },
-	{ "ssl_ca",         ForeignServerRelationId },
-	{ "ssl_capath",     ForeignServerRelationId },
-	{ "ssl_cipher",     ForeignServerRelationId },
+	{"host", ForeignServerRelationId},
+	{"port", ForeignServerRelationId},
+	{"init_command", ForeignServerRelationId},
+	{"username", UserMappingRelationId},
+	{"password", UserMappingRelationId},
+	{"dbname", ForeignTableRelationId},
+	{"table_name", ForeignTableRelationId},
+	{"secure_auth", ForeignServerRelationId},
+	{"max_blob_size", ForeignTableRelationId},
+	{"use_remote_estimate", ForeignServerRelationId},
+	{"ssl_key", ForeignServerRelationId},
+	{"ssl_cert", ForeignServerRelationId},
+	{"ssl_ca", ForeignServerRelationId},
+	{"ssl_capath", ForeignServerRelationId},
+	{"ssl_cipher", ForeignServerRelationId},
 
 	/* Sentinel */
-	{ NULL,			InvalidOid }
+	{NULL, InvalidOid}
 };
 
 extern Datum mysql_fdw_validator(PG_FUNCTION_ARGS);
@@ -94,17 +94,17 @@ PG_FUNCTION_INFO_V1(mysql_fdw_validator);
 Datum
 mysql_fdw_validator(PG_FUNCTION_ARGS)
 {
-	List		*options_list = untransformRelOptions(PG_GETARG_DATUM(0));
+	List	   *options_list = untransformRelOptions(PG_GETARG_DATUM(0));
 	Oid			catalog = PG_GETARG_OID(1);
-	ListCell	*cell;
+	ListCell   *cell;
 
 	/*
-	 * Check that only options supported by mysql_fdw,
-	 * and allowed for the current object type, are given.
+	 * Check that only options supported by mysql_fdw, and allowed for the
+	 * current object type, are given.
 	 */
 	foreach(cell, options_list)
 	{
-		DefElem	 *def = (DefElem *) lfirst(cell);
+		DefElem    *def = (DefElem *) lfirst(cell);
 
 		if (!mysql_is_valid_option(def->defname, catalog))
 		{
@@ -120,14 +120,14 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 			{
 				if (catalog == opt->optcontext)
 					appendStringInfo(&buf, "%s%s", (buf.len > 0) ? ", " : "",
-							 opt->optname);
+									 opt->optname);
 			}
 
-			ereport(ERROR, 
-				(errcode(ERRCODE_FDW_INVALID_OPTION_NAME), 
-				errmsg("invalid option \"%s\"", def->defname), 
-				errhint("Valid options in this context are: %s", buf.len ? buf.data : "<none>")
-				));
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
+					 errmsg("invalid option \"%s\"", def->defname),
+					 errhint("Valid options in this context are: %s", buf.len ? buf.data : "<none>")
+					 ));
 		}
 	}
 	PG_RETURN_VOID();
@@ -154,17 +154,17 @@ mysql_is_valid_option(const char *option, Oid context)
 /*
  * Fetch the options for a mysql_fdw foreign table.
  */
-mysql_opt*
+mysql_opt *
 mysql_get_options(Oid foreignoid)
 {
 	ForeignTable *f_table = NULL;
 	ForeignServer *f_server = NULL;
 	UserMapping *f_mapping;
-	List *options;
-	ListCell *lc;
-	mysql_opt *opt;
+	List	   *options;
+	ListCell   *lc;
+	mysql_opt  *opt;
 
-	opt = (mysql_opt*) palloc(sizeof(mysql_opt));
+	opt = (mysql_opt *) palloc(sizeof(mysql_opt));
 	memset(opt, 0, sizeof(mysql_opt));
 
 	/*
@@ -198,7 +198,7 @@ mysql_get_options(Oid foreignoid)
 	/* Loop through the options, and get the server/port */
 	foreach(lc, options)
 	{
-		DefElem *def = (DefElem *) lfirst(lc);
+		DefElem    *def = (DefElem *) lfirst(lc);
 
 		if (strcmp(def->defname, "host") == 0)
 			opt->svr_address = defGetString(def);
@@ -220,16 +220,16 @@ mysql_get_options(Oid foreignoid)
 
 		if (strcmp(def->defname, "secure_auth") == 0)
 			opt->svr_sa = defGetBoolean(def);
-		
+
 		if (strcmp(def->defname, "init_command") == 0)
 			opt->svr_init_command = defGetString(def);
 
 		if (strcmp(def->defname, "max_blob_size") == 0)
-                       opt->max_blob_size = strtoul(defGetString(def), NULL, 0);
+			opt->max_blob_size = strtoul(defGetString(def), NULL, 0);
 
 		if (strcmp(def->defname, "use_remote_estimate") == 0)
 			opt->use_remote_estimate = defGetBoolean(def);
-		
+
 		if (strcmp(def->defname, "ssl_key") == 0)
 			opt->ssl_key = defGetString(def);
 
@@ -269,5 +269,3 @@ mysql_get_options(Oid foreignoid)
 
 	return opt;
 }
-
-

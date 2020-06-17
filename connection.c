@@ -45,11 +45,11 @@ typedef struct ConnCacheKey
 
 typedef struct ConnCacheEntry
 {
-	ConnCacheKey key;       /* hash key (must be first) */
-	MYSQL *conn;            /* connection to foreign server, or NULL */
+	ConnCacheKey key;			/* hash key (must be first) */
+	MYSQL	   *conn;			/* connection to foreign server, or NULL */
 	bool		invalidated;	/* true if reconnect is pending */
 	uint32		server_hashvalue;	/* hash value of foreign server OID */
-	uint32		mapping_hashvalue;  /* hash value of user mapping OID */
+	uint32		mapping_hashvalue;	/* hash value of user mapping OID */
 } ConnCacheEntry;
 
 /*
@@ -65,17 +65,18 @@ static void mysql_inval_callback(Datum arg, int cacheid, uint32 hashvalue);
  * the remote MySQL server with the user's authorization. A new connection
  * is established if we don't already have a suitable one.
  */
-MYSQL*
+MYSQL *
 mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 {
-	bool found;
+	bool		found;
 	ConnCacheEntry *entry;
 	ConnCacheKey key;
 
 	/* First time through, initialize connection cache hashtable */
 	if (ConnectionHash == NULL)
 	{
-		HASHCTL	ctl;
+		HASHCTL		ctl;
+
 		MemSet(&ctl, 0, sizeof(ctl));
 		ctl.keysize = sizeof(ConnCacheKey);
 		ctl.entrysize = sizeof(ConnCacheEntry);
@@ -84,8 +85,8 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 		/* allocate ConnectionHash in the cache context */
 		ctl.hcxt = CacheMemoryContext;
 		ConnectionHash = hash_create("mysql_fdw connections", 8,
-									&ctl,
-									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+									 &ctl,
+									 HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 
 		/*
 		 * Register some callback functions that manage connection cleanup.
@@ -127,19 +128,19 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 #endif
 
 		entry->conn = mysql_connect(
-			opt->svr_address,
-			opt->svr_username,
-			opt->svr_password,
-			opt->svr_database,
-			opt->svr_port,
-			opt->svr_sa,
-			opt->svr_init_command,
-			opt->ssl_key,
-			opt->ssl_cert,
-			opt->ssl_ca,
-			opt->ssl_capath,
-			opt->ssl_cipher
-		);
+									opt->svr_address,
+									opt->svr_username,
+									opt->svr_password,
+									opt->svr_database,
+									opt->svr_port,
+									opt->svr_sa,
+									opt->svr_init_command,
+									opt->ssl_key,
+									opt->ssl_cert,
+									opt->ssl_ca,
+									opt->ssl_capath,
+									opt->ssl_cipher
+			);
 		elog(DEBUG3, "new mysql_fdw connection %p for server \"%s\"",
 			 entry->conn, server->servername);
 
@@ -182,7 +183,7 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 void
 mysql_cleanup_connection(void)
 {
-	HASH_SEQ_STATUS	scan;
+	HASH_SEQ_STATUS scan;
 	ConnCacheEntry *entry;
 
 	if (ConnectionHash == NULL)
@@ -206,7 +207,7 @@ mysql_cleanup_connection(void)
 void
 mysql_rel_connection(MYSQL *conn)
 {
-	HASH_SEQ_STATUS	scan;
+	HASH_SEQ_STATUS scan;
 	ConnCacheEntry *entry;
 
 	if (ConnectionHash == NULL)
@@ -230,33 +231,33 @@ mysql_rel_connection(MYSQL *conn)
 }
 
 
-MYSQL*
+MYSQL *
 mysql_connect(
-	char *svr_address,
-	char *svr_username,
-	char *svr_password,
-	char *svr_database,
-	int svr_port,
-	bool svr_sa,
-	char *svr_init_command,
-	char *ssl_key,
-	char *ssl_cert,
-	char *ssl_ca,
-	char *ssl_capath,
-	char *ssl_cipher)
+			  char *svr_address,
+			  char *svr_username,
+			  char *svr_password,
+			  char *svr_database,
+			  int svr_port,
+			  bool svr_sa,
+			  char *svr_init_command,
+			  char *ssl_key,
+			  char *ssl_cert,
+			  char *ssl_ca,
+			  char *ssl_capath,
+			  char *ssl_cipher)
 {
-	MYSQL *conn = NULL;
+	MYSQL	   *conn = NULL;
 #if	MYSQL_VERSION_ID < 80000
-	my_bool secure_auth = svr_sa;
+	my_bool		secure_auth = svr_sa;
 #endif
 
 	/* Connect to the server */
 	conn = _mysql_init(NULL);
 	if (!conn)
 		ereport(ERROR,
-			(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
-			errmsg("failed to initialise the MySQL connection object")
-			));
+				(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
+				 errmsg("failed to initialise the MySQL connection object")
+				 ));
 
 	_mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
 #if MYSQL_VERSION_ID < 80000
@@ -265,29 +266,29 @@ mysql_connect(
 
 	if (!svr_sa)
 		elog(WARNING, "MySQL secure authentication is off");
-    
+
 	if (svr_init_command != NULL)
-        	_mysql_options(conn, MYSQL_INIT_COMMAND, svr_init_command);
+		_mysql_options(conn, MYSQL_INIT_COMMAND, svr_init_command);
 
 	_mysql_ssl_set(conn, ssl_key, ssl_cert, ssl_ca, ssl_capath, ssl_cipher);
-   
+
 	if (!_mysql_real_connect(conn, svr_address, svr_username, svr_password, svr_database, svr_port, NULL, 0))
 		ereport(ERROR,
-			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
-			errmsg("failed to connect to MySQL: %s", _mysql_error(conn))
-			));
+				(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+				 errmsg("failed to connect to MySQL: %s", _mysql_error(conn))
+				 ));
 
-	// useful for verifying that the connection's secured
+	/* useful for verifying that the connection's secured */
 	elog(DEBUG1,
-		"Successfully connected to MySQL database %s "
-		"at server %s with cipher %s "
-		"(server version: %s, protocol version: %d) ",
-		(svr_database != NULL) ? svr_database : "<none>",
-		_mysql_get_host_info (conn),
-		(ssl_cipher != NULL) ?  ssl_cipher : "<none>",
-		_mysql_get_server_info (conn),
-		_mysql_get_proto_info (conn)
-	);
+		 "Successfully connected to MySQL database %s "
+		 "at server %s with cipher %s "
+		 "(server version: %s, protocol version: %d) ",
+		 (svr_database != NULL) ? svr_database : "<none>",
+		 _mysql_get_host_info(conn),
+		 (ssl_cipher != NULL) ? ssl_cipher : "<none>",
+		 _mysql_get_server_info(conn),
+		 _mysql_get_proto_info(conn)
+		);
 
 	return conn;
 }
