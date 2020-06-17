@@ -252,7 +252,7 @@ names are quoted. (#42)
 
 License
 -------
-Copyright (c) 2011 - 2019, EnterpriseDB Corporation
+Copyright (c) 2011-2020, EnterpriseDB Corporation.
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written agreement is
