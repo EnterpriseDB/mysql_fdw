@@ -1,47 +1,27 @@
 /*-------------------------------------------------------------------------
  *
- * options.c
- * 		Foreign-data wrapper for remote MySQL servers
+ * option.c
+ * 		FDW option handling for mysql_fdw
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  * Portions Copyright (c) 2004-2020, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
- * 		options.c
+ * 		option.c
  *
  *-------------------------------------------------------------------------
  */
-
 #include "postgres.h"
 
-#include "mysql_fdw.h"
-
-#include <stdio.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-#include "funcapi.h"
 #include "access/reloptions.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
 #include "catalog/pg_user_mapping.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
-#include "commands/explain.h"
-#include "foreign/fdwapi.h"
-#include "foreign/foreign.h"
 #include "miscadmin.h"
-#include "mb/pg_wchar.h"
-#include "optimizer/cost.h"
-#include "storage/fd.h"
-#include "utils/array.h"
-#include "utils/builtins.h"
-#include "utils/rel.h"
+#include "mysql_fdw.h"
 #include "utils/lsyscache.h"
-
-#include "optimizer/pathnode.h"
-#include "optimizer/restrictinfo.h"
-#include "optimizer/planmain.h"
 
 /*
  * Describes the valid options for objects that use this wrapper.
@@ -52,10 +32,8 @@ struct MySQLFdwOption
 	Oid			optcontext;		/* Oid of catalog in which option may appear */
 };
 
-
 /*
  * Valid options for mysql_fdw.
- *
  */
 static struct MySQLFdwOption valid_options[] =
 {
@@ -83,7 +61,6 @@ static struct MySQLFdwOption valid_options[] =
 extern Datum mysql_fdw_validator(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(mysql_fdw_validator);
-
 
 /*
  * Validate the generic options given to a FOREIGN DATA WRAPPER, SERVER,
@@ -126,13 +103,13 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 errhint("Valid options in this context are: %s", buf.len ? buf.data : "<none>")
-					 ));
+					 errhint("Valid options in this context are: %s",
+							 buf.len ? buf.data : "<none>")));
 		}
 	}
+
 	PG_RETURN_VOID();
 }
-
 
 /*
  * Check if the provided option is one of the valid options.
@@ -148,6 +125,7 @@ mysql_is_valid_option(const char *option, Oid context)
 		if (context == opt->optcontext && strcmp(opt->optname, option) == 0)
 			return true;
 	}
+
 	return false;
 }
 
@@ -157,15 +135,14 @@ mysql_is_valid_option(const char *option, Oid context)
 mysql_opt *
 mysql_get_options(Oid foreignoid)
 {
-	ForeignTable *f_table = NULL;
-	ForeignServer *f_server = NULL;
+	ForeignTable *f_table;
+	ForeignServer *f_server;
 	UserMapping *f_mapping;
 	List	   *options;
 	ListCell   *lc;
 	mysql_opt  *opt;
 
-	opt = (mysql_opt *) palloc(sizeof(mysql_opt));
-	memset(opt, 0, sizeof(mysql_opt));
+	opt = (mysql_opt *) palloc0(sizeof(mysql_opt));
 
 	/*
 	 * Extract options from FDW objects.
@@ -187,6 +164,7 @@ mysql_get_options(Oid foreignoid)
 	options = NIL;
 	if (f_table)
 		options = list_concat(options, f_table->options);
+
 	options = list_concat(options, f_server->options);
 	options = list_concat(options, f_mapping->options);
 
@@ -195,7 +173,7 @@ mysql_get_options(Oid foreignoid)
 
 	opt->use_remote_estimate = false;
 
-	/* Loop through the options, and get the server/port */
+	/* Loop through the options */
 	foreach(lc, options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
@@ -244,8 +222,8 @@ mysql_get_options(Oid foreignoid)
 
 		if (strcmp(def->defname, "ssl_cipher") == 0)
 			opt->ssl_cipher = defGetString(def);
-
 	}
+
 	/* Default values, if required */
 	if (!opt->svr_address)
 		opt->svr_address = "127.0.0.1";
