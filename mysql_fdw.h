@@ -24,6 +24,7 @@
 #undef list_free
 
 #include "access/tupdesc.h"
+#include "fmgr.h"
 #include "foreign/foreign.h"
 #include "lib/stringinfo.h"
 #if PG_VERSION_NUM < 120000
