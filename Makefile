@@ -10,7 +10,7 @@ OBJS = connection.o option.o deparse.o mysql_query.o mysql_fdw.o
 EXTENSION = mysql_fdw
 DATA = mysql_fdw--1.0.sql mysql_fdw--1.1.sql mysql_fdw--1.0--1.1.sql
 
-REGRESS = mysql_fdw
+REGRESS = server_options connection_validation dml select pushdown
 
 MYSQL_CONFIG = mysql_config
 PG_CPPFLAGS := $(shell $(MYSQL_CONFIG) --include)
