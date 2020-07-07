@@ -1718,7 +1718,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			attdefault = row[5] == NULL ? (char *) NULL : row[5];
 
 			if (strncmp(typedfn, "enum(", 5) == 0)
-				ereport(ERROR,
+				ereport(NOTICE,
 						(errmsg("error while generating the table definition"),
 						 errhint("If you encounter an error, you may need to execute the following first:\nDO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = '%s') THEN CREATE TYPE %s AS %s; END IF; END$$;\n",
 								 typename, typename, typedfn)));
