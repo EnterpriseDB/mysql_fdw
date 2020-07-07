@@ -23,6 +23,9 @@ CREATE FOREIGN TABLE f_test_tbl1 (c1 INTEGER, c2 VARCHAR(10), c3 CHAR(9),c4 BIGI
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_tbl1');
 CREATE FOREIGN TABLE f_test_tbl2 (c1 INTEGER, c2 VARCHAR(14), c3 VARCHAR(13))
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_tbl2');
+CREATE TYPE size_t AS enum('small','medium','large');
+CREATE FOREIGN TABLE f_enum_t1(id int, size size_t)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'enum_t1');
 
 -- Insert data in MySQL db using foreign tables
 INSERT INTO f_test_tbl1 VALUES (100, 'EMP1', 'ADMIN', 1300, '1980-12-17', 800.23, NULL, 20);
@@ -216,6 +219,15 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
   FROM f_test_tbl2 d FULL OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
 
+-- FDW-155: Enum data type can be handled correctly in select statements on
+-- foreign table.
+SELECT * FROM f_enum_t1 WHERE size = 'medium' ORDER BY id;
+
+-- Check with IMPORT SCHEMA command.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (enum_t1) FROM SERVER mysql_svr INTO public;
+SELECT * FROM enum_t1 ORDER BY id;
+DROP FOREIGN TABLE enum_t1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
@@ -230,6 +242,8 @@ DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
 DROP FOREIGN TABLE f_numbers;
 DROP FOREIGN TABLE f_mysql_test;
+DROP FOREIGN TABLE f_enum_t1;
+DROP TYPE size_t;
 DROP FUNCTION test_param_where();
 DROP FUNCTION test_param_where2(int, text);
 DROP USER MAPPING FOR public SERVER mysql_svr;

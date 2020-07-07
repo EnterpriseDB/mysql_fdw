@@ -112,7 +112,7 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 	}
 
 	value_datum = OidFunctionCall3(typeinput, valueDatum,
-								   ObjectIdGetDatum(InvalidOid),
+								   ObjectIdGetDatum(pgtyp),
 								   Int32GetDatum(typemod));
 
 	return value_datum;
