@@ -223,6 +223,12 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 -- foreign table.
 SELECT * FROM f_enum_t1 WHERE size = 'medium' ORDER BY id;
 
+-- Remote aggregate in combination with a local Param (for the output
+-- of an initplan)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
+SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
+
 -- Check with IMPORT SCHEMA command.
 IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (enum_t1) FROM SERVER mysql_svr INTO public;
 SELECT * FROM enum_t1 ORDER BY id;

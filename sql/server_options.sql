@@ -20,7 +20,7 @@ SELECT e.fdwname as "Extension", srvname AS "Server", s.srvoptions AS "Server_Op
   WHERE e.fdwname = 'mysql_fdw'
   ORDER BY 1, 2, 3, 4;
 
--- Create foreign table and perform basic SQL options
+-- Create foreign table and perform basic SQL operations
 CREATE FOREIGN TABLE f_mysql_test(a int, b int)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'mysql_test');
 SELECT a, b FROM f_mysql_test ORDER BY 1, 2;

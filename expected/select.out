@@ -900,6 +900,28 @@ SELECT * FROM f_enum_t1 WHERE size = 'medium' ORDER BY id;
   3 | medium
 (2 rows)
 
+-- Remote aggregate in combination with a local Param (for the output
+-- of an initplan)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Aggregate
+   Output: $0, sum(f_enum_t1.id)
+   InitPlan 1 (returns $0)
+     ->  Seq Scan on pg_catalog.pg_enum
+   ->  Foreign Scan on public.f_enum_t1
+         Output: f_enum_t1.id, f_enum_t1.size
+         Local server startup cost: 10
+         Remote query: SELECT `id` FROM `mysql_fdw_regress`.`enum_t1`
+(8 rows)
+
+SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
+ exists | sum 
+--------+-----
+ t      |   6
+(1 row)
+
 -- Check with IMPORT SCHEMA command.
 IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (enum_t1) FROM SERVER mysql_svr INTO public;
 NOTICE:  error while generating the table definition

@@ -27,11 +27,14 @@ CREATE FOREIGN TABLE fdw126_ft4(a int, b varchar(255))
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress1', table_name 'nosuchtable');
 CREATE FOREIGN TABLE fdw126_ft5(a int, b varchar(255))
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress2', table_name 'numbers');
+CREATE FOREIGN TABLE fdw126_ft6(stu_id int, stu_name varchar(255))
+  SERVER mysql_svr OPTIONS (table_name 'mysql_fdw_regress1.student');
 CREATE FOREIGN TABLE f_empdata(emp_id int, emp_dat bytea)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'empdata');
 
+
 -- Operation on blob data.
-INSERT INTO f_empdata  VALUES (1, decode ('01234567', 'hex'));
+INSERT INTO f_empdata VALUES (1, decode ('01234567', 'hex'));
 SELECT count(*) FROM f_empdata ORDER BY 1;
 SELECT emp_id, emp_dat FROM f_empdata ORDER BY 1;
 UPDATE f_empdata SET emp_dat = decode ('0123', 'hex');
@@ -68,12 +71,24 @@ SELECT a, b FROM fdw126_ft3 ORDER BY 1, 2 LIMIT 1;
 UPDATE fdw126_ft3 SET b = 'one' WHERE a = 1;
 DELETE FROM fdw126_ft3 WHERE a = 1;
 
+-- Check when table_name is given in database.table form in foreign table
+-- should error out as syntax error
+INSERT INTO fdw126_ft6 VALUES(1, 'One');
+
 -- Perform the ANALYZE on the foreign table which is not present on the remote
 -- side.  Should not crash.
 -- The database is present but not the target table.
 ANALYZE fdw126_ft4;
 -- The database itself is not present.
 ANALYZE fdw126_ft5;
+-- Some other variant of analyze and vacuum.
+-- when table exists, should give skip-warning
+VACUUM f_empdata;
+VACUUM FULL f_empdata;
+VACUUM FREEZE f_empdata;
+ANALYZE f_empdata;
+ANALYZE f_empdata(emp_id);
+VACUUM ANALYZE f_empdata;
 
 -- Cleanup
 DELETE FROM fdw126_ft1;
@@ -84,6 +99,7 @@ DROP FOREIGN TABLE fdw126_ft2;
 DROP FOREIGN TABLE fdw126_ft3;
 DROP FOREIGN TABLE fdw126_ft4;
 DROP FOREIGN TABLE fdw126_ft5;
+DROP FOREIGN TABLE fdw126_ft6;
 DROP FOREIGN TABLE f_empdata;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;

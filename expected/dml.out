@@ -24,10 +24,12 @@ CREATE FOREIGN TABLE fdw126_ft4(a int, b varchar(255))
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress1', table_name 'nosuchtable');
 CREATE FOREIGN TABLE fdw126_ft5(a int, b varchar(255))
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress2', table_name 'numbers');
+CREATE FOREIGN TABLE fdw126_ft6(stu_id int, stu_name varchar(255))
+  SERVER mysql_svr OPTIONS (table_name 'mysql_fdw_regress1.student');
 CREATE FOREIGN TABLE f_empdata(emp_id int, emp_dat bytea)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'empdata');
 -- Operation on blob data.
-INSERT INTO f_empdata  VALUES (1, decode ('01234567', 'hex'));
+INSERT INTO f_empdata VALUES (1, decode ('01234567', 'hex'));
 SELECT count(*) FROM f_empdata ORDER BY 1;
  count 
 -------
@@ -87,6 +89,11 @@ UPDATE fdw126_ft3 SET b = 'one' WHERE a = 1;
 ERROR:  first column of remote table must be unique for INSERT/UPDATE/DELETE operation
 DELETE FROM fdw126_ft3 WHERE a = 1;
 ERROR:  first column of remote table must be unique for INSERT/UPDATE/DELETE operation
+-- Check when table_name is given in database.table form in foreign table
+-- should error out as syntax error
+INSERT INTO fdw126_ft6 VALUES(1, 'One');
+ERROR:  failed to execute the MySQL query: 
+You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '.student' at line 1
 -- Perform the ANALYZE on the foreign table which is not present on the remote
 -- side.  Should not crash.
 -- The database is present but not the target table.
@@ -95,6 +102,20 @@ ERROR:  relation mysql_fdw_regress1.nosuchtable does not exist
 -- The database itself is not present.
 ANALYZE fdw126_ft5;
 ERROR:  relation mysql_fdw_regress2.numbers does not exist
+-- Some other variant of analyze and vacuum.
+-- when table exists, should give skip-warning
+VACUUM f_empdata;
+WARNING:  skipping "f_empdata" --- cannot vacuum non-tables or special system tables
+VACUUM FULL f_empdata;
+WARNING:  skipping "f_empdata" --- cannot vacuum non-tables or special system tables
+VACUUM FREEZE f_empdata;
+WARNING:  skipping "f_empdata" --- cannot vacuum non-tables or special system tables
+ANALYZE f_empdata;
+WARNING:  skipping "f_empdata" --- cannot analyze this foreign table
+ANALYZE f_empdata(emp_id);
+WARNING:  skipping "f_empdata" --- cannot analyze this foreign table
+VACUUM ANALYZE f_empdata;
+WARNING:  skipping "f_empdata" --- cannot vacuum non-tables or special system tables
 -- Cleanup
 DELETE FROM fdw126_ft1;
 DELETE FROM f_empdata;
@@ -104,6 +125,7 @@ DROP FOREIGN TABLE fdw126_ft2;
 DROP FOREIGN TABLE fdw126_ft3;
 DROP FOREIGN TABLE fdw126_ft4;
 DROP FOREIGN TABLE fdw126_ft5;
+DROP FOREIGN TABLE fdw126_ft6;
 DROP FOREIGN TABLE f_empdata;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;
