@@ -1618,7 +1618,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 					 "  t.TABLE_NAME,"
 					 "  c.COLUMN_NAME,"
 					 "  CASE"
-					 "    WHEN c.DATA_TYPE = 'enum' THEN LOWER(CONCAT(c.COLUMN_NAME, '_t'))"
+					 "    WHEN c.DATA_TYPE = 'enum' THEN LOWER(CONCAT(t.TABLE_NAME, '_' , c.COLUMN_NAME, '_t'))"
 					 "    WHEN c.DATA_TYPE = 'tinyint' THEN 'smallint'"
 					 "    WHEN c.DATA_TYPE = 'mediumint' THEN 'integer'"
 					 "    WHEN c.DATA_TYPE = 'tinyint unsigned' THEN 'smallint'"
