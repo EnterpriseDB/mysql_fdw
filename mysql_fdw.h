@@ -164,48 +164,49 @@ typedef struct MySQLColumn
 extern bool is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
 							Expr *expr);
 
-int ((mysql_options) (MYSQL *mysql, enum mysql_option option,
-					  const void *arg));
-int ((mysql_stmt_prepare) (MYSQL_STMT *stmt, const char *query,
-						   unsigned long length));
-int ((mysql_stmt_execute) (MYSQL_STMT *stmt));
-int ((mysql_stmt_fetch) (MYSQL_STMT *stmt));
-int ((mysql_query) (MYSQL *mysql, const char *q));
-bool ((mysql_stmt_attr_set) (MYSQL_STMT *stmt,
-							 enum enum_stmt_attr_type attr_type,
-							 const void *attr));
-bool ((mysql_stmt_close) (MYSQL_STMT *stmt));
-bool ((mysql_stmt_reset) (MYSQL_STMT *stmt));
-bool ((mysql_free_result) (MYSQL_RES *result));
-bool ((mysql_stmt_bind_param) (MYSQL_STMT *stmt, MYSQL_BIND *bnd));
-bool ((mysql_stmt_bind_result) (MYSQL_STMT *stmt, MYSQL_BIND *bnd));
+extern int ((mysql_options) (MYSQL *mysql, enum mysql_option option,
+							 const void *arg));
+extern int ((mysql_stmt_prepare) (MYSQL_STMT *stmt, const char *query,
+								  unsigned long length));
+extern int ((mysql_stmt_execute) (MYSQL_STMT *stmt));
+extern int ((mysql_stmt_fetch) (MYSQL_STMT *stmt));
+extern int ((mysql_query) (MYSQL *mysql, const char *q));
+extern bool ((mysql_stmt_attr_set) (MYSQL_STMT *stmt,
+									enum enum_stmt_attr_type attr_type,
+									const void *attr));
+extern bool ((mysql_stmt_close) (MYSQL_STMT *stmt));
+extern bool ((mysql_stmt_reset) (MYSQL_STMT *stmt));
+extern bool ((mysql_free_result) (MYSQL_RES *result));
+extern bool ((mysql_stmt_bind_param) (MYSQL_STMT *stmt, MYSQL_BIND *bnd));
+extern bool ((mysql_stmt_bind_result) (MYSQL_STMT *stmt, MYSQL_BIND *bnd));
 
-MYSQL_STMT *((mysql_stmt_init) (MYSQL *mysql));
-MYSQL_RES *((mysql_stmt_result_metadata) (MYSQL_STMT *stmt));
-int ((mysql_stmt_store_result) (MYSQL *mysql));
-MYSQL_ROW((mysql_fetch_row) (MYSQL_RES *result));
-MYSQL_FIELD *((mysql_fetch_field) (MYSQL_RES *result));
-MYSQL_FIELD *((mysql_fetch_fields) (MYSQL_RES *result));
-const char *((mysql_error) (MYSQL *mysql));
-void ((mysql_close) (MYSQL *sock));
-MYSQL_RES *((mysql_store_result) (MYSQL *mysql));
-MYSQL *((mysql_init) (MYSQL *mysql));
-bool ((mysql_ssl_set) (MYSQL *mysql, const char *key, const char *cert,
-					   const char *ca, const char *capath,
-					   const char *cipher));
-MYSQL *((mysql_real_connect) (MYSQL *mysql, const char *host, const char *user,
-							  const char *passwd, const char *db,
-							  unsigned int port, const char *unix_socket,
-							  unsigned long clientflag));
+extern MYSQL_STMT *((mysql_stmt_init) (MYSQL *mysql));
+extern MYSQL_RES *((mysql_stmt_result_metadata) (MYSQL_STMT *stmt));
+extern int ((mysql_stmt_store_result) (MYSQL *mysql));
+extern MYSQL_ROW((mysql_fetch_row) (MYSQL_RES *result));
+extern MYSQL_FIELD *((mysql_fetch_field) (MYSQL_RES *result));
+extern MYSQL_FIELD *((mysql_fetch_fields) (MYSQL_RES *result));
+extern const char *((mysql_error) (MYSQL *mysql));
+extern void ((mysql_close) (MYSQL *sock));
+extern MYSQL_RES *((mysql_store_result) (MYSQL *mysql));
+extern MYSQL *((mysql_init) (MYSQL *mysql));
+extern bool ((mysql_ssl_set) (MYSQL *mysql, const char *key, const char *cert,
+							  const char *ca, const char *capath,
+							  const char *cipher));
+extern MYSQL *((mysql_real_connect) (MYSQL *mysql, const char *host,
+									 const char *user, const char *passwd,
+									 const char *db, unsigned int port,
+									 const char *unix_socket,
+									 unsigned long clientflag));
 
-const char *((mysql_get_host_info) (MYSQL *mysql));
-const char *((mysql_get_server_info) (MYSQL *mysql));
-int ((mysql_get_proto_info) (MYSQL *mysql));
+extern const char *((mysql_get_host_info) (MYSQL *mysql));
+extern const char *((mysql_get_server_info) (MYSQL *mysql));
+extern int ((mysql_get_proto_info) (MYSQL *mysql));
 
-unsigned int ((mysql_stmt_errno) (MYSQL_STMT *stmt));
-unsigned int ((mysql_errno) (MYSQL *mysql));
-unsigned int ((mysql_num_fields) (MYSQL_RES *result));
-unsigned int ((mysql_num_rows) (MYSQL_RES *result));
+extern unsigned int ((mysql_stmt_errno) (MYSQL_STMT *stmt));
+extern unsigned int ((mysql_errno) (MYSQL *mysql));
+extern unsigned int ((mysql_num_fields) (MYSQL_RES *result));
+extern unsigned int ((mysql_num_rows) (MYSQL_RES *result));
 
 
 /* option.c headers */

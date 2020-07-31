@@ -55,6 +55,49 @@
 /* Declarations for dynamic loading */
 PG_MODULE_MAGIC;
 
+int ((mysql_options) (MYSQL *mysql, enum mysql_option option,
+					  const void *arg));
+int ((mysql_stmt_prepare) (MYSQL_STMT *stmt, const char *query,
+						   unsigned long length));
+int ((mysql_stmt_execute) (MYSQL_STMT *stmt));
+int ((mysql_stmt_fetch) (MYSQL_STMT *stmt));
+int ((mysql_query) (MYSQL *mysql, const char *q));
+bool ((mysql_stmt_attr_set) (MYSQL_STMT *stmt,
+							 enum enum_stmt_attr_type attr_type,
+							 const void *attr));
+bool ((mysql_stmt_close) (MYSQL_STMT *stmt));
+bool ((mysql_stmt_reset) (MYSQL_STMT *stmt));
+bool ((mysql_free_result) (MYSQL_RES *result));
+bool ((mysql_stmt_bind_param) (MYSQL_STMT *stmt, MYSQL_BIND *bnd));
+bool ((mysql_stmt_bind_result) (MYSQL_STMT *stmt, MYSQL_BIND *bnd));
+
+MYSQL_STMT *((mysql_stmt_init) (MYSQL *mysql));
+MYSQL_RES *((mysql_stmt_result_metadata) (MYSQL_STMT *stmt));
+int ((mysql_stmt_store_result) (MYSQL *mysql));
+MYSQL_ROW((mysql_fetch_row) (MYSQL_RES *result));
+MYSQL_FIELD *((mysql_fetch_field) (MYSQL_RES *result));
+MYSQL_FIELD *((mysql_fetch_fields) (MYSQL_RES *result));
+const char *((mysql_error) (MYSQL *mysql));
+void ((mysql_close) (MYSQL *sock));
+MYSQL_RES *((mysql_store_result) (MYSQL *mysql));
+MYSQL *((mysql_init) (MYSQL *mysql));
+bool ((mysql_ssl_set) (MYSQL *mysql, const char *key, const char *cert,
+					   const char *ca, const char *capath,
+					   const char *cipher));
+MYSQL *((mysql_real_connect) (MYSQL *mysql, const char *host, const char *user,
+							  const char *passwd, const char *db,
+							  unsigned int port, const char *unix_socket,
+							  unsigned long clientflag));
+
+const char *((mysql_get_host_info) (MYSQL *mysql));
+const char *((mysql_get_server_info) (MYSQL *mysql));
+int ((mysql_get_proto_info) (MYSQL *mysql));
+
+unsigned int ((mysql_stmt_errno) (MYSQL_STMT *stmt));
+unsigned int ((mysql_errno) (MYSQL *mysql));
+unsigned int ((mysql_num_fields) (MYSQL_RES *result));
+unsigned int ((mysql_num_rows) (MYSQL_RES *result));
+
 #define DEFAULTE_NUM_ROWS    1000
 
 /*
