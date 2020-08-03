@@ -14,6 +14,9 @@ CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw
 CREATE USER MAPPING FOR PUBLIC SERVER mysql_svr
   OPTIONS (username :MYSQL_USER_NAME, password :MYSQL_PASS);
 
+-- Check version
+SELECT mysql_fdw_version();
+
 -- Create foreign tables
 CREATE FOREIGN TABLE f_mysql_test(a int, b int)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'mysql_test');
