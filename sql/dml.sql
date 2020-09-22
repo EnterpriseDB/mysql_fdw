@@ -17,7 +17,7 @@ CREATE USER MAPPING FOR public SERVER mysql_svr
 -- Create foreign tables
 CREATE FOREIGN TABLE f_mysql_test(a int, b int)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'mysql_test');
-CREATE FOREIGN TABLE fdw126_ft1(stu_id int, stu_name varchar(255))
+CREATE FOREIGN TABLE fdw126_ft1(stu_id int, stu_name varchar(255), stu_dept int)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress1', table_name 'student');
 CREATE FOREIGN TABLE fdw126_ft2(stu_id int, stu_name varchar(255))
   SERVER mysql_svr OPTIONS (table_name 'student');
@@ -48,7 +48,7 @@ SELECT emp_id, emp_dat FROM f_empdata ORDER BY 1;
 -- the operation on foreign table created for tables in mysql_fdw_regress
 -- MySQL database.  Below operations will be performed for foreign table
 -- created for table in mysql_fdw_regress1 MySQL database.
-INSERT INTO fdw126_ft1 VALUES(1, 'One');
+INSERT INTO fdw126_ft1 VALUES(1, 'One', 101);
 UPDATE fdw126_ft1 SET stu_name = 'one' WHERE stu_id = 1;
 DELETE FROM fdw126_ft1 WHERE stu_id = 1;
 
@@ -90,6 +90,40 @@ ANALYZE f_empdata;
 ANALYZE f_empdata(emp_id);
 VACUUM ANALYZE f_empdata;
 
+-- Verify the before update trigger which modifies the column value which is not
+-- part of update statement.
+CREATE FUNCTION before_row_update_func() RETURNS TRIGGER AS $$
+BEGIN
+  NEW.stu_name := NEW.stu_name || ' trigger updated!';
+	RETURN NEW;
+  END
+$$ language plpgsql;
+
+CREATE TRIGGER before_row_update_trig
+BEFORE UPDATE ON fdw126_ft1
+FOR EACH ROW EXECUTE PROCEDURE before_row_update_func();
+
+INSERT INTO fdw126_ft1 VALUES(1, 'One', 101);
+EXPLAIN (verbose, costs off)
+UPDATE fdw126_ft1 SET stu_dept = 201 WHERE stu_id = 1;
+UPDATE fdw126_ft1 SET stu_dept = 201 WHERE stu_id = 1;
+SELECT * FROM fdw126_ft1 ORDER BY stu_id;
+
+-- Throw an error when target list has row identifier column.
+UPDATE fdw126_ft1 SET stu_dept = 201, stu_id = 10  WHERE stu_id = 1;
+
+-- Throw an error when before row update trigger modify the row identifier
+-- column value.
+CREATE OR REPLACE FUNCTION before_row_update_func() RETURNS TRIGGER AS $$
+BEGIN
+  NEW.stu_name := NEW.stu_name || ' trigger updated!';
+  NEW.stu_id = 20;
+	RETURN NEW;
+  END
+$$ language plpgsql;
+
+UPDATE fdw126_ft1 SET stu_dept = 301 WHERE stu_id = 1;
+
 -- Cleanup
 DELETE FROM fdw126_ft1;
 DELETE FROM f_empdata;
@@ -101,6 +135,7 @@ DROP FOREIGN TABLE fdw126_ft4;
 DROP FOREIGN TABLE fdw126_ft5;
 DROP FOREIGN TABLE fdw126_ft6;
 DROP FOREIGN TABLE f_empdata;
+DROP FUNCTION before_row_update_func();
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;
 DROP EXTENSION mysql_fdw;
