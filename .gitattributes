@@ -1,0 +1,9 @@
+*		whitespace=space-before-tab,trailing-space
+*.[ch]	whitespace=space-before-tab,trailing-space,indent-with-non-tab,tabwidth=4
+
+# Avoid confusing ASCII underlines with leftover merge conflict markers
+README		conflict-marker-size=32
+README.*	conflict-marker-size=32
+
+# Test output files that contain extra whitespace
+*.out					-whitespace
