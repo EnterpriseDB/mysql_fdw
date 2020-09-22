@@ -1,8 +1,16 @@
-# mysql_fdw/Makefile
+######################################################################-------------------------------------------------------------------------
+#
+# mysql_fdw.c
+# 		Foreign-data wrapper for remote MySQL servers
 #
 # Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
-# Portions Copyright (c) 2004-2020, EnterpriseDB Corporation.
 #
+# Portions Copyright (c) 2004-2014, EnterpriseDB Corporation.
+#
+# IDENTIFICATION
+# 		mysql_fdw.c
+#
+##########################################################################
 
 MODULE_big = mysql_fdw
 OBJS = connection.o option.o deparse.o mysql_query.o mysql_fdw.o
@@ -10,7 +18,7 @@ OBJS = connection.o option.o deparse.o mysql_query.o mysql_fdw.o
 EXTENSION = mysql_fdw
 DATA = mysql_fdw--1.0.sql mysql_fdw--1.1.sql mysql_fdw--1.0--1.1.sql
 
-REGRESS = server_options connection_validation dml select pushdown
+REGRESS = mysql_fdw
 
 MYSQL_CONFIG = mysql_config
 PG_CPPFLAGS := $(shell $(MYSQL_CONFIG) --include)
@@ -40,8 +48,8 @@ include $(PGXS)
 ifndef MAJORVERSION
 MAJORVERSION := $(basename $(VERSION))
 endif
-ifeq (,$(findstring $(MAJORVERSION), 9.5 9.6 10 11 12 13))
-$(error PostgreSQL 9.5, 9.6, 10, 11, 12, or 13 is required to compile this extension)
+ifeq (,$(findstring $(MAJORVERSION), 9.3 9.4 9.5 9.6 10 11 12))
+$(error PostgreSQL 9.3, 9.4, 9.5, 9.6 10 11 12 is required to compile this extension)
 endif
 
 else
