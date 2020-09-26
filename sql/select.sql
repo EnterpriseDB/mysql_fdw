@@ -237,9 +237,35 @@ IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (enum_t1) FROM SERVER mysql_svr
 SELECT * FROM enum_t1 ORDER BY id;
 DROP FOREIGN TABLE enum_t1;
 
+-- Parameterized queries should work correctly.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c8 = (SELECT c1 FROM f_test_tbl2 WHERE c1 = (SELECT 20))
+  ORDER BY c1;
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c8 = (SELECT c1 FROM f_test_tbl2 WHERE c1 = (SELECT 20))
+  ORDER BY c1;
+
+SELECT * FROM f_test_tbl1
+  WHERE c8 NOT IN (SELECT c1 FROM f_test_tbl2 WHERE c1 = (SELECT 20))
+  ORDER BY c1;
+
+-- Check parameterized queries with text/varchar column, should not crash.
+CREATE FOREIGN TABLE f_test_tbl3 (c1 INTEGER, c2 text, c3 text)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_tbl2');
+CREATE TABLE local_t1 (c1 INTEGER, c2 text);
+INSERT INTO local_t1 VALUES (1, 'SALES');
+
+SELECT c1, c2 FROM f_test_tbl3 WHERE c3 = (SELECT 'PUNE'::text) ORDER BY c1;
+SELECT c1, c2 FROM f_test_tbl2 WHERE c3 = (SELECT 'PUNE'::varchar) ORDER BY c1;
+
+SELECT * FROM local_t1 lt1 WHERE lt1.c1 =
+  (SELECT count(*) FROM f_test_tbl3 ft1 WHERE ft1.c2 = lt1.c2) ORDER BY lt1.c1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
+DROP TABLE local_t1;
 DROP VIEW smpl_vw;
 DROP VIEW comp_vw;
 DROP VIEW ttest_tbl1_vw;
@@ -252,6 +278,7 @@ DROP FOREIGN TABLE f_test_tbl2;
 DROP FOREIGN TABLE f_numbers;
 DROP FOREIGN TABLE f_mysql_test;
 DROP FOREIGN TABLE f_enum_t1;
+DROP FOREIGN TABLE f_test_tbl3;
 DROP TYPE size_t;
 DROP FUNCTION test_param_where();
 DROP FUNCTION test_param_where2(int, text);
