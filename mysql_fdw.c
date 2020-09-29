@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/reloptions.h"
 #if PG_VERSION_NUM >= 120000
@@ -48,9 +49,11 @@
 #include "parser/parsetree.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
+#include "utils/datum.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/syscache.h"
 
 /* Declarations for dynamic loading */
 PG_MODULE_MAGIC;
@@ -1186,10 +1189,43 @@ mysqlPlanForeignModify(PlannerInfo *root,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 				 errmsg("first column of remote table must be unique for INSERT/UPDATE/DELETE operation")));
 
-	if (operation == CMD_INSERT)
+	/*
+	 * In an INSERT, we transmit all columns that are defined in the foreign
+	 * table.  In an UPDATE, if there are BEFORE ROW UPDATE triggers on the
+	 * foreign table, we transmit all columns like INSERT; else we transmit
+	 * only columns that were explicitly targets of the UPDATE, so as to avoid
+	 * unnecessary data transmission.  (We can't do that for INSERT since we
+	 * would miss sending default values for columns not listed in the source
+	 * statement, and for UPDATE if there are BEFORE ROW UPDATE triggers since
+	 * those triggers might change values for non-target columns, in which
+	 * case we would miss sending changed values for those columns.)
+	 */
+	if (operation == CMD_INSERT ||
+		(operation == CMD_UPDATE &&
+		 rel->trigdesc &&
+		 rel->trigdesc->trig_update_before_row))
 	{
 		TupleDesc	tupdesc = RelationGetDescr(rel);
 		int			attnum;
+
+		if (operation == CMD_UPDATE)
+		{
+			Bitmapset  *tmpset = bms_copy(rte->updatedCols);
+			AttrNumber	col;
+
+			while ((col = bms_first_member(tmpset)) >= 0)
+			{
+				col += FirstLowInvalidHeapAttributeNumber;
+				if (col <= InvalidAttrNumber)	/* shouldn't happen */
+					elog(ERROR, "system-column update is not supported");
+
+				/*
+				 * We also disallow updates to the first column
+				 */
+				if (col == 1)		/* shouldn't happen */
+					elog(ERROR, "row identifier column update is not supported");
+			}
+		}
 
 		for (attnum = 1; attnum <= tupdesc->natts; attnum++)
 		{
@@ -1437,6 +1473,9 @@ mysqlExecForeignUpdate(EState *estate,
 	Datum		value;
 	int			n_params;
 	bool	   *isnull;
+	Datum		new_value = 0;
+	HeapTuple	tp;
+	Form_pg_attribute att_tup;
 
 	n_params = list_length(fmstate->retrieved_attrs);
 
@@ -1449,9 +1488,16 @@ mysqlExecForeignUpdate(EState *estate,
 		int			attnum = lfirst_int(lc);
 		Oid			type;
 
-		/* first attribute cannot be in target list attribute */
+		/*
+		 * First attribute cannot be in target list attribute. Store the
+		 * modified row identifier column value so that we can compare it later
+		 * to check if that value has been changed through trigger.
+		 */
 		if (attnum == 1)
+		{
+			new_value = slot_getattr(slot, attnum, (bool *) (&isnull[bindnum]));
 			continue;
+		}
 
 		type = TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1)->atttypid;
 		value = slot_getattr(slot, attnum, (bool *) (&isnull[bindnum]));
@@ -1461,9 +1507,29 @@ mysqlExecForeignUpdate(EState *estate,
 		bindnum++;
 	}
 
-	/* Get the id that was passed up as a resjunk column */
+	/*
+	 * Get the row identifier column value that was passed up as a resjunk
+	 * column and compare that value with the new value to identify if that
+	 * value is changed by trigger.
+	 */
 	value = ExecGetJunkAttribute(planSlot, 1, &is_null);
-	typeoid = get_atttype(foreignTableId, 1);
+
+	tp = SearchSysCache2(ATTNUM,
+						 ObjectIdGetDatum(foreignTableId),
+						 Int16GetDatum(1));
+
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+			 1, foreignTableId);
+
+	att_tup = (Form_pg_attribute) GETSTRUCT(tp);
+
+	typeoid = att_tup->atttypid;
+
+	if (!datumIsEqual(value, new_value, att_tup->attbyval, att_tup->attlen))
+		elog(ERROR, "row identifier column update through trigger is not supported");
+
+	ReleaseSysCache(tp);
 
 	/* Bind qual */
 	mysql_bind_sql_var(typeoid, bindnum, value, mysql_bind_buffer, &is_null);
