@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/reloptions.h"
 #if PG_VERSION_NUM >= 120000
@@ -48,9 +49,11 @@
 #include "parser/parsetree.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
+#include "utils/datum.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/syscache.h"
 
 /* Declarations for dynamic loading */
 PG_MODULE_MAGIC;
@@ -215,6 +218,7 @@ static int interactive_timeout = INTERACTIVE_TIMEOUT;
 static void mysql_error_print(MYSQL *conn);
 static void mysql_stmt_error_print(MySQLFdwExecState *festate,
 								   const char *msg);
+static List *getUpdateTargetAttrs(RangeTblEntry *rte);
 
 /*
  * mysql_load_library function dynamically load the mysql's library
@@ -1186,10 +1190,31 @@ mysqlPlanForeignModify(PlannerInfo *root,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 				 errmsg("first column of remote table must be unique for INSERT/UPDATE/DELETE operation")));
 
-	if (operation == CMD_INSERT)
+	/*
+	 * In an INSERT, we transmit all columns that are defined in the foreign
+	 * table.  In an UPDATE, if there are BEFORE ROW UPDATE triggers on the
+	 * foreign table, we transmit all columns like INSERT; else we transmit
+	 * only columns that were explicitly targets of the UPDATE, so as to avoid
+	 * unnecessary data transmission.  (We can't do that for INSERT since we
+	 * would miss sending default values for columns not listed in the source
+	 * statement, and for UPDATE if there are BEFORE ROW UPDATE triggers since
+	 * those triggers might change values for non-target columns, in which
+	 * case we would miss sending changed values for those columns.)
+	 */
+	if (operation == CMD_INSERT ||
+		(operation == CMD_UPDATE &&
+		 rel->trigdesc &&
+		 rel->trigdesc->trig_update_before_row))
 	{
 		TupleDesc	tupdesc = RelationGetDescr(rel);
 		int			attnum;
+
+		/*
+		 * If it is an UPDATE operation, check for row identifier column in
+		 * target attribute list by calling getUpdateTargetAttrs().
+		 */
+		if (operation == CMD_UPDATE)
+			getUpdateTargetAttrs(rte);
 
 		for (attnum = 1; attnum <= tupdesc->natts; attnum++)
 		{
@@ -1201,27 +1226,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	}
 	else if (operation == CMD_UPDATE)
 	{
-#if PG_VERSION_NUM >= 90500
-		Bitmapset  *tmpset = bms_copy(rte->updatedCols);
-#else
-		Bitmapset  *tmpset = bms_copy(rte->modifiedCols);
-#endif
-		AttrNumber	col;
-
-		while ((col = bms_first_member(tmpset)) >= 0)
-		{
-			col += FirstLowInvalidHeapAttributeNumber;
-			if (col <= InvalidAttrNumber)	/* shouldn't happen */
-				elog(ERROR, "system-column update is not supported");
-
-			/*
-			 * We also disallow updates to the first column
-			 */
-			if (col == 1)		/* shouldn't happen */
-				elog(ERROR, "row identifier column update is not supported");
-
-			targetAttrs = lappend_int(targetAttrs, col);
-		}
+		targetAttrs = getUpdateTargetAttrs(rte);
 		/* We also want the rowid column to be available for the update */
 		targetAttrs = lcons_int(1, targetAttrs);
 	}
@@ -1437,6 +1442,10 @@ mysqlExecForeignUpdate(EState *estate,
 	Datum		value;
 	int			n_params;
 	bool	   *isnull;
+	Datum		new_value;
+	HeapTuple	tuple;
+	Form_pg_attribute attr;
+	bool		found_row_id_col = false;
 
 	n_params = list_length(fmstate->retrieved_attrs);
 
@@ -1449,9 +1458,16 @@ mysqlExecForeignUpdate(EState *estate,
 		int			attnum = lfirst_int(lc);
 		Oid			type;
 
-		/* first attribute cannot be in target list attribute */
+		/*
+		 * The first attribute cannot be in the target list attribute.  Set the
+		 * found_row_id_col to true once we find it so that we can fetch the
+		 * value later.
+		 */
 		if (attnum == 1)
+		{
+			found_row_id_col = true;
 			continue;
+		}
 
 		type = TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1)->atttypid;
 		value = slot_getattr(slot, attnum, (bool *) (&isnull[bindnum]));
@@ -1461,9 +1477,62 @@ mysqlExecForeignUpdate(EState *estate,
 		bindnum++;
 	}
 
-	/* Get the id that was passed up as a resjunk column */
+	/*
+	 * Since we add a row identifier column in the target list always, so
+	 * found_row_id_col flag should be true.
+	 */
+	if (!found_row_id_col)
+		elog(ERROR, "missing row identifier column value in UPDATE");
+
+	new_value = slot_getattr(slot, 1, &is_null);
+
+	/*
+	 * Get the row identifier column value that was passed up as a resjunk
+	 * column and compare that value with the new value to identify if that
+	 * value is changed.
+	 */
 	value = ExecGetJunkAttribute(planSlot, 1, &is_null);
-	typeoid = get_atttype(foreignTableId, 1);
+
+	tuple = SearchSysCache2(ATTNUM,
+							ObjectIdGetDatum(foreignTableId),
+							Int16GetDatum(1));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+			 1, foreignTableId);
+
+	attr = (Form_pg_attribute) GETSTRUCT(tuple);
+	typeoid = attr->atttypid;
+
+	if (DatumGetPointer(new_value) != NULL && DatumGetPointer(value) != NULL)
+	{
+		Datum		n_value = new_value;
+		Datum 		o_value = value;
+
+		/* If the attribute type is varlena then need to detoast the datums. */
+		if (attr->attlen == -1)
+		{
+			n_value = PointerGetDatum(PG_DETOAST_DATUM(new_value));
+			o_value = PointerGetDatum(PG_DETOAST_DATUM(value));
+		}
+
+		if (!datumIsEqual(o_value, n_value, attr->attbyval, attr->attlen))
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("row identifier column update is not supported")));
+
+		/* Free memory if it's a copy made above */
+		if (DatumGetPointer(n_value) != DatumGetPointer(new_value))
+			pfree(DatumGetPointer(n_value));
+		if (DatumGetPointer(o_value) != DatumGetPointer(value))
+			pfree(DatumGetPointer(o_value));
+	}
+	else if (!(DatumGetPointer(new_value) == NULL &&
+			   DatumGetPointer(value) == NULL))
+		ereport(ERROR,
+				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+				 errmsg("row identifier column update is not supported")));
+
+	ReleaseSysCache(tuple);
 
 	/* Bind qual */
 	mysql_bind_sql_var(typeoid, bindnum, value, mysql_bind_buffer, &is_null);
@@ -2008,4 +2077,38 @@ mysql_stmt_error_print(MySQLFdwExecState *festate, const char *msg)
 					 errmsg("%s: \n%s", msg, mysql_error(festate->conn))));
 			break;
 	}
+}
+
+/*
+ * getUpdateTargetAttrs
+ * 		Returns the list of attribute numbers of the columns being updated.
+ */
+static List *
+getUpdateTargetAttrs(RangeTblEntry *rte)
+{
+	List	   *targetAttrs = NIL;
+
+#if PG_VERSION_NUM >= 90500
+	Bitmapset  *tmpset = bms_copy(rte->updatedCols);
+#else
+	Bitmapset  *tmpset = bms_copy(rte->modifiedCols);
+#endif
+	AttrNumber	col;
+
+	while ((col = bms_first_member(tmpset)) >= 0)
+	{
+		col += FirstLowInvalidHeapAttributeNumber;
+		if (col <= InvalidAttrNumber)	/* shouldn't happen */
+			elog(ERROR, "system-column update is not supported");
+
+		/* We also disallow updates to the first column */
+		if (col == 1)
+			ereport(ERROR,
+				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+				 errmsg("row identifier column update is not supported")));
+
+		targetAttrs = lappend_int(targetAttrs, col);
+	}
+
+	return targetAttrs;
 }
