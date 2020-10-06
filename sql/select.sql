@@ -222,6 +222,13 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
   FROM f_test_tbl2 d FULL OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
 
+-- FDW-206; LEFT JOIN LATERAL case should not crash
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
+  SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
+  SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+
 -- FDW-155: Enum data type can be handled correctly in select statements on
 -- foreign table.
 SELECT * FROM f_enum_t1 WHERE size = 'medium' ORDER BY id;

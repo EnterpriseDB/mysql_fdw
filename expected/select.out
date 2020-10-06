@@ -898,6 +898,34 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
  40 | HR             |      |       |            |   
 (15 rows)
 
+-- FDW-206; LEFT JOIN LATERAL case should not crash
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
+  SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Sort
+   Output: t1.a, t1.b, t2.a, (t1.a)
+   Sort Key: t1.a
+   ->  Nested Loop Left Join
+         Output: t1.a, t1.b, t2.a, (t1.a)
+         ->  Foreign Scan on public.f_mysql_test t1
+               Output: t1.a, t1.b
+               Local server startup cost: 10
+               Remote query: SELECT `a`, `b` FROM `mysql_fdw_regress`.`mysql_test`
+         ->  Foreign Scan on public.f_mysql_test t2
+               Output: t2.a, t1.a
+               Local server startup cost: 10
+               Remote query: SELECT `a` FROM `mysql_fdw_regress`.`mysql_test` WHERE ((? = `a`))
+(13 rows)
+
+SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
+  SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+ a | b | a | t1_a 
+---+---+---+------
+ 1 | 1 | 1 |    1
+(1 row)
+
 -- FDW-155: Enum data type can be handled correctly in select statements on
 -- foreign table.
 SELECT * FROM f_enum_t1 WHERE size = 'medium' ORDER BY id;
