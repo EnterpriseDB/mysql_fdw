@@ -232,10 +232,20 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
 SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
 
--- Check with IMPORT SCHEMA command.
-IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (enum_t1) FROM SERVER mysql_svr INTO public;
+-- Check with the IMPORT FOREIGN SCHEMA command.  Also, check ENUM types with
+-- the IMPORT FOREIGN SCHEMA command. If the enum name is the same for multiple
+-- tables, then it should handle correctly by prefixing the table name.
+CREATE TYPE enum_t1_size_t AS enum('small', 'medium', 'large');
+CREATE TYPE enum_t2_size_t AS enum('S', 'M', 'L');
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (enum_t1, enum_t2)
+  FROM SERVER mysql_svr INTO public;
+SELECT attrelid::regclass, atttypid::regtype FROM pg_attribute
+  WHERE (attrelid = 'enum_t1'::regclass OR attrelid = 'enum_t2'::regclass) AND
+    attnum > 1 ORDER BY 1;
 SELECT * FROM enum_t1 ORDER BY id;
+SELECT * FROM enum_t2 ORDER BY id;
 DROP FOREIGN TABLE enum_t1;
+DROP FOREIGN TABLE enum_t2;
 
 -- Parameterized queries should work correctly.
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -280,6 +290,8 @@ DROP FOREIGN TABLE f_mysql_test;
 DROP FOREIGN TABLE f_enum_t1;
 DROP FOREIGN TABLE f_test_tbl3;
 DROP TYPE size_t;
+DROP TYPE enum_t1_size_t;
+DROP TYPE enum_t2_size_t;
 DROP FUNCTION test_param_where();
 DROP FUNCTION test_param_where2(int, text);
 DROP USER MAPPING FOR public SERVER mysql_svr;

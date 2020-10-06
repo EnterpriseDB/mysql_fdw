@@ -929,11 +929,29 @@ SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
  t      |   6
 (1 row)
 
--- Check with IMPORT SCHEMA command.
-IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (enum_t1) FROM SERVER mysql_svr INTO public;
+-- Check with the IMPORT FOREIGN SCHEMA command.  Also, check ENUM types with
+-- the IMPORT FOREIGN SCHEMA command. If the enum name is the same for multiple
+-- tables, then it should handle correctly by prefixing the table name.
+CREATE TYPE enum_t1_size_t AS enum('small', 'medium', 'large');
+CREATE TYPE enum_t2_size_t AS enum('S', 'M', 'L');
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (enum_t1, enum_t2)
+  FROM SERVER mysql_svr INTO public;
 NOTICE:  error while generating the table definition
 HINT:  If you encounter an error, you may need to execute the following first:
-DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = 'size_t') THEN CREATE TYPE size_t AS enum('small','medium','large'); END IF; END$$;
+DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = 'enum_t1_size_t') THEN CREATE TYPE enum_t1_size_t AS enum('small','medium','large'); END IF; END$$;
+
+NOTICE:  error while generating the table definition
+HINT:  If you encounter an error, you may need to execute the following first:
+DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = 'enum_t2_size_t') THEN CREATE TYPE enum_t2_size_t AS enum('S','M','L'); END IF; END$$;
+
+SELECT attrelid::regclass, atttypid::regtype FROM pg_attribute
+  WHERE (attrelid = 'enum_t1'::regclass OR attrelid = 'enum_t2'::regclass) AND
+    attnum > 1 ORDER BY 1;
+ attrelid |    atttypid    
+----------+----------------
+ enum_t1  | enum_t1_size_t
+ enum_t2  | enum_t2_size_t
+(2 rows)
 
 SELECT * FROM enum_t1 ORDER BY id;
  id |  size  
@@ -943,7 +961,16 @@ SELECT * FROM enum_t1 ORDER BY id;
   3 | medium
 (3 rows)
 
+SELECT * FROM enum_t2 ORDER BY id;
+ id | size 
+----+------
+ 10 | S
+ 20 | M
+ 30 | M
+(3 rows)
+
 DROP FOREIGN TABLE enum_t1;
+DROP FOREIGN TABLE enum_t2;
 -- Parameterized queries should work correctly.
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, c2 FROM f_test_tbl1
@@ -1038,6 +1065,8 @@ DROP FOREIGN TABLE f_mysql_test;
 DROP FOREIGN TABLE f_enum_t1;
 DROP FOREIGN TABLE f_test_tbl3;
 DROP TYPE size_t;
+DROP TYPE enum_t1_size_t;
+DROP TYPE enum_t2_size_t;
 DROP FUNCTION test_param_where();
 DROP FUNCTION test_param_where2(int, text);
 DROP USER MAPPING FOR public SERVER mysql_svr;
