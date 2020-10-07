@@ -178,7 +178,6 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds,
 	/* Clear the bind buffer and attributes */
 	memset(&binds[attnum], 0x0, sizeof(MYSQL_BIND));
 
-	binds[attnum].buffer_type = mysql_from_pgtyp(type);
 #if MYSQL_VERSION_ID < 80000 || MARIADB_VERSION_ID >= 100000
 	binds[attnum].is_null = (my_bool *) isnull;
 #else
@@ -188,6 +187,9 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds,
 	/* Avoid to bind buffer in case value is NULL */
 	if (*isnull)
 		return;
+
+	/* Assign the buffer type if value is not null */
+	binds[attnum].buffer_type = mysql_from_pgtyp(type);
 
 	switch (type)
 	{

@@ -1075,6 +1075,40 @@ SELECT * FROM local_t1 lt1 WHERE lt1.c1 =
   1 | SALES
 (1 row)
 
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
+  SELECT c1 FROM f_test_tbl2 WHERE c1 = (
+    SELECT min(c1) + 1 FROM f_test_tbl2)) ORDER BY c1;
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Sort
+   Output: f_test_tbl1.c1, f_test_tbl1.c2
+   Sort Key: f_test_tbl1.c1
+   InitPlan 2 (returns $1)
+     ->  Foreign Scan on public.f_test_tbl2 f_test_tbl2_1
+           Output: f_test_tbl2_1.c1
+           Local server startup cost: 10
+           Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl2` WHERE ((`c1` = ?))
+           InitPlan 1 (returns $0)
+             ->  Aggregate
+                   Output: (min(f_test_tbl2.c1) + 1)
+                   ->  Foreign Scan on public.f_test_tbl2
+                         Output: f_test_tbl2.c1, f_test_tbl2.c2, f_test_tbl2.c3
+                         Local server startup cost: 10
+                         Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl2`
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: f_test_tbl1.c1, f_test_tbl1.c2
+         Local server startup cost: 10
+         Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c8` = ?))
+(19 rows)
+
+SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
+  SELECT c1 FROM f_test_tbl2 WHERE c1 = (
+    SELECT min(c1) + 1 FROM f_test_tbl2)) ORDER BY c1;
+ c1 | c2 
+----+----
+(0 rows)
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

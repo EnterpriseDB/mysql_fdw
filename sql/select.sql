@@ -279,6 +279,14 @@ SELECT c1, c2 FROM f_test_tbl2 WHERE c3 = (SELECT 'PUNE'::varchar) ORDER BY c1;
 SELECT * FROM local_t1 lt1 WHERE lt1.c1 =
   (SELECT count(*) FROM f_test_tbl3 ft1 WHERE ft1.c2 = lt1.c2) ORDER BY lt1.c1;
 
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
+  SELECT c1 FROM f_test_tbl2 WHERE c1 = (
+    SELECT min(c1) + 1 FROM f_test_tbl2)) ORDER BY c1;
+SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
+  SELECT c1 FROM f_test_tbl2 WHERE c1 = (
+    SELECT min(c1) + 1 FROM f_test_tbl2)) ORDER BY c1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
