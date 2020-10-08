@@ -1712,7 +1712,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
  * Returns true if given expr is safe to evaluate on the foreign server.
  */
 bool
-is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr)
+mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr)
 {
 	foreign_glob_cxt glob_cxt;
 	foreign_loc_cxt loc_cxt;

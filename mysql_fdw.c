@@ -776,7 +776,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 	{
 		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
 
-		if (is_foreign_expr(root, baserel, ri->clause))
+		if (mysql_is_foreign_expr(root, baserel, ri->clause))
 			fpinfo->remote_conds = lappend(fpinfo->remote_conds, ri);
 		else
 			fpinfo->local_conds = lappend(fpinfo->local_conds, ri);
@@ -1045,7 +1045,7 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 		}
 		else if (list_member_ptr(fpinfo->local_conds, rinfo))
 			local_exprs = lappend(local_exprs, rinfo->clause);
-		else if (is_foreign_expr(root, foreignrel, rinfo->clause))
+		else if (mysql_is_foreign_expr(root, foreignrel, rinfo->clause))
 		{
 			remote_conds = lappend(remote_conds, rinfo);
 			remote_exprs = lappend(remote_exprs, rinfo->clause);

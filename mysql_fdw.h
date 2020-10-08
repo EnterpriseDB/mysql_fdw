@@ -161,8 +161,6 @@ typedef struct MySQLColumn
 	int			atttype;		/* Attribute type */
 } MySQLColumn;
 
-extern bool is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
-							Expr *expr);
 
 extern int ((mysql_options) (MYSQL *mysql, enum mysql_option option,
 							 const void *arg));
@@ -229,6 +227,8 @@ extern void mysql_append_where_clause(StringInfo buf, PlannerInfo *root,
 									  RelOptInfo *baserel, List *exprs,
 									  bool is_first, List **params);
 extern void mysql_deparse_analyze(StringInfo buf, char *dbname, char *relname);
+extern bool mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
+								  Expr *expr);
 
 
 /* connection.c headers */
