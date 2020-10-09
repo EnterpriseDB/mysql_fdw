@@ -222,12 +222,43 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
   FROM f_test_tbl2 d FULL OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
 
--- FDW-206; LEFT JOIN LATERAL case should not crash
+-- FDW-206: LEFT JOIN LATERAL case should not crash
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
   SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
 SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
   SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 INNER JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM l_test_tbl1 t1 LEFT JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+SELECT *, (SELECT r FROM (SELECT c1 AS c1) x, LATERAL (SELECT c1 AS r) y)
+  FROM f_test_tbl1 ORDER BY 1, 2, 3;
+-- LATERAL JOIN with RIGHT should throw error
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 RIGHT JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+
+-- FDW-207: NATURAL JOIN should give correct output
+SELECT t1.c1, t2.c1, t3.c1
+  FROM f_test_tbl1 t1 NATURAL JOIN f_test_tbl1 t2 NATURAL JOIN f_test_tbl1 t3
+  ORDER BY 1, 2, 3;
+
+-- FDW-208: IS NULL and LIKE should give the correct output with
+-- use_remote_estimate set to true.
+INSERT INTO f_test_tbl2 VALUES (50, 'TEMP1', NULL);
+INSERT INTO f_test_tbl2 VALUES (60, 'TEMP2', NULL);
+ALTER SERVER mysql_svr OPTIONS (use_remote_estimate 'true');
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl2 t1 INNER JOIN f_test_tbl2 t2 ON t1.c1 = t2.c1
+  WHERE t1.c3 IS NULL ORDER BY 1, 2;
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl2 t1 INNER JOIN f_test_tbl2 t2 ON t1.c1 = t2.c1 AND t1.c2 LIKE 'TEMP%'
+  ORDER BY 1, 2;
+DELETE FROM f_test_tbl2 WHERE c1 IN (50, 60);
+ALTER SERVER mysql_svr OPTIONS (SET use_remote_estimate 'false');
 
 -- FDW-155: Enum data type can be handled correctly in select statements on
 -- foreign table.
@@ -286,6 +317,14 @@ SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
 SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
   SELECT c1 FROM f_test_tbl2 WHERE c1 = (
     SELECT min(c1) + 1 FROM f_test_tbl2)) ORDER BY c1;
+
+SELECT * FROM f_test_tbl1 WHERE c1 = (SELECT 500) AND c2 = (
+  SELECT max(c2) FROM f_test_tbl1 WHERE c4 = (SELECT 600))
+  ORDER BY 1, 2;
+SELECT t1.c1, (SELECT c2 FROM f_test_tbl1 WHERE c1 =(SELECT 500))
+  FROM f_test_tbl2 t1, (
+    SELECT c1, c2 FROM f_test_tbl2 WHERE c1 > ANY (SELECT 20)) t2
+  ORDER BY 1, 2;
 
 -- Cleanup
 DROP TABLE l_test_tbl1;

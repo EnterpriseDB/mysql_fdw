@@ -898,7 +898,7 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
  40 | HR             |      |       |            |   
 (15 rows)
 
--- FDW-206; LEFT JOIN LATERAL case should not crash
+-- FDW-206: LEFT JOIN LATERAL case should not crash
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
   SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
@@ -926,6 +926,113 @@ SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
  1 | 1 | 1 |    1
 (1 row)
 
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 INNER JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+  c1  | c1 | t1_c8 
+------+----+-------
+  100 | 20 |    20
+  200 | 30 |    30
+  300 | 30 |    30
+  400 | 20 |    20
+  500 | 30 |    30
+  600 | 30 |    30
+  700 | 10 |    10
+  800 | 20 |    20
+  900 | 10 |    10
+ 1000 | 30 |    30
+ 1100 | 20 |    20
+ 1200 | 30 |    30
+ 1300 | 20 |    20
+ 1400 | 10 |    10
+(14 rows)
+
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM l_test_tbl1 t1 LEFT JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+  c1  | c1 | t1_c8 
+------+----+-------
+  100 | 20 |    20
+  200 | 30 |    30
+  300 | 30 |    30
+  400 | 20 |    20
+  500 | 30 |    30
+  600 | 30 |    30
+  700 | 10 |    10
+  800 | 20 |    20
+  900 | 10 |    10
+ 1000 | 30 |    30
+ 1100 | 20 |    20
+ 1200 | 30 |    30
+ 1300 | 20 |    20
+ 1400 | 10 |    10
+(14 rows)
+
+SELECT *, (SELECT r FROM (SELECT c1 AS c1) x, LATERAL (SELECT c1 AS r) y)
+  FROM f_test_tbl1 ORDER BY 1, 2, 3;
+  c1  |  c2   |    c3    |  c4  |     c5     |     c6     |  c7  | c8 |  r   
+------+-------+----------+------+------------+------------+------+----+------
+  100 | EMP1  | ADMIN    | 1300 | 1980-12-17 |  800.23000 |      | 20 |  100
+  200 | EMP2  | SALESMAN |  600 | 1981-02-20 | 1600.00000 |  300 | 30 |  200
+  300 | EMP3  | SALESMAN |  600 | 1981-02-22 | 1250.00000 |  500 | 30 |  300
+  400 | EMP4  | MANAGER  |  900 | 1981-04-02 | 2975.12000 |      | 20 |  400
+  500 | EMP5  | SALESMAN |  600 | 1981-09-28 | 1250.00000 | 1400 | 30 |  500
+  600 | EMP6  | MANAGER  |  900 | 1981-05-01 | 2850.00000 |      | 30 |  600
+  700 | EMP7  | MANAGER  |  900 | 1981-06-09 | 2450.45000 |      | 10 |  700
+  800 | EMP8  | FINANCE  |  400 | 1987-04-19 | 3000.00000 |      | 20 |  800
+  900 | EMP9  | HEAD     |      | 1981-11-17 | 5000.00000 |      | 10 |  900
+ 1000 | EMP10 | SALESMAN |  600 | 1980-09-08 | 1500.00000 |    0 | 30 | 1000
+ 1100 | EMP11 | ADMIN    |  800 | 1987-05-23 | 1100.00000 |      | 20 | 1100
+ 1200 | EMP12 | ADMIN    |  600 | 1981-12-03 |  950.00000 |      | 30 | 1200
+ 1300 | EMP13 | FINANCE  |  400 | 1981-12-03 | 3000.00000 |      | 20 | 1300
+ 1400 | EMP14 | ADMIN    |  700 | 1982-01-23 | 1300.00000 |      | 10 | 1400
+(14 rows)
+
+-- LATERAL JOIN with RIGHT should throw error
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 RIGHT JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+ERROR:  invalid reference to FROM-clause entry for table "t1"
+LINE 2:   SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3...
+                        ^
+DETAIL:  The combining JOIN type must be INNER or LEFT for a LATERAL reference.
+-- FDW-207: NATURAL JOIN should give correct output
+SELECT t1.c1, t2.c1, t3.c1
+  FROM f_test_tbl1 t1 NATURAL JOIN f_test_tbl1 t2 NATURAL JOIN f_test_tbl1 t3
+  ORDER BY 1, 2, 3;
+  c1  |  c1  |  c1  
+------+------+------
+  200 |  200 |  200
+  300 |  300 |  300
+  500 |  500 |  500
+ 1000 | 1000 | 1000
+(4 rows)
+
+-- FDW-208: IS NULL and LIKE should give the correct output with
+-- use_remote_estimate set to true.
+INSERT INTO f_test_tbl2 VALUES (50, 'TEMP1', NULL);
+INSERT INTO f_test_tbl2 VALUES (60, 'TEMP2', NULL);
+ALTER SERVER mysql_svr OPTIONS (use_remote_estimate 'true');
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl2 t1 INNER JOIN f_test_tbl2 t2 ON t1.c1 = t2.c1
+  WHERE t1.c3 IS NULL ORDER BY 1, 2;
+ c1 | c1 
+----+----
+ 50 | 50
+ 60 | 60
+(2 rows)
+
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl2 t1 INNER JOIN f_test_tbl2 t2 ON t1.c1 = t2.c1 AND t1.c2 LIKE 'TEMP%'
+  ORDER BY 1, 2;
+ c1 | c1 
+----+----
+ 50 | 50
+ 60 | 60
+(2 rows)
+
+DELETE FROM f_test_tbl2 WHERE c1 IN (50, 60);
+ALTER SERVER mysql_svr OPTIONS (SET use_remote_estimate 'false');
 -- FDW-155: Enum data type can be handled correctly in select statements on
 -- foreign table.
 SELECT * FROM f_enum_t1 WHERE size = 'medium' ORDER BY id;
@@ -1108,6 +1215,30 @@ SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
  c1 | c2 
 ----+----
 (0 rows)
+
+SELECT * FROM f_test_tbl1 WHERE c1 = (SELECT 500) AND c2 = (
+  SELECT max(c2) FROM f_test_tbl1 WHERE c4 = (SELECT 600))
+  ORDER BY 1, 2;
+ c1  |  c2  |    c3    | c4  |     c5     |     c6     |  c7  | c8 
+-----+------+----------+-----+------------+------------+------+----
+ 500 | EMP5 | SALESMAN | 600 | 1981-09-28 | 1250.00000 | 1400 | 30
+(1 row)
+
+SELECT t1.c1, (SELECT c2 FROM f_test_tbl1 WHERE c1 =(SELECT 500))
+  FROM f_test_tbl2 t1, (
+    SELECT c1, c2 FROM f_test_tbl2 WHERE c1 > ANY (SELECT 20)) t2
+  ORDER BY 1, 2;
+ c1 |  c2  
+----+------
+ 10 | EMP5
+ 10 | EMP5
+ 20 | EMP5
+ 20 | EMP5
+ 30 | EMP5
+ 30 | EMP5
+ 40 | EMP5
+ 40 | EMP5
+(8 rows)
 
 -- Cleanup
 DROP TABLE l_test_tbl1;
