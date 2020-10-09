@@ -1033,6 +1033,57 @@ SELECT t1.c1, t2.c1
 
 DELETE FROM f_test_tbl2 WHERE c1 IN (50, 60);
 ALTER SERVER mysql_svr OPTIONS (SET use_remote_estimate 'false');
+-- FDW-169: Insert/Update/Delete on enum column.
+INSERT INTO f_enum_t1
+  VALUES (1, 'small'), (2, 'medium'), (3, 'medium'), (4, 'small');
+SELECT * FROM f_enum_t1 WHERE id = 4;
+ id | size  
+----+-------
+  4 | small
+(1 row)
+
+UPDATE f_enum_t1 SET size = 'large' WHERE id = 4;
+SELECT * FROM f_enum_t1 WHERE id = 4;
+ id | size  
+----+-------
+  4 | large
+(1 row)
+
+DELETE FROM f_enum_t1 WHERE size = 'large';
+SELECT * FROM f_enum_t1 WHERE id = 4;
+ id | size 
+----+------
+(0 rows)
+
+-- Negative scenarios for ENUM handling.
+-- Test that if we insert the ENUM value which is not present on MySQL side,
+-- but present on Postgres side.
+DROP FOREIGN TABLE f_enum_t1;
+DROP TYPE size_t;
+-- Create the type with extra enum values.
+CREATE TYPE size_t AS enum('small', 'medium', 'large', 'largest', '');
+CREATE FOREIGN TABLE f_enum_t1(id int, size size_t)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'enum_t1');
+-- If we insert the enum value which is not present on MySQL side then it
+-- inserts empty string in ANSI_QUOTES sql_mode, so verify that.
+INSERT INTO f_enum_t1 VALUES (4, 'largest');
+SELECT * from f_enum_t1;
+ id |  size  
+----+--------
+  1 | small
+  2 | medium
+  3 | medium
+  4 | 
+(4 rows)
+
+DELETE FROM f_enum_t1 WHERE size = '';
+-- Postgres should throw an error as the value which we are inserting for enum
+-- column is not present in enum on Postgres side, no matter whether it is
+-- present on MySQL side or not. PG's sanity check itself throws an error.
+INSERT INTO f_enum_t1 VALUES (4, 'big');
+ERROR:  invalid input value for enum size_t: "big"
+LINE 1: INSERT INTO f_enum_t1 VALUES (4, 'big');
+                                         ^
 -- FDW-155: Enum data type can be handled correctly in select statements on
 -- foreign table.
 SELECT * FROM f_enum_t1 WHERE size = 'medium' ORDER BY id;
@@ -1251,6 +1302,7 @@ DROP VIEW mul_tbl_view;
 DELETE FROM f_test_tbl1;
 DELETE FROM f_test_tbl2;
 DELETE FROM f_numbers;
+DELETE FROM f_enum_t1;
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
 DROP FOREIGN TABLE f_numbers;

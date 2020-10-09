@@ -144,6 +144,7 @@ mysql_from_pgtyp(Oid type)
 		case VARCHAROID:
 		case TEXTOID:
 		case JSONOID:
+		case ANYENUMOID:
 			return MYSQL_TYPE_STRING;
 		case NAMEOID:
 			return MYSQL_TYPE_STRING;
@@ -187,6 +188,13 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds,
 	/* Avoid to bind buffer in case value is NULL */
 	if (*isnull)
 		return;
+
+	/*
+	 * If type is an enum, use ANYENUMOID.  We will send string containing the
+	 * enum value to the MySQL.
+	 */
+	if (type_is_enum(type))
+		type = ANYENUMOID;
 
 	/* Assign the buffer type if value is not null */
 	binds[attnum].buffer_type = mysql_from_pgtyp(type);
@@ -269,6 +277,7 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds,
 		case VARCHAROID:
 		case TEXTOID:
 		case JSONOID:
+		case ANYENUMOID:
 			{
 				char	   *outputString = NULL;
 				Oid			outputFunctionId = InvalidOid;
