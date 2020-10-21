@@ -105,9 +105,9 @@ unsigned int ((mysql_num_rows) (MYSQL_RES *result));
 
 /*
  * In PG 9.5.1 the number will be 90501,
- * our version is 2.5.4 so number will be 20504
+ * our version is 2.5.5 so number will be 20505
  */
-#define CODE_VERSION   20504
+#define CODE_VERSION   20505
 
 typedef struct MySQLFdwRelationInfo
 {
