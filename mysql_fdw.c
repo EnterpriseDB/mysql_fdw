@@ -480,7 +480,8 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	user = GetUserMapping(userid, server->serverid);
 
 	/* Fetch the options */
-	options = mysql_get_options(RelationGetRelid(node->ss.ss_currentRelation));
+	options = mysql_get_options(RelationGetRelid(node->ss.ss_currentRelation),
+								true);
 
 	/*
 	 * Get the already connected connection, otherwise connect and get the
@@ -680,7 +681,8 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	mysql_opt  *options;
 
 	/* Fetch options */
-	options = mysql_get_options(RelationGetRelid(node->ss.ss_currentRelation));
+	options = mysql_get_options(RelationGetRelid(node->ss.ss_currentRelation),
+								true);
 
 	/* Give some possibly useful info about startup costs */
 	if (es->verbose)
@@ -770,7 +772,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 	user = GetUserMapping(userid, server->serverid);
 
 	/* Fetch options */
-	options = mysql_get_options(foreigntableid);
+	options = mysql_get_options(foreigntableid, true);
 
 	/* Connect to the server */
 	conn = mysql_get_connection(server, user, options);
@@ -889,7 +891,7 @@ mysql_is_column_unique(Oid foreigntableid)
 	user = GetUserMapping(userid, server->serverid);
 
 	/* Fetch the options */
-	options = mysql_get_options(foreigntableid);
+	options = mysql_get_options(foreigntableid, true);
 
 	/* Connect to the server */
 	conn = mysql_get_connection(server, user, options);
@@ -938,7 +940,7 @@ mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *startup_cost,
 	mysql_opt  *options;
 
 	/* Fetch options */
-	options = mysql_get_options(foreigntableid);
+	options = mysql_get_options(foreigntableid, true);
 
 	/* Local databases are probably faster */
 	if (strcmp(options->svr_address, "127.0.0.1") == 0 ||
@@ -1012,7 +1014,7 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 	ListCell   *lc;
 
 	/* Fetch options */
-	options = mysql_get_options(foreigntableid);
+	options = mysql_get_options(foreigntableid, true);
 
 	/*
 	 * Build the query string to be sent for execution, and identify
@@ -1129,7 +1131,7 @@ mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func,
 	user = GetUserMapping(relation->rd_rel->relowner, server->serverid);
 
 	/* Fetch options */
-	options = mysql_get_options(foreignTableId);
+	options = mysql_get_options(foreignTableId, true);
 	Assert(options->svr_database != NULL && options->svr_table != NULL);
 
 	/* Connect to the server */
@@ -1331,7 +1333,7 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	fmstate = (MySQLFdwExecState *) palloc0(sizeof(MySQLFdwExecState));
 
 	fmstate->rel = rel;
-	fmstate->mysqlFdwOptions = mysql_get_options(foreignTableId);
+	fmstate->mysqlFdwOptions = mysql_get_options(foreignTableId, true);
 	fmstate->conn = mysql_get_connection(server, user,
 										 fmstate->mysqlFdwOptions);
 
@@ -1702,7 +1704,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	 */
 	server = GetForeignServer(serverOid);
 	user = GetUserMapping(GetUserId(), server->serverid);
-	options = mysql_get_options(serverOid);
+	options = mysql_get_options(serverOid, false);
 	conn = mysql_get_connection(server, user, options);
 
 	/* Create workspace for strings */

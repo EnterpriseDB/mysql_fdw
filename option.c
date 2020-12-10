@@ -133,7 +133,7 @@ mysql_is_valid_option(const char *option, Oid context)
  * Fetch the options for a mysql_fdw foreign table.
  */
 mysql_opt *
-mysql_get_options(Oid foreignoid)
+mysql_get_options(Oid foreignoid, bool is_foreigntable)
 {
 	ForeignTable *f_table;
 	ForeignServer *f_server;
@@ -147,17 +147,16 @@ mysql_get_options(Oid foreignoid)
 	/*
 	 * Extract options from FDW objects.
 	 */
-	PG_TRY();
+	if (is_foreigntable)
 	{
 		f_table = GetForeignTable(foreignoid);
 		f_server = GetForeignServer(f_table->serverid);
 	}
-	PG_CATCH();
+	else
 	{
 		f_table = NULL;
 		f_server = GetForeignServer(foreignoid);
 	}
-	PG_END_TRY();
 
 	f_mapping = GetUserMapping(GetUserId(), f_server->serverid);
 

@@ -315,6 +315,25 @@ SELECT * FROM enum_t2 ORDER BY id;
 DROP FOREIGN TABLE enum_t1;
 DROP FOREIGN TABLE enum_t2;
 
+-- FDW-248: IMPORT FOREIGN SCHEMA command should work correctly if called
+-- multiple times. Earlier we wrongly used PG_TRY/CATCH block to get the server
+-- options without clearing the error state and that exceeded
+-- ERRORDATA_STACK_SIZE hard coded to 5.
+DO
+$DO$
+DECLARE
+  i int;
+BEGIN
+  FOR i IN 1..5
+  LOOP
+    IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (mysql_test)
+    FROM SERVER mysql_svr INTO public;
+
+    DROP FOREIGN TABLE mysql_test;
+  END LOOP;
+END;
+$DO$;
+
 -- Parameterized queries should work correctly.
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, c2 FROM f_test_tbl1
