@@ -213,6 +213,34 @@ BEGIN
 $$ language plpgsql;
 UPDATE fdw193_ft1 SET stu_dept = 401 WHERE stu_id = 'aa';
 ERROR:  row identifier column update is not supported
+-- FDW-224 Fix COPY FROM and foreign partition routing result in server crash
+-- Should fail as foreign table direct copy not supported
+COPY f_mysql_test TO stdout;
+ERROR:  cannot copy from foreign table "f_mysql_test"
+HINT:  Try the COPY (SELECT ...) TO variant.
+COPY f_mysql_test (a) TO stdout;
+ERROR:  cannot copy from foreign table "f_mysql_test"
+HINT:  Try the COPY (SELECT ...) TO variant.
+-- Should pass
+COPY (SELECT * FROM f_mysql_test) TO stdout;
+1	1
+COPY (SELECT a FROM f_mysql_test) TO '/tmp/copy_test.txt' delimiter ',';
+-- Should give error message as copy from with foreign table not supported
+DO
+$$
+BEGIN
+  COPY f_mysql_test(a) FROM '/tmp/copy_test.txt' delimiter ',';
+  EXCEPTION WHEN others THEN
+	IF SQLERRM = 'COPY and foreign partition routing not supported in mysql_fdw' OR
+	   SQLERRM = 'cannot copy to foreign table "f_mysql_test"' THEN
+	   RAISE NOTICE 'ERROR:  COPY and foreign partition routing not supported in mysql_fdw';
+        ELSE
+	   RAISE NOTICE '%', SQLERRM;
+	END IF;
+END;
+$$
+LANGUAGE plpgsql;
+NOTICE:  ERROR:  COPY and foreign partition routing not supported in mysql_fdw
 -- Cleanup
 DELETE FROM fdw126_ft1;
 DELETE FROM f_empdata;
