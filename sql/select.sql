@@ -375,6 +375,12 @@ SELECT t1.c1, (SELECT c2 FROM f_test_tbl1 WHERE c1 =(SELECT 500))
     SELECT c1, c2 FROM f_test_tbl2 WHERE c1 > ANY (SELECT 20)) t2
   ORDER BY 1, 2;
 
+-- FDW-255: Should throw an error when we select system attribute.
+SELECT xmin FROM f_test_tbl1;
+SELECT ctid, xmax, tableoid FROM f_test_tbl1;
+SELECT xmax, c1 FROM f_test_tbl1;
+SELECT count(tableoid) FROM f_test_tbl1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

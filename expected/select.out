@@ -1309,6 +1309,15 @@ SELECT t1.c1, (SELECT c2 FROM f_test_tbl1 WHERE c1 =(SELECT 500))
  40 | EMP5
 (8 rows)
 
+-- FDW-255: Should throw an error when we select system attribute.
+SELECT xmin FROM f_test_tbl1;
+ERROR:  system attribute "xmin" can't be fetched from remote relation
+SELECT ctid, xmax, tableoid FROM f_test_tbl1;
+ERROR:  system attribute "ctid" can't be fetched from remote relation
+SELECT xmax, c1 FROM f_test_tbl1;
+ERROR:  system attribute "xmax" can't be fetched from remote relation
+SELECT count(tableoid) FROM f_test_tbl1;
+ERROR:  system attribute "tableoid" can't be fetched from remote relation
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
