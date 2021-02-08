@@ -26,6 +26,7 @@
 #include "access/tupdesc.h"
 #include "fmgr.h"
 #include "foreign/foreign.h"
+#include "funcapi.h"
 #include "lib/stringinfo.h"
 #if PG_VERSION_NUM < 120000
 #include "nodes/relation.h"
@@ -150,7 +151,20 @@ typedef struct MySQLFdwExecState
 	List	   *column_list;	/* Column list of MySQL Column structures */
 	/* working memory context */
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
+
+	AttInMetadata *attinmeta;
 } MySQLFdwExecState;
+
+typedef struct MySQLFdwRelationInfo
+{
+	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
+	List	   *remote_conds;
+	List	   *local_conds;
+
+	/* Bitmap of attr numbers we need to fetch from the remote server. */
+	Bitmapset  *attrs_used;
+
+} MySQLFdwRelationInfo;
 
 
 /* MySQL Column List */
@@ -212,9 +226,6 @@ extern bool mysql_is_valid_option(const char *option, Oid context);
 extern mysql_opt *mysql_get_options(Oid foreigntableid, bool is_foreigntable);
 
 /* depare.c headers */
-extern void mysql_deparse_select(StringInfo buf, PlannerInfo *root,
-								 RelOptInfo *baserel, Bitmapset *attrs_used,
-								 char *svr_table, List **retrieved_attrs);
 extern void mysql_deparse_insert(StringInfo buf, PlannerInfo *root,
 								 Index rtindex, Relation rel,
 								 List *targetAttrs);
@@ -223,13 +234,15 @@ extern void mysql_deparse_update(StringInfo buf, PlannerInfo *root,
 								 List *targetAttrs, char *attname);
 extern void mysql_deparse_delete(StringInfo buf, PlannerInfo *root,
 								 Index rtindex, Relation rel, char *name);
-extern void mysql_append_where_clause(StringInfo buf, PlannerInfo *root,
-									  RelOptInfo *baserel, List *exprs,
-									  bool is_first, List **params);
 extern void mysql_deparse_analyze(StringInfo buf, char *dbname, char *relname);
 extern bool mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
 								  Expr *expr);
-
+extern void mysql_deparse_select_stmt_for_rel(StringInfo buf,
+											  PlannerInfo *root,
+											  RelOptInfo *rel,
+											  List *remote_conds,
+											  List **retrieved_attrs,
+											  List **params_list);
 
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user,

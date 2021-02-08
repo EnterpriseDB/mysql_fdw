@@ -119,6 +119,9 @@ static void mysql_deparse_target_list(StringInfo buf, PlannerInfo *root,
 									  List **retrieved_attrs);
 static void mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 									 PlannerInfo *root);
+static void mysql_deparse_select_sql(List **retrieved_attrs,
+									 deparse_expr_cxt *context);
+static void mysql_append_conditions(List *exprs, deparse_expr_cxt *context);
 
 /*
  * Functions to construct string representation of a specific types.
@@ -193,15 +196,69 @@ mysql_quote_identifier(const char *str, char quotechar)
 }
 
 /*
- * Deparse SELECT statement
+ * mysql_deparse_select_stmt_for_rel
+ * 		Deparse SELECT statement for given relation into buf.
+ *
+ * remote_conds is the list of conditions to be deparsed into the WHERE clause.
+ *
+ * If params_list is not NULL, it receives a list of Params and other-relation
+ * Vars used in the clauses; these values must be transmitted to the remote
+ * server as parameter values.
+ *
+ * If params_list is NULL, we're generating the query for EXPLAIN purposes,
+ * so Params and other-relation Vars should be replaced by dummy values.
+ *
+ * List of columns selected is returned in retrieved_attrs.
  */
-void
-mysql_deparse_select(StringInfo buf, PlannerInfo *root, RelOptInfo *baserel,
-					 Bitmapset *attrs_used, char *svr_table,
-					 List **retrieved_attrs)
+extern void
+mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
+								  RelOptInfo *rel, List *remote_conds,
+								  List **retrieved_attrs,
+								  List **params_list)
 {
-	RangeTblEntry *rte = planner_rt_fetch(baserel->relid, root);
+	deparse_expr_cxt context;
+
+	/* Fill portions of context common to base relation */
+	context.buf = buf;
+	context.root = root;
+	context.foreignrel = rel;
+	context.params_list = params_list;
+
+	/* Construct SELECT clause and FROM clause */
+	mysql_deparse_select_sql(retrieved_attrs, &context);
+
+	/* Construct WHERE clause */
+	if (remote_conds != NIL)
+	{
+		appendStringInfoString(buf, " WHERE ");
+		mysql_append_conditions(remote_conds, &context);
+	}
+}
+
+/*
+ * mysql_deparse_select_sql
+ * 		Construct a simple SELECT statement that retrieves desired columns
+ * 		of the specified foreign table, and append it to "buf".  The output
+ * 		contains just "SELECT ... FROM ....".
+ *
+ * We also create an integer List of the columns being retrieved, which is
+ * returned to *retrieved_attrs.
+ *
+ */
+static void
+mysql_deparse_select_sql(List **retrieved_attrs, deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	RelOptInfo *foreignrel = context->foreignrel;
+	PlannerInfo *root = context->root;
+	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) foreignrel->fdw_private;
+	RangeTblEntry *rte = planner_rt_fetch(foreignrel->relid, root);
 	Relation	rel;
+
+	/*
+	 * Construct SELECT list
+	 */
+	appendStringInfoString(buf, "SELECT ");
 
 	/*
 	 * Core code already has some lock on each rel being planned, so we can
@@ -213,16 +270,14 @@ mysql_deparse_select(StringInfo buf, PlannerInfo *root, RelOptInfo *baserel,
 	rel = table_open(rte->relid, NoLock);
 #endif
 
-	appendStringInfoString(buf, "SELECT ");
-	mysql_deparse_target_list(buf, root, baserel->relid, rel, attrs_used,
-							  retrieved_attrs);
+	mysql_deparse_target_list(buf, root, foreignrel->relid, rel,
+							  fpinfo->attrs_used, retrieved_attrs);
 
 	/*
 	 * Construct FROM clause
 	 */
 	appendStringInfoString(buf, " FROM ");
 	mysql_deparse_relation(buf, rel);
-
 #if PG_VERSION_NUM < 130000
 	heap_close(rel, NoLock);
 #else
@@ -339,55 +394,6 @@ mysql_deparse_target_list(StringInfo buf, PlannerInfo *root, Index rtindex,
 	/* Don't generate bad syntax if no undropped columns */
 	if (first)
 		appendStringInfoString(buf, "NULL");
-}
-
-/*
- * Deparse WHERE clauses in given list of RestrictInfos and append them to buf.
- *
- * baserel is the foreign table we're planning for.
- *
- * If no WHERE clause already exists in the buffer, is_first should be true.
- *
- * If params is not NULL, it receives a list of Params and other-relation Vars
- * used in the clauses; these values must be transmitted to the remote server
- * as parameter values.
- *
- * If params is NULL, we're generating the query for EXPLAIN purposes,
- * so Params and other-relation Vars should be replaced by dummy values.
- */
-void
-mysql_append_where_clause(StringInfo buf, PlannerInfo *root,
-						  RelOptInfo *baserel, List *exprs, bool is_first,
-						  List **params)
-{
-	deparse_expr_cxt context;
-	ListCell   *lc;
-
-	if (params)
-		*params = NIL;			/* initialize result list to empty */
-
-	/* Set up context struct for recursion */
-	context.root = root;
-	context.foreignrel = baserel;
-	context.buf = buf;
-	context.params_list = params;
-
-	foreach(lc, exprs)
-	{
-		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
-
-		/* Connect expressions with "AND" and parenthesize each condition. */
-		if (is_first)
-			appendStringInfoString(buf, " WHERE ");
-		else
-			appendStringInfoString(buf, " AND ");
-
-		appendStringInfoChar(buf, '(');
-		deparseExpr(ri->clause, &context);
-		appendStringInfoChar(buf, ')');
-
-		is_first = false;
-	}
 }
 
 /*
@@ -1734,4 +1740,47 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr)
 
 	/* OK to evaluate on the remote server */
 	return true;
+}
+
+/*
+ * mysql_append_conditions
+ * 		Deparse conditions from the provided list and append them to buf.
+ *
+ * The conditions in the list are assumed to be ANDed.
+ *
+ * Depending on the caller, the list elements might be either RestrictInfos
+ * or bare clauses.
+ */
+static void
+mysql_append_conditions(List *exprs, deparse_expr_cxt *context)
+{
+	ListCell   *lc;
+	bool		is_first = true;
+	StringInfo	buf = context->buf;
+
+	foreach(lc, exprs)
+	{
+		Expr	   *expr = (Expr *) lfirst(lc);
+
+		/*
+		 * Extract clause from RestrictInfo, if required. See comments in
+		 * declaration of MySQLFdwRelationInfo for details.
+		 */
+		if (IsA(expr, RestrictInfo))
+		{
+			RestrictInfo *ri = (RestrictInfo *) expr;
+
+			expr = ri->clause;
+		}
+
+		/* Connect expressions with "AND" and parenthesize each condition. */
+		if (!is_first)
+			appendStringInfoString(buf, " AND ");
+
+		appendStringInfoChar(buf, '(');
+		deparseExpr(expr, context);
+		appendStringInfoChar(buf, ')');
+
+		is_first = false;
+	}
 }

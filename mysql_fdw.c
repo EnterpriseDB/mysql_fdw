@@ -110,16 +110,21 @@ unsigned int ((mysql_num_rows) (MYSQL_RES *result));
  */
 #define CODE_VERSION   20505
 
-typedef struct MySQLFdwRelationInfo
+/*
+ * Indexes of FDW-private information stored in fdw_private lists.
+ *
+ * These items are indexed with the enum mysqlFdwScanPrivateIndex, so an item
+ * can be fetched with list_nth().  For example, to get the SELECT statement:
+ *		sql = strVal(list_nth(fdw_private, mysqlFdwScanPrivateSelectSql));
+ */
+enum mysqlFdwScanPrivateIndex
 {
-	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
-	List	   *remote_conds;
-	List	   *local_conds;
+	/* SQL statement to execute remotely (as a String node) */
+	mysqlFdwScanPrivateSelectSql,
 
-	/* Bitmap of attr numbers we need to fetch from the remote server. */
-	Bitmapset  *attrs_used;
-
-} MySQLFdwRelationInfo;
+	/* Integer list of attribute numbers retrieved by the SELECT */
+	mysqlFdwScanPrivateRetrievedAttrs,
+};
 
 extern PGDLLEXPORT void _PG_init(void);
 extern Datum mysql_fdw_handler(PG_FUNCTION_ARGS);
@@ -491,10 +496,13 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	conn = mysql_get_connection(server, user, options);
 
 	/* Stash away the state info we have already */
-	festate->query = strVal(list_nth(fsplan->fdw_private, 0));
-	festate->retrieved_attrs = list_nth(fsplan->fdw_private, 1);
+	festate->query = strVal(list_nth(fsplan->fdw_private,
+									 mysqlFdwScanPrivateSelectSql));
+	festate->retrieved_attrs = list_nth(fsplan->fdw_private,
+										mysqlFdwScanPrivateRetrievedAttrs);
 	festate->conn = conn;
 	festate->query_executed = false;
+	festate->attinmeta = TupleDescGetAttInMetadata(tupleDescriptor);
 
 #if PG_VERSION_NUM >= 110000
 	festate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
@@ -603,13 +611,22 @@ mysqlIterateForeignScan(ForeignScanState *node)
 {
 	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
 	TupleTableSlot *tupleSlot = node->ss.ss_ScanTupleSlot;
-	TupleDesc	tupleDescriptor = tupleSlot->tts_tupleDescriptor;
 	int			attid;
 	ListCell   *lc;
 	int			rc = 0;
+	Datum	   *dvalues;
+	bool	   *nulls;
+	int			natts;
+	AttInMetadata *attinmeta = festate->attinmeta;
+	HeapTuple	tup;
+	int			i;
 
-	memset(tupleSlot->tts_values, 0, sizeof(Datum) * tupleDescriptor->natts);
-	memset(tupleSlot->tts_isnull, true, sizeof(bool) * tupleDescriptor->natts);
+	natts = attinmeta->tupdesc->natts;
+
+	dvalues = palloc0(natts * sizeof(Datum));
+	nulls = palloc(natts * sizeof(bool));
+	/* Initialize to nulls for any columns not present in result */
+	memset(nulls, true, natts * sizeof(bool));
 
 	ExecClearTuple(tupleSlot);
 
@@ -627,19 +644,42 @@ mysqlIterateForeignScan(ForeignScanState *node)
 		foreach(lc, festate->retrieved_attrs)
 		{
 			int			attnum = lfirst_int(lc) - 1;
-			Oid			pgtype = TupleDescAttr(tupleDescriptor, attnum)->atttypid;
-			int32		pgtypmod = TupleDescAttr(tupleDescriptor, attnum)->atttypmod;
+			Oid			pgtype = TupleDescAttr(attinmeta->tupdesc, attnum)->atttypid;
+			int32		pgtypmod = TupleDescAttr(attinmeta->tupdesc, attnum)->atttypmod;
 
-			tupleSlot->tts_isnull[attnum] = festate->table->column[attid].is_null;
+			nulls[attnum] = festate->table->column[attid].is_null;
 			if (!festate->table->column[attid].is_null)
-				tupleSlot->tts_values[attnum] = mysql_convert_to_pg(pgtype,
-																	pgtypmod,
-																	&festate->table->column[attid]);
+				dvalues[attnum] = mysql_convert_to_pg(pgtype, pgtypmod,
+													  &festate->table->column[attid]);
 
 			attid++;
 		}
 
-		ExecStoreVirtualTuple(tupleSlot);
+		ExecClearTuple(tupleSlot);
+
+		/* Form the Tuple using Datums */
+		tup = heap_form_tuple(attinmeta->tupdesc, dvalues, nulls);
+
+		if (tup)
+#if PG_VERSION_NUM >= 120000
+			ExecStoreHeapTuple(tup, tupleSlot, false);
+#else
+			ExecStoreTuple(tup, tupleSlot, InvalidBuffer, false);
+#endif
+		else
+			mysql_stmt_close(festate->stmt);
+
+		/*
+		 * Release locally palloc'd space.  and values of pass-by-reference
+		 * datums, as well.
+		 */
+		for (i = 0; i < natts; i++)
+		{
+			if (dvalues[i] && !TupleDescAttr(attinmeta->tupdesc, i)->attbyval)
+				pfree(DatumGetPointer(dvalues[i]));
+		}
+		pfree(dvalues);
+		pfree(nulls);
 	}
 	else if (rc == 1)
 	{
@@ -824,13 +864,9 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 		initStringInfo(&sql);
 		appendStringInfo(&sql, "EXPLAIN ");
 
-		mysql_deparse_select(&sql, root, baserel, fpinfo->attrs_used,
-							 options->svr_table, &retrieved_attrs);
-
-		if (fpinfo->remote_conds)
-			mysql_append_where_clause(&sql, root, baserel,
-									  fpinfo->remote_conds, true,
-									  &params_list);
+		mysql_deparse_select_stmt_for_rel(&sql, root, baserel,
+										  fpinfo->remote_conds,
+										  &retrieved_attrs, &params_list);
 
 		if (mysql_query(conn, sql.data) != 0)
 			mysql_error_print(conn);
@@ -1010,21 +1046,9 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 	List	   *params_list = NIL;
 	List	   *remote_conds = NIL;
 	StringInfoData sql;
-	mysql_opt  *options;
 	List	   *retrieved_attrs;
 	ListCell   *lc;
 	List	   *scan_var_list;
-
-	/* Fetch options */
-	options = mysql_get_options(foreigntableid, true);
-
-	/*
-	 * Build the query string to be sent for execution, and identify
-	 * expressions to be sent as parameters.
-	 */
-
-	/* Build the query */
-	initStringInfo(&sql);
 
 	/*
 	 * Separate the scan_clauses into those that can be executed remotely and
@@ -1102,12 +1126,14 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 						attr->attname.data)));
 	}
 
-	mysql_deparse_select(&sql, root, foreignrel, fpinfo->attrs_used,
-						 options->svr_table, &retrieved_attrs);
-
-	if (remote_conds)
-		mysql_append_where_clause(&sql, root, foreignrel, remote_conds,
-								  true, &params_list);
+	/*
+	 * Build the query string to be sent for execution, and identify
+	 * expressions to be sent as parameters.
+	 */
+	initStringInfo(&sql);
+	mysql_deparse_select_stmt_for_rel(&sql, root, foreignrel,
+									  remote_conds, &retrieved_attrs,
+									  &params_list);
 
 	if (foreignrel->relid == root->parse->resultRelation &&
 		(root->parse->commandType == CMD_UPDATE ||
