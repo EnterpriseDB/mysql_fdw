@@ -125,6 +125,33 @@ typedef struct mysql_table
 } mysql_table;
 
 /*
+ * Structure to hold information for constructing a whole-row reference value
+ * for a single base relation involved in a pushed down join.
+ */
+typedef struct
+{
+	/*
+	 * Tuple descriptor for whole-row reference. We can not use the base
+	 * relation's tuple descriptor as it is, since it might have information
+	 * about dropped attributes.
+	 */
+	TupleDesc	tupdesc;
+
+	/*
+	 * Positions of the required attributes in the tuple fetched from the
+	 * foreign server.
+	 */
+	int		   *attr_pos;
+
+	/* Position of attribute indicating NULL-ness of whole-row reference */
+	int			wr_null_ind_pos;
+
+	/* Values and null array for holding column values. */
+	Datum	   *values;
+	bool	   *nulls;
+} MySQLWRState;
+
+/*
  * FDW-specific information for ForeignScanState
  * fdw_state.
  */
@@ -134,7 +161,6 @@ typedef struct MySQLFdwExecState
 	MYSQL_STMT *stmt;			/* MySQL prepared stament handle */
 	mysql_table *table;
 	char	   *query;			/* Query string */
-	Relation	rel;			/* relcache entry for the foreign table */
 	List	   *retrieved_attrs;	/* list of target attribute numbers */
 	bool		query_executed;	/* have we executed the query? */
 	int			numParams;		/* number of parameters passed to query */
@@ -153,16 +179,54 @@ typedef struct MySQLFdwExecState
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
 
 	AttInMetadata *attinmeta;
+
+	/*
+	 * Members used for constructing the ForeignScan result row when whole-row
+	 * references are involved in a pushed down join.
+	 */
+	MySQLWRState **mysqlwrstates; /* whole-row construction information for
+								   * each base relation involved in the pushed
+								   * down join. */
+	int		   *wr_attrs_pos;	/* Array mapping the attributes in the
+								 * ForeignScan result to those in the rows
+								 * fetched from the foreign server.  The array
+								 * is indexed by the attribute numbers in the
+								 * ForeignScan. */
+	TupleDesc	wr_tupdesc;		/* Tuple descriptor describing the result of
+								 * ForeignScan node.  Should be same as that in
+								 * ForeignScanState::ss::ss_ScanTupleSlot */
+	/* Array for holding column values. */
+	Datum	   *wr_values;
+	bool	   *wr_nulls;
 } MySQLFdwExecState;
 
 typedef struct MySQLFdwRelationInfo
 {
+	/*
+	 * True means that the relation can be pushed down. Always true for simple
+	 * foreign scan.
+	 */
+	bool		pushdown_safe;
+
 	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
 	List	   *remote_conds;
 	List	   *local_conds;
 
 	/* Bitmap of attr numbers we need to fetch from the remote server. */
 	Bitmapset  *attrs_used;
+
+	/*
+	 * Name of the relation while EXPLAINing ForeignScan.  It is used for join
+	 * relations but is set for all relations.  For join relation, the name
+	 * indicates which foreign tables are being joined and the join type used.
+	 */
+	StringInfo	relation_name;
+
+	/* Join information */
+	RelOptInfo *outerrel;
+	RelOptInfo *innerrel;
+	JoinType	jointype;
+	List	   *joinclauses;
 
 } MySQLFdwRelationInfo;
 
@@ -236,13 +300,14 @@ extern void mysql_deparse_delete(StringInfo buf, PlannerInfo *root,
 								 Index rtindex, Relation rel, char *name);
 extern void mysql_deparse_analyze(StringInfo buf, char *dbname, char *relname);
 extern bool mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
-								  Expr *expr);
+								  Expr *expr, bool is_join_cond);
 extern void mysql_deparse_select_stmt_for_rel(StringInfo buf,
 											  PlannerInfo *root,
-											  RelOptInfo *rel,
+											  RelOptInfo *rel, List *tlist,
 											  List *remote_conds,
 											  List **retrieved_attrs,
 											  List **params_list);
+extern const char *mysql_get_jointype_name(JoinType jointype);
 
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user,

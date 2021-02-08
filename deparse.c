@@ -26,12 +26,15 @@
 #include "datatype/timestamp.h"
 #include "mysql_fdw.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/plannodes.h"
 #include "optimizer/clauses.h"
 #if PG_VERSION_NUM < 120000
 #include "optimizer/var.h"
 #else
 #include "optimizer/optimizer.h"
 #endif
+#include "optimizer/prep.h"
+#include "optimizer/tlist.h"
 #include "parser/parsetree.h"
 #include "pgtime.h"
 #include "utils/builtins.h"
@@ -49,6 +52,13 @@ typedef struct foreign_glob_cxt
 {
 	PlannerInfo *root;			/* global planner state */
 	RelOptInfo *foreignrel;		/* the foreign relation we are planning for */
+
+	/*
+	 * For join pushdown, only a limited set of operators are allowed to be
+	 * pushed.  This flag helps us identify if we are walking through the list
+	 * of join conditions.
+	 */
+	bool		is_join_cond;	/* true for join relations */
 } foreign_glob_cxt;
 
 /*
@@ -79,6 +89,10 @@ typedef struct deparse_expr_cxt
 	List	  **params_list;	/* exprs that will become remote Params */
 } deparse_expr_cxt;
 
+#define REL_ALIAS_PREFIX	"r"
+/* Handy macro to add relation name qualification */
+#define ADD_REL_QUALIFIER(buf, varno)	\
+		appendStringInfo((buf), "%s%d.", REL_ALIAS_PREFIX, (varno))
 
 /*
  * Functions to construct string representation of a node tree.
@@ -118,10 +132,16 @@ static void mysql_deparse_target_list(StringInfo buf, PlannerInfo *root,
 									  Bitmapset *attrs_used,
 									  List **retrieved_attrs);
 static void mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
-									 PlannerInfo *root);
-static void mysql_deparse_select_sql(List **retrieved_attrs,
+									 PlannerInfo *root, bool qualify_col);
+static void mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
 									 deparse_expr_cxt *context);
 static void mysql_append_conditions(List *exprs, deparse_expr_cxt *context);
+static void mysql_deparse_explicit_target_list(List *tlist,
+											   List **retrieved_attrs,
+											   deparse_expr_cxt *context);
+static void mysql_deparse_from_expr(StringInfo buf, PlannerInfo *root,
+									RelOptInfo *foreignrel, bool use_alias,
+									List **param_list);
 
 /*
  * Functions to construct string representation of a specific types.
@@ -199,6 +219,10 @@ mysql_quote_identifier(const char *str, char quotechar)
  * mysql_deparse_select_stmt_for_rel
  * 		Deparse SELECT statement for given relation into buf.
  *
+ * tlist contains the list of desired columns to be fetched from foreign
+ * server.  For a base relation fpinfo->attrs_used is used to construct
+ * SELECT clause, hence the tlist is ignored for a base relation.
+ *
  * remote_conds is the list of conditions to be deparsed into the WHERE clause.
  *
  * If params_list is not NULL, it receives a list of Params and other-relation
@@ -212,11 +236,16 @@ mysql_quote_identifier(const char *str, char quotechar)
  */
 extern void
 mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
-								  RelOptInfo *rel, List *remote_conds,
-								  List **retrieved_attrs,
+								  RelOptInfo *rel, List *tlist,
+								  List *remote_conds, List **retrieved_attrs,
 								  List **params_list)
 {
 	deparse_expr_cxt context;
+
+	/* We handle relations for foreign tables and joins between those */
+	Assert(rel->reloptkind == RELOPT_JOINREL ||
+		   rel->reloptkind == RELOPT_BASEREL ||
+		   rel->reloptkind == RELOPT_OTHER_MEMBER_REL);
 
 	/* Fill portions of context common to base relation */
 	context.buf = buf;
@@ -225,7 +254,7 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 	context.params_list = params_list;
 
 	/* Construct SELECT clause and FROM clause */
-	mysql_deparse_select_sql(retrieved_attrs, &context);
+	mysql_deparse_select_sql(tlist, retrieved_attrs, &context);
 
 	/* Construct WHERE clause */
 	if (remote_conds != NIL)
@@ -241,48 +270,105 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
  * 		of the specified foreign table, and append it to "buf".  The output
  * 		contains just "SELECT ... FROM ....".
  *
+ * tlist is the list of desired columns.  Read prologue of
+ * mysql_deparse_select_stmt_for_rel() for details.
+ *
  * We also create an integer List of the columns being retrieved, which is
  * returned to *retrieved_attrs.
- *
  */
 static void
-mysql_deparse_select_sql(List **retrieved_attrs, deparse_expr_cxt *context)
+mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
+						 deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
 	RelOptInfo *foreignrel = context->foreignrel;
 	PlannerInfo *root = context->root;
-	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) foreignrel->fdw_private;
-	RangeTblEntry *rte = planner_rt_fetch(foreignrel->relid, root);
-	Relation	rel;
 
 	/*
 	 * Construct SELECT list
 	 */
 	appendStringInfoString(buf, "SELECT ");
 
-	/*
-	 * Core code already has some lock on each rel being planned, so we can
-	 * use NoLock here.
-	 */
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+	{
+		/* For a join relation use the input tlist */
+		mysql_deparse_explicit_target_list(tlist, retrieved_attrs, context);
+
+		/*
+		 * Construct FROM clause
+		 */
+		appendStringInfoString(buf, " FROM ");
+		mysql_deparse_from_expr(buf, root, foreignrel, true, context->params_list);
+	}
+	else
+	{
+		RangeTblEntry *rte = planner_rt_fetch(foreignrel->relid, root);
+		Relation	rel;
+		MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) foreignrel->fdw_private;
+
+		/*
+		 * Core code already has some lock on each rel being planned, so we can
+		 * use NoLock here.
+		 */
 #if PG_VERSION_NUM < 130000
-	rel = heap_open(rte->relid, NoLock);
+		rel = heap_open(rte->relid, NoLock);
 #else
-	rel = table_open(rte->relid, NoLock);
+		rel = table_open(rte->relid, NoLock);
 #endif
 
-	mysql_deparse_target_list(buf, root, foreignrel->relid, rel,
-							  fpinfo->attrs_used, retrieved_attrs);
+		mysql_deparse_target_list(buf, root, foreignrel->relid, rel,
+								  fpinfo->attrs_used, retrieved_attrs);
 
-	/*
-	 * Construct FROM clause
-	 */
-	appendStringInfoString(buf, " FROM ");
-	mysql_deparse_relation(buf, rel);
+		/*
+		 * Construct FROM clause
+		 */
+		appendStringInfoString(buf, " FROM ");
+		mysql_deparse_relation(buf, rel);
+
 #if PG_VERSION_NUM < 130000
-	heap_close(rel, NoLock);
+		heap_close(rel, NoLock);
 #else
-	table_close(rel, NoLock);
+		table_close(rel, NoLock);
 #endif
+	}
+}
+
+/*
+ * mysql_deparse_explicit_target_list
+ * 		Deparse given targetlist and append it to context->buf.
+ *
+ * retrieved_attrs is the list of continuously increasing integers starting
+ * from 1.  It has same number of entries as tlist.
+ */
+static void
+mysql_deparse_explicit_target_list(List *tlist, List **retrieved_attrs,
+								   deparse_expr_cxt *context)
+{
+	ListCell   *lc;
+	StringInfo	buf = context->buf;
+	int			i = 0;
+
+	*retrieved_attrs = NIL;
+
+	foreach(lc, tlist)
+	{
+		Var		   *var;
+
+		var = (Var *) lfirst(lc);
+		/* We expect only Var nodes here */
+		Assert(IsA(var, Var));
+
+		if (i > 0)
+			appendStringInfoString(buf, ", ");
+		mysql_deparse_var(var, context);
+
+		*retrieved_attrs = lappend_int(*retrieved_attrs, i + 1);
+
+		i++;
+	}
+
+	if (i == 0)
+		appendStringInfoString(buf, "NULL");
 }
 
 /*
@@ -317,7 +403,7 @@ mysql_deparse_insert(StringInfo buf, PlannerInfo *root, Index rtindex,
 				appendStringInfoString(buf, ", ");
 			first = false;
 
-			mysql_deparse_column_ref(buf, rtindex, attnum, root);
+			mysql_deparse_column_ref(buf, rtindex, attnum, root, false);
 		}
 
 		appendStringInfoString(buf, ") VALUES (");
@@ -386,7 +472,7 @@ mysql_deparse_target_list(StringInfo buf, PlannerInfo *root, Index rtindex,
 				appendStringInfoString(buf, ", ");
 			first = false;
 
-			mysql_deparse_column_ref(buf, rtindex, i, root);
+			mysql_deparse_column_ref(buf, rtindex, i, root, false);
 			*retrieved_attrs = lappend_int(*retrieved_attrs, i);
 		}
 	}
@@ -402,7 +488,7 @@ mysql_deparse_target_list(StringInfo buf, PlannerInfo *root, Index rtindex,
  */
 static void
 mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
-						 PlannerInfo *root)
+						 PlannerInfo *root, bool qualify_col)
 {
 	RangeTblEntry *rte;
 	char	   *colname = NULL;
@@ -432,8 +518,8 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 	}
 
 	/*
-	 * If it's a column of a regular table or it doesn't have column_name FDW
-	 * option, use attribute name.
+	 * If it's a column of a regular table or it doesn't have column_name
+	 * FDW option, use attribute name.
 	 */
 	if (colname == NULL)
 #if PG_VERSION_NUM >= 110000
@@ -441,6 +527,9 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 #else
 		colname = get_relid_attribute_name(rte->relid, varattno);
 #endif
+
+	if (qualify_col)
+		ADD_REL_QUALIFIER(buf, varno);
 
 	appendStringInfoString(buf, mysql_quote_identifier(colname, '`'));
 }
@@ -653,7 +742,7 @@ mysql_deparse_update(StringInfo buf, PlannerInfo *root, Index rtindex,
 			appendStringInfoString(buf, ", ");
 		first = false;
 
-		mysql_deparse_column_ref(buf, rtindex, attnum, root);
+		mysql_deparse_column_ref(buf, rtindex, attnum, root, false);
 		appendStringInfo(buf, " = ?");
 		pindex++;
 	}
@@ -688,14 +777,16 @@ mysql_deparse_delete(StringInfo buf, PlannerInfo *root, Index rtindex,
 static void
 mysql_deparse_var(Var *node, deparse_expr_cxt *context)
 {
-	StringInfo	buf = context->buf;
+	bool		qualify_col;
 
-	if (node->varno == context->foreignrel->relid &&
+	qualify_col = (context->foreignrel->reloptkind == RELOPT_JOINREL);
+
+	if (bms_is_member(node->varno, context->foreignrel->relids) &&
 		node->varlevelsup == 0)
 	{
 		/* Var belongs to foreign table */
-		mysql_deparse_column_ref(buf, node->varno, node->varattno,
-								 context->root);
+		mysql_deparse_column_ref(context->buf, node->varno, node->varattno,
+								 context->root, qualify_col);
 	}
 	else
 	{
@@ -1327,7 +1418,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				 * Param's collation, i.e. it's not safe for it to have a
 				 * non-default collation.
 				 */
-				if (var->varno == glob_cxt->foreignrel->relid &&
+				if (bms_is_member(var->varno, glob_cxt->foreignrel->relids) &&
 					var->varlevelsup == 0)
 				{
 					/* Var belongs to foreign table */
@@ -1390,6 +1481,10 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				SubscriptingRef *ar = (SubscriptingRef *) node;
 #endif
 
+				/* Should not be in the join clauses of the Join-pushdown */
+				if (glob_cxt->is_join_cond)
+					return false;
+
 				/* Assignment should not be in restrictions. */
 				if (ar->refassgnexpr != NULL)
 					return false;
@@ -1426,6 +1521,10 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 		case T_FuncExpr:
 			{
 				FuncExpr   *fe = (FuncExpr *) node;
+
+				/* Should not be in the join clauses of the Join-pushdown */
+				if (glob_cxt->is_join_cond)
+					return false;
 
 				/*
 				 * If function used by the expression is not built-in, it
@@ -1472,6 +1571,24 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 		case T_DistinctExpr:	/* struct-equivalent to OpExpr */
 			{
 				OpExpr	   *oe = (OpExpr *) node;
+				const char *operatorName = get_opname(oe->opno);
+
+				/*
+				 * Join-pushdown allows only a few operators to be pushed down.
+				 */
+				if (glob_cxt->is_join_cond &&
+					(!(strcmp(operatorName, "<") == 0 ||
+					   strcmp(operatorName, ">") == 0 ||
+					   strcmp(operatorName, "<=") == 0 ||
+					   strcmp(operatorName, ">=") == 0 ||
+					   strcmp(operatorName, "<>") == 0 ||
+					   strcmp(operatorName, "=") == 0 ||
+					   strcmp(operatorName, "+") == 0 ||
+					   strcmp(operatorName, "-") == 0 ||
+					   strcmp(operatorName, "*") == 0 ||
+					   strcmp(operatorName, "%") == 0 ||
+					   strcmp(operatorName, "/") == 0)))
+					return false;
 
 				/*
 				 * Similarly, only built-in operators can be sent to remote.
@@ -1512,6 +1629,10 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 		case T_ScalarArrayOpExpr:
 			{
 				ScalarArrayOpExpr *oe = (ScalarArrayOpExpr *) node;
+
+				/* Should not be in the join clauses of the Join-pushdown */
+				if (glob_cxt->is_join_cond)
+					return false;
 
 				/*
 				 * Again, only built-in operators can be sent to remote.
@@ -1601,6 +1722,10 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 		case T_ArrayExpr:
 			{
 				ArrayExpr  *a = (ArrayExpr *) node;
+
+				/* Should not be in the join clauses of the Join-pushdown */
+				if (glob_cxt->is_join_cond)
+					return false;
 
 				/*
 				 * Recurse to input subexpressions.
@@ -1718,7 +1843,8 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
  * Returns true if given expr is safe to evaluate on the foreign server.
  */
 bool
-mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr)
+mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
+					  bool is_join_cond)
 {
 	foreign_glob_cxt glob_cxt;
 	foreign_loc_cxt loc_cxt;
@@ -1729,6 +1855,7 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr)
 	 */
 	glob_cxt.root = root;
 	glob_cxt.foreignrel = baserel;
+	glob_cxt.is_join_cond = is_join_cond;
 	loc_cxt.collation = InvalidOid;
 	loc_cxt.state = FDW_COLLATE_NONE;
 	if (!foreign_expr_walker((Node *) expr, &glob_cxt, &loc_cxt))
@@ -1783,4 +1910,121 @@ mysql_append_conditions(List *exprs, deparse_expr_cxt *context)
 
 		is_first = false;
 	}
+}
+
+/*
+ * mysql_deparse_from_expr
+ * 		Construct a FROM clause
+ */
+void
+mysql_deparse_from_expr(StringInfo buf, PlannerInfo *root,
+						RelOptInfo *foreignrel, bool use_alias,
+						List **params_list)
+{
+	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) foreignrel->fdw_private;
+
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+	{
+		RelOptInfo *rel_o = fpinfo->outerrel;
+		RelOptInfo *rel_i = fpinfo->innerrel;
+		StringInfoData join_sql_o;
+		StringInfoData join_sql_i;
+
+		/* Deparse outer relation */
+		initStringInfo(&join_sql_o);
+		mysql_deparse_from_expr(&join_sql_o, root, rel_o, true, params_list);
+
+		/* Deparse inner relation */
+		initStringInfo(&join_sql_i);
+		mysql_deparse_from_expr(&join_sql_i, root, rel_i, true, params_list);
+
+		/*
+		 * For a join relation FROM clause entry is deparsed as
+		 *
+		 * ((outer relation) <join type> (inner relation) ON (joinclauses)
+		 */
+		appendStringInfo(buf, "(%s %s JOIN %s ON ", join_sql_o.data,
+						 mysql_get_jointype_name(fpinfo->jointype),
+						 join_sql_i.data);
+
+		/* Append join clause; (TRUE) if no join clause */
+		if (fpinfo->joinclauses)
+		{
+			deparse_expr_cxt context;
+
+			context.buf = buf;
+			context.foreignrel = foreignrel;
+			context.root = root;
+			context.params_list = params_list;
+
+			appendStringInfo(buf, "(");
+			mysql_append_conditions(fpinfo->joinclauses, &context);
+			appendStringInfo(buf, ")");
+		}
+		else
+			appendStringInfoString(buf, "(TRUE)");
+
+		/* End the FROM clause entry. */
+		appendStringInfo(buf, ")");
+	}
+	else
+	{
+		RangeTblEntry *rte = planner_rt_fetch(foreignrel->relid, root);
+		Relation	rel;
+
+		/*
+		 * Core code already has some lock on each rel being planned, so we can
+		 * use NoLock here.
+		 */
+#if PG_VERSION_NUM < 130000
+		rel = heap_open(rte->relid, NoLock);
+#else
+		rel = table_open(rte->relid, NoLock);
+#endif
+
+		mysql_deparse_relation(buf, rel);
+
+		/*
+		 * Add a unique alias to avoid any conflict in relation names due to
+		 * pulled up subqueries in the query being built for a pushed down
+		 * join.
+		 */
+		if (use_alias)
+			appendStringInfo(buf, " %s%d", REL_ALIAS_PREFIX,
+							 foreignrel->relid);
+
+#if PG_VERSION_NUM < 130000
+		heap_close(rel, NoLock);
+#else
+		table_close(rel, NoLock);
+#endif
+	}
+	return;
+}
+
+/*
+ * mysql_get_jointype_name
+ * 		Output join name for given join type
+ */
+extern const char *
+mysql_get_jointype_name(JoinType jointype)
+{
+	switch (jointype)
+	{
+		case JOIN_INNER:
+			return "INNER";
+
+		case JOIN_LEFT:
+			return "LEFT";
+
+		case JOIN_RIGHT:
+			return "RIGHT";
+
+		default:
+			/* Shouldn't come here, but protect from buggy code. */
+			elog(ERROR, "unsupported join type %d", jointype);
+	}
+
+	/* Keep compiler happy */
+	return NULL;
 }
