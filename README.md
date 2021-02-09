@@ -82,6 +82,16 @@ a performance feature.
 The `select` queries are now using prepared statements instead of simple
 query protocol.
 
+### JOIN push-down
+mysql_fdw now also supports join push-down. The joins between two
+foreign tables from the same remote MySQL server are pushed to a remote
+server, instead of fetching all the rows for both the tables and
+performing a join locally, thereby enhancing the performance. Currently,
+joins involving only relational and arithmetic operators in join-clauses
+are pushed down to avoid any potential join failure. Also, only the
+INNER and LEFT/RIGHT OUTER joins are supported, and not the FULL OUTER,
+SEMI, and ANTI join. This is a performance feature.
+
 Usage
 -----
 
