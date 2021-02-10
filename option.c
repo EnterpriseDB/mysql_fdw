@@ -228,7 +228,7 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 		opt->svr_address = "127.0.0.1";
 
 	if (!opt->svr_port)
-		opt->svr_port = MYSQL_PORT;
+		opt->svr_port = MYSQL_SERVER_PORT;
 
 	/*
 	 * When we don't have a table name or database name provided in the
