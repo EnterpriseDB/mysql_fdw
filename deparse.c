@@ -243,9 +243,13 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 	deparse_expr_cxt context;
 
 	/* We handle relations for foreign tables and joins between those */
+#if PG_VERSION_NUM >= 100000
+	Assert(IS_JOIN_REL(rel) || IS_SIMPLE_REL(rel));
+#else
 	Assert(rel->reloptkind == RELOPT_JOINREL ||
 		   rel->reloptkind == RELOPT_BASEREL ||
 		   rel->reloptkind == RELOPT_OTHER_MEMBER_REL);
+#endif
 
 	/* Fill portions of context common to base relation */
 	context.buf = buf;
@@ -289,7 +293,11 @@ mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
 	 */
 	appendStringInfoString(buf, "SELECT ");
 
+#if PG_VERSION_NUM >= 100000
+	if (IS_JOIN_REL(foreignrel))
+#else
 	if (foreignrel->reloptkind == RELOPT_JOINREL)
+#endif
 	{
 		/* For a join relation use the input tlist */
 		mysql_deparse_explicit_target_list(tlist, retrieved_attrs, context);
@@ -777,12 +785,10 @@ mysql_deparse_delete(StringInfo buf, PlannerInfo *root, Index rtindex,
 static void
 mysql_deparse_var(Var *node, deparse_expr_cxt *context)
 {
-	bool		qualify_col;
+	Relids		relids = context->foreignrel->relids;
+	bool		qualify_col = (bms_membership(relids) == BMS_MULTIPLE);
 
-	qualify_col = (context->foreignrel->reloptkind == RELOPT_JOINREL);
-
-	if (bms_is_member(node->varno, context->foreignrel->relids) &&
-		node->varlevelsup == 0)
+	if (bms_is_member(node->varno, relids) && node->varlevelsup == 0)
 	{
 		/* Var belongs to foreign table */
 		mysql_deparse_column_ref(context->buf, node->varno, node->varattno,
@@ -1923,7 +1929,11 @@ mysql_deparse_from_expr(StringInfo buf, PlannerInfo *root,
 {
 	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) foreignrel->fdw_private;
 
+#if PG_VERSION_NUM >= 100000
+	if (IS_JOIN_REL(foreignrel))
+#else
 	if (foreignrel->reloptkind == RELOPT_JOINREL)
+#endif
 	{
 		RelOptInfo *rel_o = fpinfo->outerrel;
 		RelOptInfo *rel_i = fpinfo->innerrel;

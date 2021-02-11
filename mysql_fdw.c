@@ -1282,7 +1282,11 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 	}
 
 #if PG_VERSION_NUM >= 90600
+#if PG_VERSION_NUM >= 100000
+	if (IS_JOIN_REL(foreignrel))
+#else
 	if (foreignrel->reloptkind == RELOPT_JOINREL)
+#endif
 	{
 		scan_var_list = list_concat_unique(NIL, scan_var_list);
 
@@ -1370,7 +1374,11 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 	 */
 
 	fdw_private = list_make2(makeString(sql.data), retrieved_attrs);
+#if PG_VERSION_NUM >= 100000
+	if (IS_JOIN_REL(foreignrel))
+#else
 	if (foreignrel->reloptkind == RELOPT_JOINREL)
+#endif
 	{
 		fdw_private = lappend(fdw_private,
 							  makeString(fpinfo->relation_name->data));

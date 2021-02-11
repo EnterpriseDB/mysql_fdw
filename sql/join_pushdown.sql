@@ -383,17 +383,124 @@ SELECT fdw139_t3.c1, q.*
   ) q(a, b, c) ON (fdw139_t3.c1 = q.b)
   WHERE fdw139_t3.c1 BETWEEN 10 AND 15;
 
--- Cleanup
+-- Delete existing data and load new data for partition-wise join test cases.
 DROP OWNED BY regress_view_owner;
 DROP ROLE regress_view_owner;
 DELETE FROM fdw139_t1;
 DELETE FROM fdw139_t2;
 DELETE FROM fdw139_t3;
-DELETE FROM fdw139_t4;
+INSERT INTO fdw139_t1 values(1, 1, 'AAA1', 'foo');
+INSERT INTO fdw139_t1 values(2, 2, 'AAA2', 'bar');
+INSERT INTO fdw139_t1 values(3, 3, 'AAA11', 'foo');
+INSERT INTO fdw139_t1 values(4, 4, 'AAA12', 'foo');
+
+INSERT INTO fdw139_t2 values(5, 5, 'BBB1', 'foo');
+INSERT INTO fdw139_t2 values(6, 6, 'BBB2', 'bar');
+INSERT INTO fdw139_t2 values(7, 7, 'BBB11', 'foo');
+INSERT INTO fdw139_t2 values(8, 8, 'BBB12', 'foo');
+
+INSERT INTO fdw139_t3 values(1, 1, 'CCC1');
+INSERT INTO fdw139_t3 values(2, 2, 'CCC2');
+INSERT INTO fdw139_t3 values(3, 3, 'CCC13');
+INSERT INTO fdw139_t3 values(4, 4, 'CCC14');
+DROP FOREIGN TABLE fdw139_t4;
+CREATE FOREIGN TABLE tmp_t4(c1 int, c2 int, c3 text)
+  SERVER mysql_svr1 OPTIONS(dbname 'mysql_fdw_regress', table_name 'test4');
+INSERT INTO tmp_t4 values(5, 5, 'CCC1');
+INSERT INTO tmp_t4 values(6, 6, 'CCC2');
+INSERT INTO tmp_t4 values(7, 7, 'CCC13');
+INSERT INTO tmp_t4 values(8, 8, 'CCC13');
+
+-- Test partition-wise join
+SET enable_partitionwise_join TO on;
+
+-- Create the partition table in plpgsql block as those are failing with
+-- different error messages on back-branches.
+-- All test cases related to partition-wise join gives an error on v96 and v95
+-- as partition syntax is not supported there.
+DO
+$$
+BEGIN
+  EXECUTE 'CREATE TABLE fprt1 (c1 int, c2 int, c3 varchar, c4 varchar) PARTITION BY RANGE(c1)';
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'syntax error';
+END;
+$$
+LANGUAGE plpgsql;
+CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (1) TO (4)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test1');
+CREATE FOREIGN TABLE ftprt1_p2 PARTITION OF fprt1 FOR VALUES FROM (5) TO (8)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', TABLE_NAME 'test2');
+
+DO
+$$
+BEGIN
+  EXECUTE 'CREATE TABLE fprt2 (c1 int, c2 int, c3 varchar) PARTITION BY RANGE(c2)';
+EXCEPTION WHEN syntax_error THEN
+  RAISE NOTICE 'syntax error';
+END;
+$$
+LANGUAGE plpgsql;
+CREATE FOREIGN TABLE ftprt2_p1 PARTITION OF fprt2 FOR VALUES FROM (1) TO (4)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test3');
+CREATE FOREIGN TABLE ftprt2_p2 PARTITION OF fprt2 FOR VALUES FROM (5) TO (8)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', TABLE_NAME 'test4');
+
+-- Inner join three tables
+-- Different explain plan on v10 as partition-wise join is not supported there.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1,t2.c2,t3.c3
+  FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.c1 = t2.c2) INNER JOIN fprt1 t3 ON (t2.c2 = t3.c1)
+  WHERE t1.c1 % 2 =0 ORDER BY 1,2,3;
+SELECT t1.c1,t2.c2,t3.c3
+  FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.c1 = t2.c2) INNER JOIN fprt1 t3 ON (t2.c2 = t3.c1)
+  WHERE t1.c1 % 2 =0 ORDER BY 1,2,3;
+
+-- With whole-row reference; partitionwise join does not apply
+-- Table alias in foreign scan is different for v12, v11 and v10.
+EXPLAIN (VERBOSE, COSTS false)
+SELECT t1, t2, t1.c1
+  FROM fprt1 t1 JOIN fprt2 t2 ON (t1.c1 = t2.c2)
+  ORDER BY t1.c3, t1.c1;
+SELECT t1, t2, t1.c1
+  FROM fprt1 t1 JOIN fprt2 t2 ON (t1.c1 = t2.c2)
+  ORDER BY t1.c3, t1.c1;
+
+-- Join with lateral reference
+-- Different explain plan on v10 as partition-wise join is not supported there.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1,t1.c2
+  FROM fprt1 t1, LATERAL (SELECT t2.c1, t2.c2 FROM fprt2 t2
+  WHERE t1.c1 = t2.c2 AND t1.c2 = t2.c1) q WHERE t1.c1 % 2 = 0 ORDER BY 1,2;
+SELECT t1.c1,t1.c2
+  FROM fprt1 t1, LATERAL (SELECT t2.c1, t2.c2 FROM fprt2 t2
+  WHERE t1.c1 = t2.c2 AND t1.c2 = t2.c1) q WHERE t1.c1 % 2 = 0 ORDER BY 1,2;
+
+-- With PHVs, partitionwise join selected but no join pushdown
+-- Table alias in foreign scan is different for v12, v11 and v10.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1, t1.phv, t2.c2, t2.phv
+  FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE c1 % 2 = 0) t1 LEFT JOIN
+    (SELECT 't2_phv' phv, * FROM fprt2 WHERE c2 % 2 = 0) t2 ON (t1.c1 = t2.c2)
+  ORDER BY t1.c1, t2.c2;
+SELECT t1.c1, t1.phv, t2.c2, t2.phv
+  FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE c1 % 2 = 0) t1 LEFT JOIN
+    (SELECT 't2_phv' phv, * FROM fprt2 WHERE c2 % 2 = 0) t2 ON (t1.c1 = t2.c2)
+  ORDER BY t1.c1, t2.c2;
+
+SET enable_partitionwise_join TO off;
+
+-- Cleanup
+DELETE FROM fdw139_t1;
+DELETE FROM fdw139_t2;
+DELETE FROM fdw139_t3;
+DELETE FROM tmp_t4;
 DROP FOREIGN TABLE fdw139_t1;
 DROP FOREIGN TABLE fdw139_t2;
 DROP FOREIGN TABLE fdw139_t3;
-DROP FOREIGN TABLE fdw139_t4;
+DROP FOREIGN TABLE tmp_t4;
+DROP TABLE IF EXISTS fprt1;
+DROP TABLE IF EXISTS fprt2;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP USER MAPPING FOR public SERVER mysql_svr1;
 DROP SERVER mysql_svr;

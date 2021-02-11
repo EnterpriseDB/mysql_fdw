@@ -54,7 +54,7 @@ SELECT t1.c1, t2.c1
          Output: t1.c1, t2.c1, t1.c3
          Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
          Local server startup cost: 10
-         Remote query: SELECT r1.`c1`, r1.`c3`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
+         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
 (8 rows)
 
 SELECT t1.c1, t2.c1
@@ -82,7 +82,7 @@ SELECT t1.c1, t2.c1
          Output: t1.c1, t2.c1, t1.c3
          Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
          Local server startup cost: 10
-         Remote query: SELECT r1.`c1`, r1.`c3`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) WHERE ((r1.`c2` = 100))
+         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) WHERE ((r1.`c2` = 100))
 (8 rows)
 
 SELECT t1.c1, t2.c1
@@ -110,7 +110,7 @@ SELECT t1.c1, t2.c1
          Filter: (abs(t1.c1) = t2.c1)
          Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
          Local server startup cost: 10
-         Remote query: SELECT r1.`c1`, r1.`c3`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) WHERE ((r1.`c2` = 100))
+         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) WHERE ((r1.`c2` = 100))
 (9 rows)
 
 SELECT t1.c1, t2.c1
@@ -137,7 +137,7 @@ SELECT t1.c1, t2.c2, t3.c3
          Output: t1.c1, t2.c2, t3.c3, t1.c3
          Relations: ((mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)) INNER JOIN (mysql_fdw_regress.fdw139_t3 t3)
          Local server startup cost: 10
-         Remote query: SELECT r1.`c1`, r1.`c3`, r2.`c2`, r4.`c3` FROM ((`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) INNER JOIN `mysql_fdw_regress`.`test3` r4 ON (((r1.`c1` = r4.`c1`))))
+         Remote query: SELECT r1.`c1`, r2.`c2`, r4.`c3`, r1.`c3` FROM ((`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) INNER JOIN `mysql_fdw_regress`.`test3` r4 ON (((r1.`c1` = r4.`c1`))))
 (8 rows)
 
 SELECT t1.c1, t2.c2, t3.c3
@@ -299,7 +299,7 @@ SELECT t1.c1, t2.c1
          Output: t1.c1, t2.c1
          Relations: (mysql_fdw_regress.fdw139_t2 t2) LEFT JOIN (mysql_fdw_regress.fdw139_t1 t1)
          Local server startup cost: 10
-         Remote query: SELECT r2.`c1`, r1.`c1` FROM (`mysql_fdw_regress`.`test2` r2 LEFT JOIN `mysql_fdw_regress`.`test1` r1 ON (((r1.`c1` = r2.`c1`))))
+         Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test2` r2 LEFT JOIN `mysql_fdw_regress`.`test1` r1 ON (((r1.`c1` = r2.`c1`))))
 (8 rows)
 
 SELECT t1.c1, t2.c1
@@ -328,7 +328,7 @@ SELECT t1.c1, t2.c2, t3.c3
          Output: t1.c1, t2.c2, t3.c3, t1.c3
          Relations: (mysql_fdw_regress.fdw139_t3 t3) LEFT JOIN ((mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2))
          Local server startup cost: 10
-         Remote query: SELECT r4.`c3`, r1.`c1`, r1.`c3`, r2.`c2` FROM (`mysql_fdw_regress`.`test3` r4 LEFT JOIN (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ON (((r1.`c1` = r4.`c1`))))
+         Remote query: SELECT r1.`c1`, r2.`c2`, r4.`c3`, r1.`c3` FROM (`mysql_fdw_regress`.`test3` r4 LEFT JOIN (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ON (((r1.`c1` = r4.`c1`))))
 (8 rows)
 
 SELECT t1.c1, t2.c2, t3.c3
@@ -395,7 +395,7 @@ SELECT t1.c1, t2.c1
                Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
                Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
                Local server startup cost: 10
-               Remote query: SELECT r1.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c1`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
+               Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
                ->  Nested Loop
                      Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
                      Join Filter: (t1.c1 = t2.c1)
@@ -436,7 +436,7 @@ SELECT t1.c1, t2.c1
                Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
                Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
                Local server startup cost: 10
-               Remote query: SELECT r1.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c1`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
+               Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
                ->  Nested Loop
                      Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
                      Join Filter: (t1.c1 = t2.c1)
@@ -478,7 +478,7 @@ SELECT t1.c1, t2.c1
                Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
                Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
                Local server startup cost: 10
-               Remote query: SELECT r1.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c1`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
+               Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
                ->  Nested Loop
                      Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
                      Join Filter: (t1.c1 = t2.c1)
@@ -519,7 +519,7 @@ SELECT t1.c1, t2.c1
                Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
                Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
                Local server startup cost: 10
-               Remote query: SELECT r1.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c1`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
+               Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
                ->  Nested Loop
                      Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
                      Join Filter: (t1.c1 = t2.c1)
@@ -887,7 +887,7 @@ SELECT t1.c1, t2.c1
          Filter: (t1.c4 = t2.c4)
          Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
          Local server startup cost: 10
-         Remote query: SELECT r1.`c1`, r1.`c3`, r2.`c1`, r1.`c4`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
+         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c4`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
 (9 rows)
 
 SELECT t1.c1, t2.c1
@@ -1108,17 +1108,249 @@ SELECT fdw139_t3.c1, q.*
  13 |   |   |  
 (1 row)
 
--- Cleanup
+-- Delete existing data and load new data for partition-wise join test cases.
 DROP OWNED BY regress_view_owner;
 DROP ROLE regress_view_owner;
 DELETE FROM fdw139_t1;
 DELETE FROM fdw139_t2;
 DELETE FROM fdw139_t3;
-DELETE FROM fdw139_t4;
+INSERT INTO fdw139_t1 values(1, 1, 'AAA1', 'foo');
+INSERT INTO fdw139_t1 values(2, 2, 'AAA2', 'bar');
+INSERT INTO fdw139_t1 values(3, 3, 'AAA11', 'foo');
+INSERT INTO fdw139_t1 values(4, 4, 'AAA12', 'foo');
+INSERT INTO fdw139_t2 values(5, 5, 'BBB1', 'foo');
+INSERT INTO fdw139_t2 values(6, 6, 'BBB2', 'bar');
+INSERT INTO fdw139_t2 values(7, 7, 'BBB11', 'foo');
+INSERT INTO fdw139_t2 values(8, 8, 'BBB12', 'foo');
+INSERT INTO fdw139_t3 values(1, 1, 'CCC1');
+INSERT INTO fdw139_t3 values(2, 2, 'CCC2');
+INSERT INTO fdw139_t3 values(3, 3, 'CCC13');
+INSERT INTO fdw139_t3 values(4, 4, 'CCC14');
+DROP FOREIGN TABLE fdw139_t4;
+CREATE FOREIGN TABLE tmp_t4(c1 int, c2 int, c3 text)
+  SERVER mysql_svr1 OPTIONS(dbname 'mysql_fdw_regress', table_name 'test4');
+INSERT INTO tmp_t4 values(5, 5, 'CCC1');
+INSERT INTO tmp_t4 values(6, 6, 'CCC2');
+INSERT INTO tmp_t4 values(7, 7, 'CCC13');
+INSERT INTO tmp_t4 values(8, 8, 'CCC13');
+-- Test partition-wise join
+SET enable_partitionwise_join TO on;
+-- Create the partition table in plpgsql block as those are failing with
+-- different error messages on back-branches.
+-- All test cases related to partition-wise join gives an error on v96 and v95
+-- as partition syntax is not supported there.
+DO
+$$
+BEGIN
+  EXECUTE 'CREATE TABLE fprt1 (c1 int, c2 int, c3 varchar, c4 varchar) PARTITION BY RANGE(c1)';
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'syntax error';
+END;
+$$
+LANGUAGE plpgsql;
+CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (1) TO (4)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test1');
+CREATE FOREIGN TABLE ftprt1_p2 PARTITION OF fprt1 FOR VALUES FROM (5) TO (8)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', TABLE_NAME 'test2');
+DO
+$$
+BEGIN
+  EXECUTE 'CREATE TABLE fprt2 (c1 int, c2 int, c3 varchar) PARTITION BY RANGE(c2)';
+EXCEPTION WHEN syntax_error THEN
+  RAISE NOTICE 'syntax error';
+END;
+$$
+LANGUAGE plpgsql;
+CREATE FOREIGN TABLE ftprt2_p1 PARTITION OF fprt2 FOR VALUES FROM (1) TO (4)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test3');
+CREATE FOREIGN TABLE ftprt2_p2 PARTITION OF fprt2 FOR VALUES FROM (5) TO (8)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', TABLE_NAME 'test4');
+-- Inner join three tables
+-- Different explain plan on v10 as partition-wise join is not supported there.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1,t2.c2,t3.c3
+  FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.c1 = t2.c2) INNER JOIN fprt1 t3 ON (t2.c2 = t3.c1)
+  WHERE t1.c1 % 2 =0 ORDER BY 1,2,3;
+                                                                                                                                    QUERY PLAN                                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: t1.c1, t2.c2, t3.c3
+   Sort Key: t1.c1, t3.c3
+   ->  Append
+         ->  Foreign Scan
+               Output: t1.c1, t2.c2, t3.c3
+               Relations: ((mysql_fdw_regress.ftprt1_p1 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p1 t2)) INNER JOIN (mysql_fdw_regress.ftprt1_p1 t3)
+               Local server startup cost: 10
+               Remote query: SELECT r7.`c1`, r10.`c2`, r13.`c3` FROM ((`mysql_fdw_regress`.`test1` r7 INNER JOIN `mysql_fdw_regress`.`test3` r10 ON (((r7.`c1` = r10.`c2`)))) INNER JOIN `mysql_fdw_regress`.`test1` r13 ON (((r7.`c1` = r13.`c1`)))) WHERE (((r7.`c1` % 2) = 0))
+         ->  Foreign Scan
+               Output: t1_1.c1, t2_1.c2, t3_1.c3
+               Relations: ((mysql_fdw_regress.ftprt1_p2 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p2 t2)) INNER JOIN (mysql_fdw_regress.ftprt1_p2 t3)
+               Local server startup cost: 10
+               Remote query: SELECT r8.`c1`, r11.`c2`, r14.`c3` FROM ((`mysql_fdw_regress`.`test2` r8 INNER JOIN `mysql_fdw_regress`.`test4` r11 ON (((r8.`c1` = r11.`c2`)))) INNER JOIN `mysql_fdw_regress`.`test2` r14 ON (((r8.`c1` = r14.`c1`)))) WHERE (((r8.`c1` % 2) = 0))
+(14 rows)
+
+SELECT t1.c1,t2.c2,t3.c3
+  FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.c1 = t2.c2) INNER JOIN fprt1 t3 ON (t2.c2 = t3.c1)
+  WHERE t1.c1 % 2 =0 ORDER BY 1,2,3;
+ c1 | c2 |  c3   
+----+----+-------
+  2 |  2 | AAA2
+  4 |  4 | AAA12
+  6 |  6 | BBB2
+  8 |  8 | BBB12
+(4 rows)
+
+-- With whole-row reference; partitionwise join does not apply
+-- Table alias in foreign scan is different for v12, v11 and v10.
+EXPLAIN (VERBOSE, COSTS false)
+SELECT t1, t2, t1.c1
+  FROM fprt1 t1 JOIN fprt2 t2 ON (t1.c1 = t2.c2)
+  ORDER BY t1.c3, t1.c1;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Sort
+   Output: ((t1.*)::fprt1), ((t2.*)::fprt2), t1.c1, t1.c3
+   Sort Key: t1.c3, t1.c1
+   ->  Nested Loop
+         Output: ((t1.*)::fprt1), ((t2.*)::fprt2), t1.c1, t1.c3
+         Join Filter: (t1.c1 = t2.c2)
+         ->  Append
+               ->  Foreign Scan on public.ftprt1_p1 t1
+                     Output: t1.*, t1.c1, t1.c3
+                     Local server startup cost: 10
+                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1`
+               ->  Foreign Scan on public.ftprt1_p2 t1_1
+                     Output: t1_1.*, t1_1.c1, t1_1.c3
+                     Local server startup cost: 10
+                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2`
+         ->  Materialize
+               Output: ((t2.*)::fprt2), t2.c2
+               ->  Append
+                     ->  Foreign Scan on public.ftprt2_p1 t2
+                           Output: t2.*, t2.c2
+                           Local server startup cost: 10
+                           Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test3`
+                     ->  Foreign Scan on public.ftprt2_p2 t2_1
+                           Output: t2_1.*, t2_1.c2
+                           Local server startup cost: 10
+                           Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test4`
+(26 rows)
+
+SELECT t1, t2, t1.c1
+  FROM fprt1 t1 JOIN fprt2 t2 ON (t1.c1 = t2.c2)
+  ORDER BY t1.c3, t1.c1;
+       t1        |     t2      | c1 
+-----------------+-------------+----
+ (1,1,AAA1,foo)  | (1,1,CCC1)  |  1
+ (3,3,AAA11,foo) | (3,3,CCC13) |  3
+ (4,4,AAA12,foo) | (4,4,CCC14) |  4
+ (2,2,AAA2,bar)  | (2,2,CCC2)  |  2
+ (5,5,BBB1,foo)  | (5,5,CCC1)  |  5
+ (7,7,BBB11,foo) | (7,7,CCC13) |  7
+ (8,8,BBB12,foo) | (8,8,CCC13) |  8
+ (6,6,BBB2,bar)  | (6,6,CCC2)  |  6
+(8 rows)
+
+-- Join with lateral reference
+-- Different explain plan on v10 as partition-wise join is not supported there.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1,t1.c2
+  FROM fprt1 t1, LATERAL (SELECT t2.c1, t2.c2 FROM fprt2 t2
+  WHERE t1.c1 = t2.c2 AND t1.c2 = t2.c1) q WHERE t1.c1 % 2 = 0 ORDER BY 1,2;
+                                                                                                      QUERY PLAN                                                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: t1.c1, t1.c2
+   Sort Key: t1.c1, t1.c2
+   ->  Append
+         ->  Foreign Scan
+               Output: t1.c1, t1.c2
+               Relations: (mysql_fdw_regress.ftprt1_p1 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p1 t2)
+               Local server startup cost: 10
+               Remote query: SELECT r5.`c1`, r5.`c2` FROM (`mysql_fdw_regress`.`test1` r5 INNER JOIN `mysql_fdw_regress`.`test3` r8 ON (((r5.`c1` = r8.`c2`)) AND ((r5.`c2` = r8.`c1`)))) WHERE (((r5.`c1` % 2) = 0))
+         ->  Foreign Scan
+               Output: t1_1.c1, t1_1.c2
+               Relations: (mysql_fdw_regress.ftprt1_p2 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p2 t2)
+               Local server startup cost: 10
+               Remote query: SELECT r6.`c1`, r6.`c2` FROM (`mysql_fdw_regress`.`test2` r6 INNER JOIN `mysql_fdw_regress`.`test4` r9 ON (((r6.`c1` = r9.`c2`)) AND ((r6.`c2` = r9.`c1`)))) WHERE (((r6.`c1` % 2) = 0))
+(14 rows)
+
+SELECT t1.c1,t1.c2
+  FROM fprt1 t1, LATERAL (SELECT t2.c1, t2.c2 FROM fprt2 t2
+  WHERE t1.c1 = t2.c2 AND t1.c2 = t2.c1) q WHERE t1.c1 % 2 = 0 ORDER BY 1,2;
+ c1 | c2 
+----+----
+  2 |  2
+  4 |  4
+  6 |  6
+  8 |  8
+(4 rows)
+
+-- With PHVs, partitionwise join selected but no join pushdown
+-- Table alias in foreign scan is different for v12, v11 and v10.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c1, t1.phv, t2.c2, t2.phv
+  FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE c1 % 2 = 0) t1 LEFT JOIN
+    (SELECT 't2_phv' phv, * FROM fprt2 WHERE c2 % 2 = 0) t2 ON (t1.c1 = t2.c2)
+  ORDER BY t1.c1, t2.c2;
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: ftprt1_p1.c1, 't1_phv'::text, ftprt2_p1.c2, ('t2_phv'::text)
+   Sort Key: ftprt1_p1.c1, ftprt2_p1.c2
+   ->  Append
+         ->  Nested Loop Left Join
+               Output: ftprt1_p1.c1, 't1_phv'::text, ftprt2_p1.c2, ('t2_phv'::text)
+               Join Filter: (ftprt1_p1.c1 = ftprt2_p1.c2)
+               ->  Foreign Scan on public.ftprt1_p1
+                     Output: ftprt1_p1.c1
+                     Local server startup cost: 10
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` WHERE (((`c1` % 2) = 0))
+               ->  Materialize
+                     Output: ftprt2_p1.c2, ('t2_phv'::text)
+                     ->  Foreign Scan on public.ftprt2_p1
+                           Output: ftprt2_p1.c2, 't2_phv'::text
+                           Local server startup cost: 10
+                           Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test3` WHERE (((`c2` % 2) = 0))
+         ->  Nested Loop Left Join
+               Output: ftprt1_p2.c1, 't1_phv'::text, ftprt2_p2.c2, ('t2_phv'::text)
+               Join Filter: (ftprt1_p2.c1 = ftprt2_p2.c2)
+               ->  Foreign Scan on public.ftprt1_p2
+                     Output: ftprt1_p2.c1
+                     Local server startup cost: 10
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2` WHERE (((`c1` % 2) = 0))
+               ->  Materialize
+                     Output: ftprt2_p2.c2, ('t2_phv'::text)
+                     ->  Foreign Scan on public.ftprt2_p2
+                           Output: ftprt2_p2.c2, 't2_phv'::text
+                           Local server startup cost: 10
+                           Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test4` WHERE (((`c2` % 2) = 0))
+(30 rows)
+
+SELECT t1.c1, t1.phv, t2.c2, t2.phv
+  FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE c1 % 2 = 0) t1 LEFT JOIN
+    (SELECT 't2_phv' phv, * FROM fprt2 WHERE c2 % 2 = 0) t2 ON (t1.c1 = t2.c2)
+  ORDER BY t1.c1, t2.c2;
+ c1 |  phv   | c2 |  phv   
+----+--------+----+--------
+  2 | t1_phv |  2 | t2_phv
+  4 | t1_phv |  4 | t2_phv
+  6 | t1_phv |  6 | t2_phv
+  8 | t1_phv |  8 | t2_phv
+(4 rows)
+
+SET enable_partitionwise_join TO off;
+-- Cleanup
+DELETE FROM fdw139_t1;
+DELETE FROM fdw139_t2;
+DELETE FROM fdw139_t3;
+DELETE FROM tmp_t4;
 DROP FOREIGN TABLE fdw139_t1;
 DROP FOREIGN TABLE fdw139_t2;
 DROP FOREIGN TABLE fdw139_t3;
-DROP FOREIGN TABLE fdw139_t4;
+DROP FOREIGN TABLE tmp_t4;
+DROP TABLE IF EXISTS fprt1;
+DROP TABLE IF EXISTS fprt2;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP USER MAPPING FOR public SERVER mysql_svr1;
 DROP SERVER mysql_svr;
