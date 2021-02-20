@@ -911,13 +911,11 @@ SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
          Output: t1.a, t1.b, t2.a, (t1.a)
          ->  Foreign Scan on public.f_mysql_test t1
                Output: t1.a, t1.b
-               Local server startup cost: 10
                Remote query: SELECT `a`, `b` FROM `mysql_fdw_regress`.`mysql_test`
          ->  Foreign Scan on public.f_mysql_test t2
                Output: t2.a, t1.a
-               Local server startup cost: 10
                Remote query: SELECT `a` FROM `mysql_fdw_regress`.`mysql_test` WHERE ((? = `a`))
-(13 rows)
+(11 rows)
 
 SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
   SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
@@ -1105,9 +1103,8 @@ SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
      ->  Seq Scan on pg_catalog.pg_enum
    ->  Foreign Scan on public.f_enum_t1
          Output: f_enum_t1.id, f_enum_t1.size
-         Local server startup cost: 10
          Remote query: SELECT `id` FROM `mysql_fdw_regress`.`enum_t1`
-(8 rows)
+(7 rows)
 
 SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
  exists | sum 
@@ -1188,16 +1185,14 @@ SELECT c1, c2 FROM f_test_tbl1
    InitPlan 2 (returns $1)
      ->  Foreign Scan on public.f_test_tbl2
            Output: f_test_tbl2.c1
-           Local server startup cost: 10
            Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl2` WHERE ((`c1` = ?))
            InitPlan 1 (returns $0)
              ->  Result
                    Output: 20
    ->  Foreign Scan on public.f_test_tbl1
          Output: f_test_tbl1.c1, f_test_tbl1.c2
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c8` = ?))
-(15 rows)
+(13 rows)
 
 SELECT c1, c2 FROM f_test_tbl1
   WHERE c8 = (SELECT c1 FROM f_test_tbl2 WHERE c1 = (SELECT 20))
@@ -1263,20 +1258,17 @@ SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
    InitPlan 2 (returns $1)
      ->  Foreign Scan on public.f_test_tbl2 f_test_tbl2_1
            Output: f_test_tbl2_1.c1
-           Local server startup cost: 10
            Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl2` WHERE ((`c1` = ?))
            InitPlan 1 (returns $0)
              ->  Aggregate
                    Output: (min(f_test_tbl2.c1) + 1)
                    ->  Foreign Scan on public.f_test_tbl2
                          Output: f_test_tbl2.c1, f_test_tbl2.c2, f_test_tbl2.c3
-                         Local server startup cost: 10
                          Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl2`
    ->  Foreign Scan on public.f_test_tbl1
          Output: f_test_tbl1.c1, f_test_tbl1.c2
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c8` = ?))
-(19 rows)
+(16 rows)
 
 SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
   SELECT c1 FROM f_test_tbl2 WHERE c1 = (

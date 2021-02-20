@@ -825,7 +825,6 @@ static void
 mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
 	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
-	mysql_opt  *options;
 	RangeTblEntry *rte;
 	ForeignScan *fsplan = (ForeignScan *) node->ss.ps.plan;
 	int			rtindex;
@@ -846,12 +845,11 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 		ExplainPropertyText("Relations", relations, es);
 	}
 
-	/* Fetch options */
-	options = mysql_get_options(rte->relid, true);
-
 	/* Give some possibly useful info about startup costs */
-	if (es->verbose)
+	if (es->costs)
 	{
+		mysql_opt  *options = mysql_get_options(rte->relid, true);
+
 		if (strcmp(options->svr_address, "127.0.0.1") == 0 ||
 			strcmp(options->svr_address, "localhost") == 0)
 #if PG_VERSION_NUM >= 110000
@@ -865,8 +863,11 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 #else
 			ExplainPropertyLong("Remote server startup cost", 25, es);
 #endif
-		ExplainPropertyText("Remote query", festate->query, es);
 	}
+
+	/* Show the remote query in verbose mode */
+	if (es->verbose)
+		ExplainPropertyText("Remote query", festate->query, es);
 }
 
 /*

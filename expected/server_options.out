@@ -109,9 +109,8 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT a FROM f_mysql_test WHERE a < 2 ORDER BY 1;
    Sort Key: f_mysql_test.a
    ->  Foreign Scan on public.f_mysql_test
          Output: a
-         Local server startup cost: 10
          Remote query: SELECT `a` FROM `mysql_fdw_regress`.`mysql_test` WHERE ((`a` < 2))
-(7 rows)
+(6 rows)
 
 DROP FOREIGN TABLE f_mysql_test;
 DROP USER MAPPING FOR public SERVER mysql_svr1;

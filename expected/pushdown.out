@@ -48,9 +48,8 @@ SELECT c1, c2, c6 AS "salary", c8 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c6`  IN ('800', '2450'))
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6 AS "salary", c8 FROM f_test_tbl1 e
   WHERE c6 IN (800,2450)
@@ -70,9 +69,8 @@ SELECT * FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c3, c4, c5, c6, c7, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c6` > 3000))
-(7 rows)
+(6 rows)
 
 SELECT * FROM f_test_tbl1 e
   WHERE c6 > 3000
@@ -93,9 +91,8 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c6` = 1500))
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 = 1500
@@ -116,9 +113,8 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c6` >= 1000)) AND ((`c6` <= 4000))
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 BETWEEN 1000 AND 4000
@@ -149,9 +145,8 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c2` IS NOT NULL))
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c2 IS NOT NULL
@@ -185,9 +180,8 @@ SELECT * FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c3, c4, c5, c6, c7, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c5` <= '1980-12-17'))
-(7 rows)
+(6 rows)
 
 SELECT * FROM f_test_tbl1 e
   WHERE c5 <= '1980-12-17'
@@ -209,9 +203,8 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c2`  IN ('EMP6', 'EMP12', 'EMP5'))
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c2 IN ('EMP6', 'EMP12', 'EMP5')
@@ -234,9 +227,8 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c2`  IN ('EMP6', 'EMP12', 'EMP5'))
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c2 IN ('EMP6', 'EMP12', 'EMP5')
@@ -259,9 +251,8 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c3` LIKE BINARY 'SALESMAN'))
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c3 LIKE 'SALESMAN'
@@ -285,9 +276,8 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Local server startup cost: 10
          Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c3` LIKE BINARY 'MANA%'))
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c3 LIKE 'MANA%'
