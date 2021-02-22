@@ -25,19 +25,45 @@ SELECT * FROM f_mysql_test ORDER BY 1, 2;
 
 -- Alter SERVER option.
 -- Set wrong host, subsequent operation on this server should use updated
--- details and fail as the host address is not correct.
+-- details and fail as the host address is not correct. The error code in error
+-- message is different for different server versions and platform, so check
+-- that through plpgsql block and give the generic error message.
 ALTER SERVER mysql_svr OPTIONS (SET host 'localhos');
-SELECT * FROM f_mysql_test ORDER BY 1, 2;
+DO
+$$
+BEGIN
+  SELECT * FROM f_mysql_test ORDER BY 1, 2;
+  EXCEPTION WHEN others THEN
+	IF SQLERRM LIKE 'failed to connect to MySQL: Unknown MySQL server host ''localhos'' (%)' THEN
+	  RAISE NOTICE 'failed to connect to MySQL: Unknown MySQL server host ''localhos''';
+    ELSE
+	  RAISE NOTICE '%', SQLERRM;
+	END IF;
+END;
+$$
+LANGUAGE plpgsql;
 
 -- Set the correct host-name, next operation should succeed.
 ALTER SERVER mysql_svr OPTIONS (SET host :MYSQL_HOST);
 SELECT * FROM f_mysql_test ORDER BY 1, 2;
 
 -- Alter USER MAPPING option.
--- Set wrong user-name and password, next operation should fail.
+-- Set wrong password, next operation should fail.
 ALTER USER MAPPING FOR PUBLIC SERVER mysql_svr
-  OPTIONS (SET username 'foo1', SET password 'bar1');
-SELECT * FROM f_mysql_test ORDER BY 1, 2;
+  OPTIONS (SET username :MYSQL_USER_NAME, SET password 'bar1');
+DO
+$$
+BEGIN
+  SELECT * FROM f_mysql_test ORDER BY 1, 2;
+  EXCEPTION WHEN others THEN
+	IF SQLERRM LIKE 'failed to connect to MySQL: Access denied for user ''%''@''%'' (using password: YES)' THEN
+	  RAISE NOTICE 'failed to connect to MySQL: Access denied for MYSQL_USER_NAME';
+    ELSE
+	  RAISE NOTICE '%', SQLERRM;
+	END IF;
+END;
+$$
+LANGUAGE plpgsql;
 
 -- Set correct user-name and password, next operation should succeed.
 ALTER USER MAPPING FOR PUBLIC SERVER mysql_svr

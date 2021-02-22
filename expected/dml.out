@@ -73,9 +73,22 @@ SELECT a, b FROM f_mysql_test ORDER BY 1, 2;
 -- Insert into fdw126_ft2 table which does not have dbname specified while
 -- creating the foreign table, so it will consider the schema name of foreign
 -- table as database name and try to connect/lookup into that database.  Will
--- throw an error.
-INSERT INTO fdw126_ft2 VALUES(2, 'Two');
-ERROR:  failed to execute the MySQL query: 
+-- throw an error. The error message is different on old mysql and mariadb
+-- servers so give the generic message.
+DO
+$$
+BEGIN
+  INSERT INTO fdw126_ft2 VALUES(2, 'Two');
+  EXCEPTION WHEN others THEN
+	IF SQLERRM LIKE '%SELECT command denied to user ''edb''@''%'' for table ''student''' THEN
+	  RAISE NOTICE E'failed to execute the MySQL query: \nUnknown database ''public''';
+    ELSE
+	  RAISE NOTICE '%', SQLERRM;
+	END IF;
+END;
+$$
+LANGUAGE plpgsql;
+NOTICE:  failed to execute the MySQL query: 
 Unknown database 'public'
 -- Check with the same table name from different database. fdw126_ft3 is
 -- pointing to the mysql_fdw_regress1.numbers and not mysql_fdw_regress.numbers
@@ -92,10 +105,24 @@ ERROR:  first column of remote table must be unique for INSERT/UPDATE/DELETE ope
 DELETE FROM fdw126_ft3 WHERE a = 1;
 ERROR:  first column of remote table must be unique for INSERT/UPDATE/DELETE operation
 -- Check when table_name is given in database.table form in foreign table
--- should error out as syntax error
-INSERT INTO fdw126_ft6 VALUES(1, 'One');
-ERROR:  failed to execute the MySQL query: 
-You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '.student' at line 1
+-- should error out as syntax error. The error contains server name like
+-- MySQL or MariaDB, so give the generic message by removing the server name, so
+-- that it should pass on both the servers.
+DO
+$$
+BEGIN
+  INSERT INTO fdw126_ft6 VALUES(1, 'One');
+  EXCEPTION WHEN others THEN
+	IF SQLERRM LIKE '%You have an error in your SQL syntax; check the manual % for the right syntax to use near ''.student'' at line 1' THEN
+	  RAISE NOTICE E'failed to execute the MySQL query: \nYou have an error in your SQL syntax; check the manual that corresponds to your server version for the right syntax to use near ''.student'' at line 1';
+    ELSE
+	  RAISE NOTICE '%', SQLERRM;
+	END IF;
+END;
+$$
+LANGUAGE plpgsql;
+NOTICE:  failed to execute the MySQL query: 
+You have an error in your SQL syntax; check the manual that corresponds to your server version for the right syntax to use near '.student' at line 1
 -- Perform the ANALYZE on the foreign table which is not present on the remote
 -- side.  Should not crash.
 -- The database is present but not the target table.
