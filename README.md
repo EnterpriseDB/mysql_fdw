@@ -42,6 +42,15 @@ website][1].
     $ make USE_PGXS=1 install
     ```
 
+5. Running regression test.
+
+    ```
+    $ make USE_PGXS=1 installcheck
+    ```
+   However, make sure to set the `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER_NAME`,
+   and `MYSQL_PWD` environment variables correctly. The default settings
+   can be found in the `mysql_init.sh` script.
+
 If you run into any issues, please [let us know][2].
 
 

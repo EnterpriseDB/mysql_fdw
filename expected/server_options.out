@@ -1,10 +1,10 @@
-\set MYSQL_HOST			'\'localhost\''
-\set MYSQL_PORT			'\'3306\''
-\set MYSQL_USER_NAME	'\'edb\''
-\set MYSQL_PASS			'\'edb\''
+\set MYSQL_HOST			`echo \'"$MYSQL_HOST"\'`
+\set MYSQL_PORT			`echo \'"$MYSQL_PORT"\'`
+\set MYSQL_USER_NAME	`echo \'"$MYSQL_USER_NAME"\'`
+\set MYSQL_PASS			`echo \'"$MYSQL_PWD"\'`
 -- Before running this file User must create database mysql_fdw_regress on
--- MySQL with all permission for 'edb' user with 'edb' password and ran
--- mysql_init.sh file to create tables.
+-- MySQL with all permission for MYSQL_USER_NAME user with MYSQL_PWD password
+-- and ran mysql_init.sh file to create tables.
 \c contrib_regression
 CREATE EXTENSION IF NOT EXISTS mysql_fdw;
 CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw
@@ -12,13 +12,41 @@ CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw
 CREATE USER MAPPING FOR public SERVER mysql_svr
   OPTIONS (username :MYSQL_USER_NAME, password :MYSQL_PASS);
 -- Validate extension, server and mapping details
-SELECT e.fdwname as "Extension", srvname AS "Server", s.srvoptions AS "Server_Options", u.umoptions AS "User_Mapping_Options"
-  FROM pg_foreign_data_wrapper e LEFT JOIN pg_foreign_server s ON e.oid = s.srvfdw LEFT JOIN pg_user_mapping u ON s.oid = u.umserver
-  WHERE e.fdwname = 'mysql_fdw'
-  ORDER BY 1, 2, 3, 4;
- Extension |  Server   |       Server_Options       |    User_Mapping_Options     
------------+-----------+----------------------------+-----------------------------
- mysql_fdw | mysql_svr | {host=localhost,port=3306} | {username=edb,password=edb}
+CREATE OR REPLACE FUNCTION show_details(host TEXT, port TEXT, uid TEXT, pwd TEXT) RETURNS int AS $$
+DECLARE
+  ext TEXT;
+  srv TEXT;
+  sopts TEXT;
+  uopts TEXT;
+BEGIN
+  SELECT e.fdwname, srvname, array_to_string(s.srvoptions, ','), array_to_string(u.umoptions, ',')
+    INTO ext, srv, sopts, uopts
+    FROM pg_foreign_data_wrapper e LEFT JOIN pg_foreign_server s ON e.oid = s.srvfdw LEFT JOIN pg_user_mapping u ON s.oid = u.umserver
+    WHERE e.fdwname = 'mysql_fdw'
+    ORDER BY 1, 2, 3, 4;
+
+  raise notice 'Extension            : %', ext;
+  raise notice 'Server               : %', srv;
+
+  IF strpos(sopts, host) <> 0 AND strpos(sopts, port) <> 0 THEN
+    raise notice 'Server_Options       : matched';
+  END IF;
+
+  IF strpos(uopts, uid) <> 0 AND strpos(uopts, pwd) <> 0 THEN
+    raise notice 'User_Mapping_Options : matched';
+  END IF;
+
+  return 1;
+END;
+$$ language plpgsql;
+SELECT show_details(:MYSQL_HOST, :MYSQL_PORT, :MYSQL_USER_NAME, :MYSQL_PASS);
+NOTICE:  Extension            : mysql_fdw
+NOTICE:  Server               : mysql_svr
+NOTICE:  Server_Options       : matched
+NOTICE:  User_Mapping_Options : matched
+ show_details 
+--------------
+            1
 (1 row)
 
 -- Create foreign table and perform basic SQL operations

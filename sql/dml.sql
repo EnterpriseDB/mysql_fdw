@@ -1,11 +1,11 @@
-\set MYSQL_HOST			'\'localhost\''
-\set MYSQL_PORT			'\'3306\''
-\set MYSQL_USER_NAME	'\'edb\''
-\set MYSQL_PASS			'\'edb\''
+\set MYSQL_HOST			`echo \'"$MYSQL_HOST"\'`
+\set MYSQL_PORT			`echo \'"$MYSQL_PORT"\'`
+\set MYSQL_USER_NAME	`echo \'"$MYSQL_USER_NAME"\'`
+\set MYSQL_PASS			`echo \'"$MYSQL_PWD"\'`
 
 -- Before running this file User must create database mysql_fdw_regress on
--- MySQL with all permission for 'edb' user with 'edb' password and ran
--- mysql_init.sh file to create tables.
+-- MySQL with all permission for MYSQL_USER_NAME user with MYSQL_PWD password
+-- and ran mysql_init.sh file to create tables.
 
 \c contrib_regression
 CREATE EXTENSION IF NOT EXISTS mysql_fdw;
@@ -69,7 +69,7 @@ $$
 BEGIN
   INSERT INTO fdw126_ft2 VALUES(2, 'Two');
   EXCEPTION WHEN others THEN
-	IF SQLERRM LIKE '%SELECT command denied to user ''edb''@''%'' for table ''student''' THEN
+	IF SQLERRM LIKE '%SELECT command denied to user ''%''@''%'' for table ''student''' THEN
 	  RAISE NOTICE E'failed to execute the MySQL query: \nUnknown database ''public''';
     ELSE
 	  RAISE NOTICE '%', SQLERRM;

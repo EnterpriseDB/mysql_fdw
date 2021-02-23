@@ -1,8 +1,8 @@
 #!/bin/sh
 export MYSQL_PWD="edb"
-MYSQL_HOST="localhost"
-MYSQL_PORT="3306"
-MYSQL_USER_NAME="edb"
+export MYSQL_HOST="localhost"
+export MYSQL_PORT="3306"
+export MYSQL_USER_NAME="edb"
 
 # Below commands must be run first time to create mysql_fdw_regress and mysql_fdw_regress1 databases
 # used in regression tests with edb user and edb password.
