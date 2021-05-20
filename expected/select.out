@@ -1310,6 +1310,24 @@ SELECT xmax, c1 FROM f_test_tbl1;
 ERROR:  system attribute "xmax" can't be fetched from remote relation
 SELECT count(tableoid) FROM f_test_tbl1;
 ERROR:  system attribute "tableoid" can't be fetched from remote relation
+-- FDW-333: MySQL BINARY and VARBINARY data type should map to BYTEA in
+-- Postgres while importing the schema.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO ("test5")
+  FROM SERVER mysql_svr INTO public;
+SELECT attrelid::regclass, atttypid::regtype FROM pg_attribute
+  WHERE attrelid = 'test5'::regclass AND attnum > 1 ORDER BY 1;
+ attrelid | atttypid 
+----------+----------
+ test5    | bytea
+ test5    | bytea
+(2 rows)
+
+SELECT * FROM test5 ORDER BY 1;
+ c1 |    c2    |   c3   
+----+----------+--------
+  1 | \x610000 | \x6162
+(1 row)
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
@@ -1328,6 +1346,7 @@ DROP FOREIGN TABLE f_numbers;
 DROP FOREIGN TABLE f_mysql_test;
 DROP FOREIGN TABLE f_enum_t1;
 DROP FOREIGN TABLE f_test_tbl3;
+DROP FOREIGN TABLE test5;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;

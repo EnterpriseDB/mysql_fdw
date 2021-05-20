@@ -381,6 +381,14 @@ SELECT ctid, xmax, tableoid FROM f_test_tbl1;
 SELECT xmax, c1 FROM f_test_tbl1;
 SELECT count(tableoid) FROM f_test_tbl1;
 
+-- FDW-333: MySQL BINARY and VARBINARY data type should map to BYTEA in
+-- Postgres while importing the schema.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO ("test5")
+  FROM SERVER mysql_svr INTO public;
+SELECT attrelid::regclass, atttypid::regtype FROM pg_attribute
+  WHERE attrelid = 'test5'::regclass AND attnum > 1 ORDER BY 1;
+SELECT * FROM test5 ORDER BY 1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
@@ -399,6 +407,7 @@ DROP FOREIGN TABLE f_numbers;
 DROP FOREIGN TABLE f_mysql_test;
 DROP FOREIGN TABLE f_enum_t1;
 DROP FOREIGN TABLE f_test_tbl3;
+DROP FOREIGN TABLE test5;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;
