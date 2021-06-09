@@ -91,6 +91,15 @@ SELECT t1.c1, t2.c2, t3.c3
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) JOIN fdw139_t3 t3 ON (t3.c1 = t1.c1)
   ORDER BY t1.c3, t1.c1;
 
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1, t3.c1
+  FROM fdw139_t1 t1, fdw139_t2 t2, fdw139_t3 t3 WHERE t1.c1 = 11 AND t2.c1 = 12 AND t3.c1 = 13
+  ORDER BY t1.c1;
+
+SELECT t1.c1, t2.c1, t3.c1
+  FROM fdw139_t1 t1, fdw139_t2 t2, fdw139_t3 t3 WHERE t1.c1 = 11 AND t2.c1 = 12 AND t3.c1 = 13
+  ORDER BY t1.c1;
+
 -- LEFT OUTER JOIN
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1

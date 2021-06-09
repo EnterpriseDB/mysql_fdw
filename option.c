@@ -162,10 +162,10 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 
 	options = NIL;
 	if (f_table)
-		options = list_concat(options, f_table->options);
+		options = mysql_list_concat(options, f_table->options);
 
-	options = list_concat(options, f_server->options);
-	options = list_concat(options, f_mapping->options);
+	options = mysql_list_concat(options, f_server->options);
+	options = mysql_list_concat(options, f_mapping->options);
 
 	/* Default secure authentication is true */
 	opt->svr_sa = true;

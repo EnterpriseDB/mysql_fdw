@@ -2731,10 +2731,10 @@ mysql_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 	switch (jointype)
 	{
 		case JOIN_INNER:
-			fpinfo->remote_conds = list_concat(fpinfo->remote_conds,
-											   fpinfo_i->remote_conds);
-			fpinfo->remote_conds = list_concat(fpinfo->remote_conds,
-											   fpinfo_o->remote_conds);
+			fpinfo->remote_conds = mysql_list_concat(fpinfo->remote_conds,
+													 fpinfo_i->remote_conds);
+			fpinfo->remote_conds = mysql_list_concat(fpinfo->remote_conds,
+													 fpinfo_o->remote_conds);
 			break;
 
 		case JOIN_LEFT:
@@ -2747,10 +2747,10 @@ mysql_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 					return false;
 			}
 
-			fpinfo->joinclauses = list_concat(fpinfo->joinclauses,
-											  fpinfo_i->remote_conds);
-			fpinfo->remote_conds = list_concat(fpinfo->remote_conds,
-											   fpinfo_o->remote_conds);
+			fpinfo->joinclauses = mysql_list_concat(fpinfo->joinclauses,
+													fpinfo_i->remote_conds);
+			fpinfo->remote_conds = mysql_list_concat(fpinfo->remote_conds,
+													 fpinfo_o->remote_conds);
 			break;
 
 		case JOIN_RIGHT:
@@ -2763,10 +2763,10 @@ mysql_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 					return false;
 			}
 
-			fpinfo->joinclauses = list_concat(fpinfo->joinclauses,
-											  fpinfo_o->remote_conds);
-			fpinfo->remote_conds = list_concat(fpinfo->remote_conds,
-											   fpinfo_i->remote_conds);
+			fpinfo->joinclauses = mysql_list_concat(fpinfo->joinclauses,
+													fpinfo_o->remote_conds);
+			fpinfo->remote_conds = mysql_list_concat(fpinfo->remote_conds,
+													 fpinfo_i->remote_conds);
 			break;
 
 		default:

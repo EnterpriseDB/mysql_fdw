@@ -145,6 +145,26 @@ SELECT t1.c1, t2.c2, t3.c3
   2 | 200 | CCC2
 (2 rows)
 
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1, t3.c1
+  FROM fdw139_t1 t1, fdw139_t2 t2, fdw139_t3 t3 WHERE t1.c1 = 11 AND t2.c1 = 12 AND t3.c1 = 13
+  ORDER BY t1.c1;
+                                                                                                                            QUERY PLAN                                                                                                                             
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Output: t1.c1, t2.c1, t3.c1
+   Relations: ((mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)) INNER JOIN (mysql_fdw_regress.fdw139_t3 t3)
+   Remote query: SELECT r1.`c1`, r2.`c1`, r3.`c1` FROM ((`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) INNER JOIN `mysql_fdw_regress`.`test3` r3 ON (TRUE)) WHERE ((r3.`c1` = 13)) AND ((r2.`c1` = 12)) AND ((r1.`c1` = 11))
+(4 rows)
+
+SELECT t1.c1, t2.c1, t3.c1
+  FROM fdw139_t1 t1, fdw139_t2 t2, fdw139_t3 t3 WHERE t1.c1 = 11 AND t2.c1 = 12 AND t3.c1 = 13
+  ORDER BY t1.c1;
+ c1 | c1 | c1 
+----+----+----
+ 11 | 12 | 13
+(1 row)
+
 -- LEFT OUTER JOIN
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
