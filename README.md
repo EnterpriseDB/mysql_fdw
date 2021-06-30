@@ -5,7 +5,7 @@ This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for
 [MySQL][1].
 
 Please note that this version of mysql_fdw works with PostgreSQL and EDB
-Postgres Advanced Server 9.6, 10, 11, 12, and 13.
+Postgres Advanced Server 9.6, 10, 11, 12, 13 and 14.
 
 Installation
 ------------

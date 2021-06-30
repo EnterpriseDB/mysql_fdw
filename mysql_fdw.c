@@ -41,6 +41,9 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
+#if PG_VERSION_NUM >= 140000
+#include "optimizer/appendinfo.h"
+#endif
 #include "optimizer/pathnode.h"
 #include "optimizer/planmain.h"
 #if PG_VERSION_NUM < 120000
@@ -172,9 +175,16 @@ static TupleTableSlot *mysqlExecForeignInsert(EState *estate,
 											  ResultRelInfo *resultRelInfo,
 											  TupleTableSlot *slot,
 											  TupleTableSlot *planSlot);
+#if PG_VERSION_NUM >= 140000
+static void mysqlAddForeignUpdateTargets(PlannerInfo *root,
+										 Index rtindex,
+										 RangeTblEntry *target_rte,
+										 Relation target_relation);
+#else
 static void mysqlAddForeignUpdateTargets(Query *parsetree,
 										 RangeTblEntry *target_rte,
 										 Relation target_relation);
+#endif
 static TupleTableSlot *mysqlExecForeignUpdate(EState *estate,
 											  ResultRelInfo *resultRelInfo,
 											  TupleTableSlot *slot,
@@ -1361,7 +1371,11 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 									  remote_conds, &retrieved_attrs,
 									  &params_list);
 
+#if PG_VERSION_NUM >= 140000
+	if (bms_is_member(foreignrel->relid, root->all_result_relids) &&
+#else
 	if (foreignrel->relid == root->parse->resultRelation &&
+#endif
 		(root->parse->commandType == CMD_UPDATE ||
 		 root->parse->commandType == CMD_DELETE))
 	{
@@ -1663,6 +1677,26 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 											  ALLOCSET_SMALL_MAXSIZE);
 #endif
 
+	if (mtstate->operation == CMD_UPDATE)
+	{
+		Form_pg_attribute attr;
+#if PG_VERSION_NUM >= 140000
+		Plan	   *subplan = outerPlanState(mtstate)->plan;
+#else
+		Plan	   *subplan = mtstate->mt_plans[subplan_index]->plan;
+#endif
+
+		Assert(subplan != NULL);
+
+		attr = TupleDescAttr(RelationGetDescr(rel), 0);
+
+		/* Find the rowid resjunk column in the subplan's result */
+		fmstate->rowidAttno = ExecFindJunkAttributeInTlist(subplan->targetlist,
+														   NameStr(attr->attname));
+		if (!AttributeNumberIsValid(fmstate->rowidAttno))
+			elog(ERROR, "could not find junk row identifier column");
+	}
+
 	/* Set up for remaining transmittable parameters */
 	foreach(lc, fmstate->retrieved_attrs)
 	{
@@ -1814,7 +1848,7 @@ mysqlExecForeignUpdate(EState *estate,
 	 * column and compare that value with the new value to identify if that
 	 * value is changed.
 	 */
-	value = ExecGetJunkAttribute(planSlot, 1, &is_null);
+	value = ExecGetJunkAttribute(planSlot, fmstate->rowidAttno, &is_null);
 
 	tuple = SearchSysCache2(ATTNUM,
 							ObjectIdGetDatum(foreignTableId),
@@ -1880,14 +1914,24 @@ mysqlExecForeignUpdate(EState *estate,
  * 		using first column as row identification column, so we are adding
  * 		that into target list.
  */
+#if PG_VERSION_NUM >= 140000
+static void
+mysqlAddForeignUpdateTargets(PlannerInfo *root,
+							 Index rtindex,
+							 RangeTblEntry *target_rte,
+							 Relation target_relation)
+#else
 static void
 mysqlAddForeignUpdateTargets(Query *parsetree,
 							 RangeTblEntry *target_rte,
 							 Relation target_relation)
+#endif
 {
 	Var		   *var;
 	const char *attrname;
+#if PG_VERSION_NUM < 140000
 	TargetEntry *tle;
+#endif
 
 	/*
 	 * What we need is the rowid which is the first column
@@ -1896,22 +1940,32 @@ mysqlAddForeignUpdateTargets(Query *parsetree,
 		TupleDescAttr(RelationGetDescr(target_relation), 0);
 
 	/* Make a Var representing the desired value */
+#if PG_VERSION_NUM >= 140000
+	var = makeVar(rtindex,
+#else
 	var = makeVar(parsetree->resultRelation,
+#endif
 				  1,
 				  attr->atttypid,
 				  attr->atttypmod,
 				  InvalidOid,
 				  0);
 
-	/* Wrap it in a TLE with the right name ... */
+	/* Get name of the row identifier column */
 	attrname = NameStr(attr->attname);
 
+#if PG_VERSION_NUM >= 140000
+	/* Register it as a row-identity column needed by this target rel */
+	add_row_identity_var(root, var, rtindex, attrname);
+#else
+	/* Wrap it in a TLE with the right name ... */
 	tle = makeTargetEntry((Expr *) var,
 						  list_length(parsetree->targetList) + 1,
 						  pstrdup(attrname), true);
 
 	/* ... and add it to the query's targetlist */
 	parsetree->targetList = lappend(parsetree->targetList, tle);
+#endif
 }
 
 /*

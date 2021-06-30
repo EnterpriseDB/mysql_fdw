@@ -133,8 +133,6 @@ BEFORE UPDATE ON fdw126_ft1
 FOR EACH ROW EXECUTE PROCEDURE before_row_update_func();
 
 INSERT INTO fdw126_ft1 VALUES(1, 'One', 101);
-EXPLAIN (verbose, costs off)
-UPDATE fdw126_ft1 SET stu_dept = 201 WHERE stu_id = 1;
 UPDATE fdw126_ft1 SET stu_dept = 201 WHERE stu_id = 1;
 SELECT * FROM fdw126_ft1 ORDER BY stu_id;
 
@@ -167,8 +165,6 @@ BEFORE UPDATE ON fdw193_ft1
 FOR EACH ROW EXECUTE PROCEDURE before_row_update_func();
 
 INSERT INTO fdw193_ft1 VALUES('aa', 'One', 101);
-EXPLAIN (verbose, costs off)
-UPDATE fdw193_ft1 SET stu_dept = 201 WHERE stu_id = 'aa';
 UPDATE fdw193_ft1 SET stu_dept = 201 WHERE stu_id = 'aa';
 SELECT * FROM fdw193_ft1 ORDER BY stu_id;
 

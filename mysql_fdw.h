@@ -177,15 +177,10 @@ typedef struct MySQLFdwExecState
 	Oid		   *param_types;	/* type of query parameters */
 	int			p_nums;			/* number of parameters to transmit */
 	FmgrInfo   *p_flinfo;		/* output conversion functions for them */
-
 	mysql_opt  *mysqlFdwOptions;	/* MySQL FDW options */
-
-	List	   *attr_list;		/* query attribute list */
-	List	   *column_list;	/* Column list of MySQL Column structures */
-	/* working memory context */
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
-
 	AttInMetadata *attinmeta;
+	AttrNumber	rowidAttno;		/* attnum of resjunk rowid column */
 
 	/*
 	 * Members used for constructing the ForeignScan result row when whole-row
