@@ -66,6 +66,7 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 	HeapTuple	tuple;
 	int			typemod;
 	char		str[MAXDATELEN];
+	bytea	   *result;
 
 	/* get the type's output function */
 	tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(pgtyp));
@@ -99,8 +100,10 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 		 * string.
 		 */
 		case BYTEAOID:
-			SET_VARSIZE(column->value, column->length + VARHDRSZ);
-			return PointerGetDatum(column->value);
+			result = (bytea *) palloc(column->length + VARHDRSZ);
+			memcpy(VARDATA(result), VARDATA(column->value), column->length);
+			SET_VARSIZE(result, column->length + VARHDRSZ);
+			return PointerGetDatum(result);
 
 		case BITOID:
 			sprintf(str, "%d", dec_bin(*((int *) column->value)));

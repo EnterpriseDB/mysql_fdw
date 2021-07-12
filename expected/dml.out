@@ -32,24 +32,27 @@ CREATE FOREIGN TABLE fdw193_ft1(stu_id varchar(10), stu_name varchar(255), stu_d
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress1', table_name 'student1');
 -- Operation on blob data.
 INSERT INTO f_empdata VALUES (1, decode ('01234567', 'hex'));
+INSERT INTO f_empdata VALUES (2, 'abc');
 SELECT count(*) FROM f_empdata ORDER BY 1;
  count 
 -------
-     1
+     2
 (1 row)
 
 SELECT emp_id, emp_dat FROM f_empdata ORDER BY 1;
  emp_id |  emp_dat   
 --------+------------
       1 | \x01234567
-(1 row)
+      2 | \x616263
+(2 rows)
 
-UPDATE f_empdata SET emp_dat = decode ('0123', 'hex');
+UPDATE f_empdata SET emp_dat = decode ('0123', 'hex') WHERE emp_id = 1;
 SELECT emp_id, emp_dat FROM f_empdata ORDER BY 1;
- emp_id | emp_dat 
---------+---------
+ emp_id | emp_dat  
+--------+----------
       1 | \x0123
-(1 row)
+      2 | \x616263
+(2 rows)
 
 -- FDW-126: Insert/update/delete statement failing in mysql_fdw by picking
 -- wrong database name.

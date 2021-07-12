@@ -37,9 +37,10 @@ CREATE FOREIGN TABLE fdw193_ft1(stu_id varchar(10), stu_name varchar(255), stu_d
 
 -- Operation on blob data.
 INSERT INTO f_empdata VALUES (1, decode ('01234567', 'hex'));
+INSERT INTO f_empdata VALUES (2, 'abc');
 SELECT count(*) FROM f_empdata ORDER BY 1;
 SELECT emp_id, emp_dat FROM f_empdata ORDER BY 1;
-UPDATE f_empdata SET emp_dat = decode ('0123', 'hex');
+UPDATE f_empdata SET emp_dat = decode ('0123', 'hex') WHERE emp_id = 1;
 SELECT emp_id, emp_dat FROM f_empdata ORDER BY 1;
 
 -- FDW-126: Insert/update/delete statement failing in mysql_fdw by picking
