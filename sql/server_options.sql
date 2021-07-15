@@ -115,5 +115,62 @@ DROP FOREIGN TABLE f_mysql_test;
 DROP USER MAPPING FOR public SERVER mysql_svr1;
 DROP SERVER mysql_svr1;
 
+-- FDW-335: Support for fetch_size option at server level and table level.
+CREATE SERVER fetch101 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS( fetch_size '101' );
+
+SELECT count(*)
+  FROM pg_foreign_server
+  WHERE srvname = 'fetch101'
+  AND srvoptions @> array['fetch_size=101'];
+
+ALTER SERVER fetch101 OPTIONS( SET fetch_size '202' );
+
+SELECT count(*)
+  FROM pg_foreign_server
+  WHERE srvname = 'fetch101'
+  AND srvoptions @> array['fetch_size=101'];
+
+SELECT count(*)
+  FROM pg_foreign_server
+  WHERE srvname = 'fetch101'
+  AND srvoptions @> array['fetch_size=202'];
+
+CREATE FOREIGN TABLE table30000 ( x int ) SERVER fetch101
+  OPTIONS ( fetch_size '30000' );
+
+SELECT COUNT(*)
+  FROM pg_foreign_table
+  WHERE ftrelid = 'table30000'::regclass
+  AND ftoptions @> array['fetch_size=30000'];
+
+ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '60000');
+
+SELECT COUNT(*)
+  FROM pg_foreign_table
+  WHERE ftrelid = 'table30000'::regclass
+  AND ftoptions @> array['fetch_size=30000'];
+
+SELECT COUNT(*)
+  FROM pg_foreign_table
+  WHERE ftrelid = 'table30000'::regclass
+  AND ftoptions @> array['fetch_size=60000'];
+
+-- Make sure that changing the table level fetch-size value did not change the
+-- server level value.
+SELECT count(*)
+  FROM pg_foreign_server
+  WHERE srvname = 'fetch101'
+  AND srvoptions @> array['fetch_size=202'];
+
+-- Negative test cases for fetch_size option, should error out.
+ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '-60000');
+ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '123abc');
+ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '999999999999999999999');
+
+-- Cleanup fetch_size test objects.
+DROP FOREIGN TABLE  table30000;
+DROP SERVER fetch101;
+
 -- Cleanup
 DROP EXTENSION mysql_fdw;

@@ -532,7 +532,6 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	mysql_opt  *options;
 	ListCell   *lc;
 	int			atindex = 0;
-	unsigned long prefetch_rows = MYSQL_PREFETCH_ROWS;
 	unsigned long type = (unsigned long) CURSOR_TYPE_READ_ONLY;
 	Oid			userid;
 	ForeignServer *server;
@@ -670,7 +669,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/* Set the pre-fetch rows */
 	mysql_stmt_attr_set(festate->stmt, STMT_ATTR_PREFETCH_ROWS,
-						(void *) &prefetch_rows);
+						(void *) &options->fetch_size);
 
 	festate->table = (mysql_table *) palloc0(sizeof(mysql_table));
 	festate->table->column = (mysql_column *) palloc0(sizeof(mysql_column) * tupleDescriptor->natts);

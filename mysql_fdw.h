@@ -101,6 +101,7 @@ typedef struct mysql_opt
 	unsigned long max_blob_size;	/* Max blob size to read without
 									 * truncation */
 	bool		use_remote_estimate;	/* use remote estimate for rows */
+	unsigned long fetch_size;	/* Number of rows to fetch from remote server */
 
 	/* SSL parameters; unused options may be given as NULL */
 	char	   *ssl_key;		/* MySQL SSL: path to the key file */

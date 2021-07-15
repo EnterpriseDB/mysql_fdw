@@ -48,6 +48,9 @@ static struct MySQLFdwOption valid_options[] =
 	{"secure_auth", ForeignServerRelationId},
 	{"max_blob_size", ForeignTableRelationId},
 	{"use_remote_estimate", ForeignServerRelationId},
+	/* fetch_size is available on both server and table */
+	{"fetch_size", ForeignServerRelationId},
+	{"fetch_size", ForeignTableRelationId},
 	{"ssl_key", ForeignServerRelationId},
 	{"ssl_cert", ForeignServerRelationId},
 	{"ssl_ca", ForeignServerRelationId},
@@ -106,6 +109,34 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 					 errhint("Valid options in this context are: %s",
 							 buf.len ? buf.data : "<none>")));
 		}
+
+		/* Validate fetch_size option value */
+		if (strcmp(def->defname, "fetch_size") == 0)
+		{
+			unsigned long	fetch_size;
+			char	   *endptr;
+			char	   *inputVal = defGetString(def);
+
+			while(inputVal && isspace((unsigned char) *inputVal))
+				inputVal++;
+
+			if (inputVal && *inputVal == '-')
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("\"%s\" requires an integer value between 1 to %lu",
+								def->defname, ULONG_MAX)));
+
+			errno = 0;
+			fetch_size = strtoul(inputVal, &endptr, 10);
+
+			if (*endptr != '\0' ||
+				(errno == ERANGE && fetch_size == ULONG_MAX) ||
+				fetch_size == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("\"%s\" requires an integer value between 1 to %lu",
+								def->defname, ULONG_MAX)));
+		}
 	}
 
 	PG_RETURN_VOID();
@@ -161,11 +192,12 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 	f_mapping = GetUserMapping(GetUserId(), f_server->serverid);
 
 	options = NIL;
-	if (f_table)
-		options = mysql_list_concat(options, f_table->options);
 
 	options = mysql_list_concat(options, f_server->options);
 	options = mysql_list_concat(options, f_mapping->options);
+
+	if (f_table)
+		options = mysql_list_concat(options, f_table->options);
 
 	/* Default secure authentication is true */
 	opt->svr_sa = true;
@@ -207,6 +239,9 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 		if (strcmp(def->defname, "use_remote_estimate") == 0)
 			opt->use_remote_estimate = defGetBoolean(def);
 
+		if (strcmp(def->defname, "fetch_size") == 0)
+			opt->fetch_size = strtoul(defGetString(def), NULL, 10);
+
 		if (strcmp(def->defname, "ssl_key") == 0)
 			opt->ssl_key = defGetString(def);
 
@@ -243,6 +278,10 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 		if (!opt->svr_database)
 			opt->svr_database = get_namespace_name(get_rel_namespace(foreignoid));
 	}
+
+	/* Default value for fetch_size */
+	if (!opt->fetch_size)
+		opt->fetch_size = MYSQL_PREFETCH_ROWS;
 
 	return opt;
 }
