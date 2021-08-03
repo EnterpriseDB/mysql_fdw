@@ -123,6 +123,10 @@ The following parameters can be set on a MySQL foreign server object:
   * `ssl_capath`: The path name of the directory that contains trusted
     SSL CA certificate files.
   * `ssl_cipher`: The list of permissible ciphers for SSL encryption.
+  * `fetch_size`: This option specifies the number of rows mysql_fdw should
+    get in each fetch operation. It can be specified for a foreign table or
+    a foreign server. The option specified on a table overrides an option
+    specified for the server. The default is `100`.
 
 The following parameters can be set on a MySQL foreign table object:
 
@@ -131,6 +135,7 @@ The following parameters can be set on a MySQL foreign table object:
   * `table_name`: Name of the MySQL table, default is the same as
     foreign table.
   * `max_blob_size`: Max blob size to read without truncation.
+  * `fetch_size`: Same as `fetch_size` parameter for foreign server.
 
 The following parameters need to supplied while creating user mapping.
 
