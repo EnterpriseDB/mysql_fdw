@@ -1000,14 +1000,13 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 		StringInfoData sql;
 		MYSQL_RES  *result = NULL;
 		List	   *retrieved_attrs = NULL;
-		List	   *params_list = NULL;
 
 		initStringInfo(&sql);
 		appendStringInfo(&sql, "EXPLAIN ");
 
 		mysql_deparse_select_stmt_for_rel(&sql, root, baserel, NULL,
 										  fpinfo->remote_conds,
-										  &retrieved_attrs, &params_list);
+										  &retrieved_attrs, NULL);
 
 		if (mysql_query(conn, sql.data) != 0)
 			mysql_error_print(conn);

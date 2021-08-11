@@ -1328,6 +1328,32 @@ SELECT * FROM test5 ORDER BY 1;
   1 | \x610000 | \x6162
 (1 row)
 
+-- FDW-400: Test the parameterized query by enabling use_remote_estimate
+-- option.
+ALTER SERVER mysql_svr options (SET use_remote_estimate 'true');
+SELECT c1, sum(c7) FROM f_test_tbl1 t1
+  GROUP BY c1 HAVING EXISTS
+    (SELECT 1 FROM f_test_tbl1 t2 WHERE (t1.c1 = t2.c1))
+  ORDER BY 1,2;
+  c1  | sum  
+------+------
+  100 |     
+  200 |  300
+  300 |  500
+  400 |     
+  500 | 1400
+  600 |     
+  700 |     
+  800 |     
+  900 |     
+ 1000 |    0
+ 1100 |     
+ 1200 |     
+ 1300 |     
+ 1400 |     
+(14 rows)
+
+ALTER SERVER mysql_svr options (SET use_remote_estimate 'false');
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

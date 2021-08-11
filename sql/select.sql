@@ -389,6 +389,15 @@ SELECT attrelid::regclass, atttypid::regtype FROM pg_attribute
   WHERE attrelid = 'test5'::regclass AND attnum > 1 ORDER BY 1;
 SELECT * FROM test5 ORDER BY 1;
 
+-- FDW-400: Test the parameterized query by enabling use_remote_estimate
+-- option.
+ALTER SERVER mysql_svr options (SET use_remote_estimate 'true');
+SELECT c1, sum(c7) FROM f_test_tbl1 t1
+  GROUP BY c1 HAVING EXISTS
+    (SELECT 1 FROM f_test_tbl1 t2 WHERE (t1.c1 = t2.c1))
+  ORDER BY 1,2;
+ALTER SERVER mysql_svr options (SET use_remote_estimate 'false');
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
