@@ -53,5 +53,5 @@ mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e 
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "CREATE TABLE test2 (c1 int PRIMARY KEY, c2 int, c3 varchar(255), c4 ENUM ('foo', 'bar', 'buz'))"
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "CREATE TABLE test3 (c1 int PRIMARY KEY, c2 int, c3 varchar(255))"
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "CREATE TABLE test4 (c1 int PRIMARY KEY, c2 int, c3 varchar(255))"
-mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "CREATE TABLE test5 (c1 int PRIMARY KEY, c2 binary(3), c3 varbinary(3))"
-mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "INSERT INTO test5 VALUES(1, 'a', 'ab');"
+mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "CREATE TABLE test5 (c1 int primary key, c2 binary, c3 binary(3), c4 binary(1), c5 binary(10), c6 varbinary(3), c7 varbinary(1), c8 varbinary(10), c9 binary(0), c10 varbinary(0));"
+mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "INSERT INTO test5 VALUES (1, 'c', 'c3c', 't', 'c5c5c5', '04', '1', '01-10-2021', NULL, '');"

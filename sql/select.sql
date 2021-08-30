@@ -29,6 +29,10 @@ CREATE FOREIGN TABLE f_test_tbl2 (c1 INTEGER, c2 VARCHAR(14), c3 VARCHAR(13))
 CREATE TYPE size_t AS enum('small','medium','large');
 CREATE FOREIGN TABLE f_enum_t1(id int, size size_t)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'enum_t1');
+CREATE FOREIGN TABLE test5_1(c1 INT, c2 CHAR, c3 VARCHAR, c4 BOOLEAN, c5 TEXT, c6 INTERVAL, c7 BYTEA, c8 pg_catalog.DATE, c9 NUMERIC, c10 NAME)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test5');
+CREATE FOREIGN TABLE test5_2(c1 INT, c2 BYTEA, c3 BYTEA, c4 BYTEA, c5 BYTEA, c6 BYTEA, c7 BYTEA, c8 BYTEA, c9 BYTEA, c10 BYTEA)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test5');
 
 -- Insert data in MySQL db using foreign tables
 INSERT INTO f_test_tbl1 VALUES (100, 'EMP1', 'ADMIN', 1300, '1980-12-17', 800.23, NULL, 20);
@@ -388,6 +392,15 @@ IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO ("test5")
 SELECT attrelid::regclass, atttypid::regtype FROM pg_attribute
   WHERE attrelid = 'test5'::regclass AND attnum > 1 ORDER BY 1;
 SELECT * FROM test5 ORDER BY 1;
+-- Test Mapping of MySQL BINARY and VARBINARY data type with various
+-- Postgres data types.
+SELECT * FROM test5_1 ORDER BY 1;
+SELECT * FROM test5_1 WHERE c9 IS NULL ORDER BY 1;
+SELECT * FROM test5_1 WHERE c10 IS NULL ORDER BY 1;
+-- Test MYSQL BINARY(n) and VARBINARY(n) variants mapping to Postgres BYTEA.
+SELECT * FROM test5_2 ORDER BY 1;
+SELECT * FROM test5_2 WHERE c9 IS NULL ORDER BY 1;
+SELECT * FROM test5_2 WHERE c10 IS NULL ORDER BY 1;
 
 -- FDW-400: Test the parameterized query by enabling use_remote_estimate
 -- option.
@@ -417,6 +430,8 @@ DROP FOREIGN TABLE f_mysql_test;
 DROP FOREIGN TABLE f_enum_t1;
 DROP FOREIGN TABLE f_test_tbl3;
 DROP FOREIGN TABLE test5;
+DROP FOREIGN TABLE test5_1;
+DROP FOREIGN TABLE test5_2;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;
