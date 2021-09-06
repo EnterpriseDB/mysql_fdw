@@ -115,6 +115,9 @@ The following parameters can be set on a MySQL foreign server object:
     MySQL server.
   * `use_remote_estimate`: Controls whether mysql_fdw issues remote
     EXPLAIN commands to obtain cost estimates. Default is `false`
+  * `reconnect`: Enable or disable automatic reconnection to the
+    MySQL server if the existing connection is found to have been lost.
+    Default is `false`.
   * `ssl_key`: The path name of the client private key file.
   * `ssl_cert`: The path name of the client public key certificate file.
   * `ssl_ca`: The path name of the Certificate Authority (CA) certificate

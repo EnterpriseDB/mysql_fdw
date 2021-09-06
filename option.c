@@ -51,6 +51,7 @@ static struct MySQLFdwOption valid_options[] =
 	/* fetch_size is available on both server and table */
 	{"fetch_size", ForeignServerRelationId},
 	{"fetch_size", ForeignTableRelationId},
+	{"reconnect", ForeignServerRelationId},
 	{"ssl_key", ForeignServerRelationId},
 	{"ssl_cert", ForeignServerRelationId},
 	{"ssl_ca", ForeignServerRelationId},
@@ -137,6 +138,11 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("\"%s\" requires an integer value between 1 to %lu",
 								def->defname, ULONG_MAX)));
 		}
+		else if (strcmp(def->defname, "reconnect") == 0)
+		{
+			/* accept only boolean values */
+			(void) defGetBoolean(def);
+		}
 	}
 
 	PG_RETURN_VOID();
@@ -203,6 +209,7 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 	opt->svr_sa = true;
 
 	opt->use_remote_estimate = false;
+	opt->reconnect = false;
 
 	/* Loop through the options */
 	foreach(lc, options)
@@ -241,6 +248,9 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 
 		if (strcmp(def->defname, "fetch_size") == 0)
 			opt->fetch_size = strtoul(defGetString(def), NULL, 10);
+
+		if (strcmp(def->defname, "reconnect") == 0)
+			opt->reconnect = defGetBoolean(def);
 
 		if (strcmp(def->defname, "ssl_key") == 0)
 			opt->ssl_key = defGetString(def);

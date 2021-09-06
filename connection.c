@@ -244,6 +244,12 @@ mysql_connect(mysql_opt *opt)
 	if (svr_init_command != NULL)
 		mysql_options(conn, MYSQL_INIT_COMMAND, svr_init_command);
 
+	/*
+	 * Enable or disable automatic reconnection to the MySQL server if
+	 * the existing connection is found to have been lost.
+	 */
+	mysql_options(conn, MYSQL_OPT_RECONNECT, &opt->reconnect);
+
 	mysql_ssl_set(conn, opt->ssl_key, opt->ssl_cert, opt->ssl_ca,
 				   opt->ssl_capath, ssl_cipher);
 

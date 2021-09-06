@@ -172,5 +172,27 @@ ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '999999999999999999999')
 DROP FOREIGN TABLE  table30000;
 DROP SERVER fetch101;
 
+-- FDW-350: Support for reconnect option at server level.
+CREATE SERVER reconnect1 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS( reconnect 'true' );
+
+SELECT count(*)
+  FROM pg_foreign_server
+  WHERE srvname = 'reconnect1'
+  AND srvoptions @> array['reconnect=true'];
+
+ALTER SERVER reconnect1 OPTIONS( SET reconnect 'false' );
+
+SELECT count(*)
+  FROM pg_foreign_server
+  WHERE srvname = 'reconnect1'
+  AND srvoptions @> array['reconnect=false'];
+
+-- Negative test case for reconnect option, should error out.
+ALTER SERVER reconnect1 OPTIONS ( SET reconnect 'abc1' );
+
+-- Cleanup reconnect option test objects.
+DROP SERVER reconnect1;
+
 -- Cleanup
 DROP EXTENSION mysql_fdw;

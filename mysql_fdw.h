@@ -102,6 +102,7 @@ typedef struct mysql_opt
 									 * truncation */
 	bool		use_remote_estimate;	/* use remote estimate for rows */
 	unsigned long fetch_size;	/* Number of rows to fetch from remote server */
+	bool		reconnect;		/* set to true for automatic reconnection */
 
 	/* SSL parameters; unused options may be given as NULL */
 	char	   *ssl_key;		/* MySQL SSL: path to the key file */
