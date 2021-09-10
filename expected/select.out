@@ -1402,6 +1402,35 @@ SELECT c1, sum(c7) FROM f_test_tbl1 t1
 (14 rows)
 
 ALTER SERVER mysql_svr options (SET use_remote_estimate 'false');
+-- FDW-411: Volatile/immutable functions should not get pushed down to remote
+-- MySQL server.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
+  ORDER BY 1 limit 5;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Limit
+   Output: c1, c2, c3
+   ->  Sort
+         Output: c1, c2, c3
+         Sort Key: f_test_tbl1.c1
+         ->  Foreign Scan on public.f_test_tbl1
+               Output: c1, c2, c3
+               Filter: (timeofday() IS NOT NULL)
+               Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test_tbl1`
+(9 rows)
+
+SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
+  ORDER BY 1 limit 5;
+ c1  |  c2  |    c3    
+-----+------+----------
+ 100 | EMP1 | ADMIN
+ 200 | EMP2 | SALESMAN
+ 300 | EMP3 | SALESMAN
+ 400 | EMP4 | MANAGER
+ 500 | EMP5 | SALESMAN
+(5 rows)
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

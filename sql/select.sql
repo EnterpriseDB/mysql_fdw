@@ -411,6 +411,14 @@ SELECT c1, sum(c7) FROM f_test_tbl1 t1
   ORDER BY 1,2;
 ALTER SERVER mysql_svr options (SET use_remote_estimate 'false');
 
+-- FDW-411: Volatile/immutable functions should not get pushed down to remote
+-- MySQL server.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
+  ORDER BY 1 limit 5;
+SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
+  ORDER BY 1 limit 5;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

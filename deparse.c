@@ -1871,6 +1871,16 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
 	Assert(loc_cxt.collation == InvalidOid);
 	Assert(loc_cxt.state == FDW_COLLATE_NONE);
 
+	/*
+	 * An expression which includes any mutable functions can't be sent over
+	 * because its result is not stable.  For example, sending now() remote
+	 * side could cause confusion from clock offsets.  Future versions might
+	 * be able to make this choice with more granularity.  (We check this last
+	 * because it requires a lot of expensive catalog lookups.)
+	 */
+	if (contain_mutable_functions((Node *) expr))
+		return false;
+
 	/* OK to evaluate on the remote server */
 	return true;
 }
