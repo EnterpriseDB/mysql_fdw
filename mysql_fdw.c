@@ -2138,7 +2138,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	{
 		bool		first_item = true;
 
-		appendStringInfoString(&buf, " AND t.TABLE_NAME ");
+		appendStringInfoString(&buf, " AND t.TABLE_NAME COLLATE UTF8_GENERAL_CI ");
 		if (stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
 			appendStringInfoString(&buf, "NOT ");
 		appendStringInfoString(&buf, "IN (");

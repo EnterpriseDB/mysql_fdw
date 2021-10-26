@@ -419,6 +419,11 @@ SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
 SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
   ORDER BY 1 limit 5;
 
+-- Issue #202 - correct handling of mixed-case table names.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO ("mixedCaseTable") FROM SERVER mysql_svr INTO public;
+SELECT * FROM "mixedCaseTable" ORDER BY id;
+DROP FOREIGN TABLE "mixedCaseTable";
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
