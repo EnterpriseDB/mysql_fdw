@@ -101,6 +101,15 @@ are pushed down to avoid any potential join failure. Also, only the
 INNER and LEFT/RIGHT OUTER joins are supported, and not the FULL OUTER,
 SEMI, and ANTI join. This is a performance feature.
 
+### AGGREGATE push-down
+mysql_fdw now also supports aggregate push-down. Push aggregates to the
+remote MySQL server instead of fetching all of the rows and aggregating
+them locally. This gives a very good performance boost for the cases
+where aggregates can be pushed down. The push-down is currently limited
+to aggregate functions min, max, sum, avg, and count, to avoid pushing
+down the functions that are not present on the MySQL server. Also,
+aggregate filters and orders are not pushed down.
+
 Usage
 -----
 

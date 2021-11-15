@@ -17,6 +17,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/transam.h"
+#include "catalog/pg_aggregate.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"
@@ -41,6 +42,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
+#include "utils/typcache.h"
 
 
 static char *mysql_quote_identifier(const char *str, char quotechar);
@@ -56,9 +58,12 @@ typedef struct foreign_glob_cxt
 	/*
 	 * For join pushdown, only a limited set of operators are allowed to be
 	 * pushed.  This flag helps us identify if we are walking through the list
-	 * of join conditions.
+	 * of join conditions. Also true for aggregate relations to restrict
+	 * aggregates for specified list.
 	 */
-	bool		is_remote_cond;	/* true for join relations */
+	bool		is_remote_cond;	/* true for join or aggregate relations */
+	Relids		relids;			/* relids of base relations in the underlying
+								 * scan */
 } foreign_glob_cxt;
 
 /*
@@ -85,6 +90,9 @@ typedef struct deparse_expr_cxt
 {
 	PlannerInfo *root;			/* global planner state */
 	RelOptInfo *foreignrel;		/* the foreign relation we are planning for */
+	RelOptInfo *scanrel;		/* the underlying scan relation. Same as
+								 * foreignrel, when that represents a join or
+								 * a base relation. */
 	StringInfo	buf;			/* output buffer to append to */
 	List	  **params_list;	/* exprs that will become remote Params */
 } deparse_expr_cxt;
@@ -144,6 +152,13 @@ static void mysql_deparse_from_expr_for_rel(StringInfo buf, PlannerInfo *root,
 											bool use_alias, List **param_list);
 static void mysql_deparse_from_expr(List *quals, deparse_expr_cxt *context);
 static void mysql_append_function_name(Oid funcid, deparse_expr_cxt *context);
+static void mysql_deparse_aggref(Aggref *node, deparse_expr_cxt *context);
+#if PG_VERSION_NUM >= 100000
+static void mysql_append_groupby_clause(List *tlist, deparse_expr_cxt *context);
+static Node *mysql_deparse_sort_group_clause(Index ref, List *tlist,
+											 bool force_colno,
+											 deparse_expr_cxt *context);
+#endif
 
 /*
  * Functions to construct string representation of a specific types.
@@ -243,13 +258,21 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 								  List **params_list)
 {
 	deparse_expr_cxt context;
-
-	/* We handle relations for foreign tables and joins between those */
+	List	   *quals;
 #if PG_VERSION_NUM >= 100000
-	Assert(IS_JOIN_REL(rel) || IS_SIMPLE_REL(rel));
+	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) rel->fdw_private;
+#endif
+
+	/*
+	 * We handle relations for foreign tables and joins between those and upper
+	 * relations.
+	 */
+#if PG_VERSION_NUM >= 100000
+	Assert(IS_JOIN_REL(rel) || IS_SIMPLE_REL(rel) || IS_UPPER_REL(rel));
 #else
 	Assert(rel->reloptkind == RELOPT_JOINREL ||
 		   rel->reloptkind == RELOPT_BASEREL ||
+		   rel->reloptkind == RELOPT_UPPER_REL ||
 		   rel->reloptkind == RELOPT_OTHER_MEMBER_REL);
 #endif
 
@@ -258,12 +281,49 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 	context.root = root;
 	context.foreignrel = rel;
 	context.params_list = params_list;
+#if PG_VERSION_NUM >= 100000
+	context.scanrel = IS_UPPER_REL(rel) ? fpinfo->outerrel : rel;
+#else
+	context.scanrel = rel;
+#endif
 
 	/* Construct SELECT clause */
 	mysql_deparse_select_sql(tlist, retrieved_attrs, &context);
 
+	/*
+	 * For upper relations, the WHERE clause is built from the remote
+	 * conditions of the underlying scan relation; otherwise, we can use the
+	 * supplied list of remote conditions directly.
+	 */
+#if PG_VERSION_NUM >= 100000
+	if (IS_UPPER_REL(rel))
+	{
+		MySQLFdwRelationInfo *ofpinfo;
+
+		ofpinfo = (MySQLFdwRelationInfo *) fpinfo->outerrel->fdw_private;
+		quals = ofpinfo->remote_conds;
+	}
+	else
+#endif
+		quals = remote_conds;
+
 	/* Construct FROM and WHERE clauses */
-	mysql_deparse_from_expr(remote_conds, &context);
+	mysql_deparse_from_expr(quals, &context);
+
+#if PG_VERSION_NUM >= 100000
+	if (IS_UPPER_REL(rel))
+	{
+		/* Append GROUP BY clause */
+		mysql_append_groupby_clause(fpinfo->grouped_tlist, &context);
+
+		/* Append HAVING clause */
+		if (remote_conds)
+		{
+			appendStringInfoString(buf, " HAVING ");
+			mysql_append_conditions(remote_conds, &context);
+		}
+	}
+#endif
 }
 
 /*
@@ -292,12 +352,16 @@ mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
 	appendStringInfoString(buf, "SELECT ");
 
 #if PG_VERSION_NUM >= 100000
-	if (IS_JOIN_REL(foreignrel))
+	if (IS_JOIN_REL(foreignrel) || IS_UPPER_REL(foreignrel))
 #else
-	if (foreignrel->reloptkind == RELOPT_JOINREL)
+	if (foreignrel->reloptkind == RELOPT_JOINREL ||
+		foreignrel->reloptkind == RELOPT_UPPER_REL)
 #endif
 	{
-		/* For a join relation use the input tlist */
+		/*
+		 * For a join or upper relation the input tlist gives the list of
+		 * columns required to be fetched from the foreign server.
+		 */
 		mysql_deparse_explicit_target_list(tlist, retrieved_attrs, context);
 	}
 	else
@@ -346,18 +410,11 @@ mysql_deparse_explicit_target_list(List *tlist, List **retrieved_attrs,
 
 	foreach(lc, tlist)
 	{
-		Var		   *var;
-
-		var = (Var *) lfirst(lc);
-		/* We expect only Var nodes here */
-		Assert(IsA(var, Var));
-
 		if (i > 0)
 			appendStringInfoString(buf, ", ");
-		mysql_deparse_var(var, context);
 
+		deparseExpr((Expr *) lfirst(lc), context);
 		*retrieved_attrs = lappend_int(*retrieved_attrs, i + 1);
-
 		i++;
 	}
 
@@ -376,18 +433,19 @@ static void
 mysql_deparse_from_expr(List *quals, deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
-	bool		use_alias;
+	RelOptInfo *scanrel = context->scanrel;
 
+	/* For upper relations, scanrel must be either a joinrel or a baserel */
 #if PG_VERSION_NUM >= 100000
-	use_alias = IS_JOIN_REL(context->foreignrel);
-#else
-	use_alias = (context->foreignrel->reloptkind == RELOPT_JOINREL);
+	Assert(!IS_UPPER_REL(context->foreignrel) ||
+		   IS_JOIN_REL(scanrel) || IS_SIMPLE_REL(scanrel));
 #endif
 
 	/* Construct FROM clause */
 	appendStringInfoString(buf, " FROM ");
-	mysql_deparse_from_expr_for_rel(buf, context->root, context->foreignrel,
-									use_alias, context->params_list);
+	mysql_deparse_from_expr_for_rel(buf, context->root, scanrel,
+									(bms_membership(scanrel->relids) == BMS_MULTIPLE),
+									context->params_list);
 
 	/* Construct WHERE clause */
 	if (quals != NIL)
@@ -675,6 +733,9 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 		case T_ArrayExpr:
 			mysql_deparse_array_expr((ArrayExpr *) node, context);
 			break;
+		case T_Aggref:
+			mysql_deparse_aggref((Aggref *) node, context);
+			break;
 		default:
 			elog(ERROR, "unsupported expression type for deparse: %d",
 				 (int) nodeTag(node));
@@ -803,8 +864,10 @@ mysql_deparse_delete(StringInfo buf, PlannerInfo *root, Index rtindex,
 static void
 mysql_deparse_var(Var *node, deparse_expr_cxt *context)
 {
-	Relids		relids = context->foreignrel->relids;
-	bool		qualify_col = (bms_membership(relids) == BMS_MULTIPLE);
+	Relids		relids = context->scanrel->relids;
+	bool		qualify_col;
+
+	qualify_col = (bms_membership(relids) == BMS_MULTIPLE);
 
 	if (bms_is_member(node->varno, relids) && node->varlevelsup == 0)
 	{
@@ -1428,7 +1491,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				 * Param's collation, i.e. it's not safe for it to have a
 				 * non-default collation.
 				 */
-				if (bms_is_member(var->varno, glob_cxt->foreignrel->relids) &&
+				if (bms_is_member(var->varno, glob_cxt->relids) &&
 					var->varlevelsup == 0)
 				{
 					/* Var belongs to foreign table */
@@ -1784,6 +1847,91 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				check_type = false;
 			}
 			break;
+		case T_Aggref:
+			{
+				Aggref	   *agg = (Aggref *) node;
+				ListCell   *lc;
+				const char *func_name = get_func_name(agg->aggfnoid);
+
+#if PG_VERSION_NUM >= 100000
+				/* Not safe to pushdown when not in grouping context */
+				if (!IS_UPPER_REL(glob_cxt->foreignrel))
+					return false;
+
+				/* Only non-split aggregates are pushable. */
+				if (agg->aggsplit != AGGSPLIT_SIMPLE)
+					return false;
+#endif
+
+				/* As usual, it must be shippable. */
+				if (!is_builtin(agg->aggfnoid))
+					return false;
+
+				if (!(strcmp(func_name, "min") == 0 ||
+					strcmp(func_name, "max") == 0 ||
+					strcmp(func_name, "sum") == 0 ||
+					strcmp(func_name, "avg") == 0 ||
+					strcmp(func_name, "count") == 0))
+					return false;
+
+
+				/*
+				 * Recurse to input args. aggdirectargs, aggorder and
+				 * aggdistinct are all present in args, so no need to check
+				 * their shippability explicitly.
+				 */
+				foreach(lc, agg->args)
+				{
+					Node	   *n = (Node *) lfirst(lc);
+
+					/* If TargetEntry, extract the expression from it */
+					if (IsA(n, TargetEntry))
+					{
+						TargetEntry *tle = (TargetEntry *) n;
+
+						n = (Node *) tle->expr;
+					}
+
+					if (!foreign_expr_walker(n, glob_cxt, &inner_cxt))
+						return false;
+				}
+
+				/* Aggregates with order are not supported on MySQL. */
+				if (agg->aggorder)
+					return false;
+
+				/* FILTER clause is not supported on MySQL. */
+				if (agg->aggfilter)
+					return false;
+
+				/*
+				 * If aggregate's input collation is not derived from a
+				 * foreign Var, it can't be sent to remote.
+				 */
+				if (agg->inputcollid == InvalidOid)
+					 /* OK, inputs are all noncollatable */ ;
+				else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+						 agg->inputcollid != inner_cxt.collation)
+					return false;
+
+				/*
+				 * Detect whether node is introducing a collation not derived
+				 * from a foreign Var.  (If so, we just mark it unsafe for now
+				 * rather than immediately returning false, since the parent
+				 * node might not care.)
+				 */
+				collation = agg->aggcollid;
+				if (collation == InvalidOid)
+					state = FDW_COLLATE_NONE;
+				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+						 collation == inner_cxt.collation)
+					state = FDW_COLLATE_SAFE;
+				else if (collation == DEFAULT_COLLATION_OID)
+					state = FDW_COLLATE_NONE;
+				else
+					state = FDW_COLLATE_UNSAFE;
+			}
+			break;
 		default:
 
 			/*
@@ -1858,6 +2006,9 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
 {
 	foreign_glob_cxt glob_cxt;
 	foreign_loc_cxt loc_cxt;
+#if PG_VERSION_NUM >= 100000
+	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) (baserel->fdw_private);
+#endif
 
 	/*
 	 * Check that the expression consists of nodes that are safe to execute
@@ -1866,6 +2017,19 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
 	glob_cxt.root = root;
 	glob_cxt.foreignrel = baserel;
 	glob_cxt.is_remote_cond = is_remote_cond;
+
+	/*
+	 * For an upper relation, use relids from its underneath scan relation,
+	 * because the upperrel's own relids currently aren't set to anything
+	 * meaningful by the core code.  For other relation, use their own relids.
+	 */
+#if PG_VERSION_NUM >= 100000
+	if (IS_UPPER_REL(baserel))
+		glob_cxt.relids = fpinfo->outerrel->relids;
+	else
+#endif
+		glob_cxt.relids = baserel->relids;
+
 	loc_cxt.collation = InvalidOid;
 	loc_cxt.state = FDW_COLLATE_NONE;
 	if (!foreign_expr_walker((Node *) expr, &glob_cxt, &loc_cxt))
@@ -1897,7 +2061,7 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
  * 		Deparse conditions from the provided list and append them to buf.
  *
  * The conditions in the list are assumed to be ANDed.  This function is used
- * to deparse WHERE clauses, JOIN .. ON clauses.
+ * to deparse WHERE clauses, JOIN .. ON clauses and HAVING clauses.
  *
  * Depending on the caller, the list elements might be either RestrictInfos
  * or bare clauses.
@@ -1984,6 +2148,7 @@ mysql_deparse_from_expr_for_rel(StringInfo buf, PlannerInfo *root,
 
 			context.buf = buf;
 			context.foreignrel = foreignrel;
+			context.scanrel = foreignrel;
 			context.root = root;
 			context.params_list = params_list;
 
@@ -2085,4 +2250,197 @@ mysql_append_function_name(Oid funcid, deparse_expr_cxt *context)
 	appendStringInfoString(buf, proname);
 
 	ReleaseSysCache(proctup);
+}
+
+/*
+ * mysql_deparse_aggref
+ *		Deparse an Aggref node.
+ */
+static void
+mysql_deparse_aggref(Aggref *node, deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	bool		use_variadic;
+
+	/* Only basic, non-split aggregation accepted. */
+	Assert(node->aggsplit == AGGSPLIT_SIMPLE);
+
+	/* Check if need to print VARIADIC (cf. ruleutils.c) */
+	use_variadic = node->aggvariadic;
+
+	/* Find aggregate name from aggfnoid which is a pg_proc entry. */
+	mysql_append_function_name(node->aggfnoid, context);
+	appendStringInfoChar(buf, '(');
+
+	/* Add DISTINCT */
+	appendStringInfoString(buf, (node->aggdistinct != NIL) ? "DISTINCT " : "");
+
+	/* aggstar can be set only in zero-argument aggregates. */
+	if (node->aggstar)
+		appendStringInfoChar(buf, '*');
+	else
+	{
+		ListCell   *arg;
+		bool		first = true;
+
+		/* Add all the arguments. */
+		foreach(arg, node->args)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(arg);
+			Node	   *n = (Node *) tle->expr;
+
+			if (tle->resjunk)
+				continue;
+
+			if (!first)
+				appendStringInfoString(buf, ", ");
+			first = false;
+
+			/* Add VARIADIC */
+#if PG_VERSION_NUM >= 130000
+			if (use_variadic && lnext(node->args, arg) == NULL)
+#else
+			if (use_variadic && lnext(arg) == NULL)
+#endif
+				appendStringInfoString(buf, "VARIADIC ");
+
+			deparseExpr((Expr *) n, context);
+		}
+	}
+
+	appendStringInfoChar(buf, ')');
+}
+
+/*
+ * mysql_append_groupby_clause
+ * 		Deparse GROUP BY clause.
+ */
+#if PG_VERSION_NUM >= 100000
+static void
+mysql_append_groupby_clause(List *tlist, deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	Query	   *query = context->root->parse;
+	ListCell   *lc;
+	bool		first = true;
+
+	/* Nothing to be done, if there's no GROUP BY clause in the query. */
+	if (!query->groupClause)
+		return;
+
+	appendStringInfoString(buf, " GROUP BY ");
+
+	/*
+	 * Queries with grouping sets are not pushed down, so we don't expect
+	 * grouping sets here.
+	 */
+	Assert(!query->groupingSets);
+
+	foreach(lc, query->groupClause)
+	{
+		SortGroupClause *grp = (SortGroupClause *) lfirst(lc);
+
+		if (!first)
+			appendStringInfoString(buf, ", ");
+		first = false;
+
+		mysql_deparse_sort_group_clause(grp->tleSortGroupRef, tlist,
+										true, context);
+	}
+}
+
+/*
+ * mysql_deparse_sort_group_clause
+ * 		Appends a sort or group clause.
+ */
+static Node *
+mysql_deparse_sort_group_clause(Index ref, List *tlist, bool force_colno,
+								deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	TargetEntry *tle;
+	Expr	   *expr;
+
+	tle = get_sortgroupref_tle(ref, tlist);
+	expr = tle->expr;
+
+	if (force_colno)
+	{
+		/* Use column-number form when requested by caller. */
+		Assert(!tle->resjunk);
+		appendStringInfo(buf, "%d", tle->resno);
+	}
+	else if (expr && IsA(expr, Const))
+	{
+		/*
+		 * Force a typecast here so that we don't emit something like "GROUP
+		 * BY 2", which will be misconstrued as a column position rather than
+		 * a constant.
+		 */
+		mysql_deparse_const((Const *) expr, context);
+	}
+	else if (!expr || IsA(expr, Var))
+		deparseExpr(expr, context);
+	else
+	{
+		/* Always parenthesize the expression. */
+		appendStringInfoChar(buf, '(');
+		deparseExpr(expr, context);
+		appendStringInfoChar(buf, ')');
+	}
+
+	return (Node *) expr;
+}
+#endif
+
+/*
+ * mysql_is_foreign_param
+ * 		Returns true if given expr is something we'd have to send the
+ * 		value of to the foreign server.
+ *
+ * This should return true when the expression is a shippable node that
+ * deparseExpr would add to context->params_list.  Note that we don't care
+ * if the expression *contains* such a node, only whether one appears at top
+ * level.  We need this to detect cases where setrefs.c would recognize a
+ * false match between an fdw_exprs item (which came from the params_list)
+ * and an entry in fdw_scan_tlist (which we're considering putting the given
+ * expression into).
+ */
+bool
+mysql_is_foreign_param(PlannerInfo *root,
+					   RelOptInfo *baserel,
+					   Expr *expr)
+{
+	if (expr == NULL)
+		return false;
+
+	switch (nodeTag(expr))
+	{
+		case T_Var:
+			{
+				/* It would have to be sent unless it's a foreign Var. */
+				Var		   *var = (Var *) expr;
+				Relids		relids;
+#if PG_VERSION_NUM >= 100000
+				MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) (baserel->fdw_private);
+
+				if (IS_UPPER_REL(baserel))
+					relids = fpinfo->outerrel->relids;
+				else
+#endif
+					relids = baserel->relids;
+
+				if (bms_is_member(var->varno, relids) && var->varlevelsup == 0)
+					return false;	/* foreign Var, so not a param. */
+				else
+					return true;	/* it'd have to be a param. */
+				break;
+			}
+		case T_Param:
+			/* Params always have to be sent to the foreign server. */
+			return true;
+		default:
+			break;
+	}
+	return false;
 }

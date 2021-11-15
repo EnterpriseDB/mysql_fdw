@@ -231,7 +231,8 @@ typedef struct MySQLFdwRelationInfo
 	RelOptInfo *innerrel;
 	JoinType	jointype;
 	List	   *joinclauses;
-
+	/* Grouping information */
+	List	   *grouped_tlist;
 } MySQLFdwRelationInfo;
 
 
@@ -312,6 +313,8 @@ extern void mysql_deparse_select_stmt_for_rel(StringInfo buf,
 											  List **retrieved_attrs,
 											  List **params_list);
 extern const char *mysql_get_jointype_name(JoinType jointype);
+extern bool mysql_is_foreign_param(PlannerInfo *root, RelOptInfo *baserel,
+								   Expr *expr);
 
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user,
