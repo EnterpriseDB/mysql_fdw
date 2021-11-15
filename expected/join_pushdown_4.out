@@ -1226,6 +1226,7 @@ DROP TABLE IF EXISTS fprt1;
 NOTICE:  table "fprt1" does not exist, skipping
 DROP TABLE IF EXISTS fprt2;
 NOTICE:  table "fprt2" does not exist, skipping
+DROP TYPE user_enum;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP USER MAPPING FOR public SERVER mysql_svr1;
 DROP SERVER mysql_svr;
