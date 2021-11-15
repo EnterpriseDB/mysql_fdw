@@ -304,7 +304,7 @@ extern void mysql_deparse_delete(StringInfo buf, PlannerInfo *root,
 								 Index rtindex, Relation rel, char *name);
 extern void mysql_deparse_analyze(StringInfo buf, char *dbname, char *relname);
 extern bool mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
-								  Expr *expr, bool is_join_cond);
+								  Expr *expr, bool is_remote_cond);
 extern void mysql_deparse_select_stmt_for_rel(StringInfo buf,
 											  PlannerInfo *root,
 											  RelOptInfo *rel, List *tlist,

@@ -1198,7 +1198,6 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 	Index		scan_relid;
 	List	   *fdw_private;
 	List	   *local_exprs = NIL;
-	List	   *remote_exprs = NIL;
 	List	   *params_list = NIL;
 	List	   *remote_conds = NIL;
 	StringInfoData sql;
@@ -1244,17 +1243,11 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 			continue;
 
 		if (list_member_ptr(fpinfo->remote_conds, rinfo))
-		{
 			remote_conds = lappend(remote_conds, rinfo);
-			remote_exprs = lappend(remote_exprs, rinfo->clause);
-		}
 		else if (list_member_ptr(fpinfo->local_conds, rinfo))
 			local_exprs = lappend(local_exprs, rinfo->clause);
 		else if (mysql_is_foreign_expr(root, foreignrel, rinfo->clause, false))
-		{
 			remote_conds = lappend(remote_conds, rinfo);
-			remote_exprs = lappend(remote_exprs, rinfo->clause);
-		}
 		else
 			local_exprs = lappend(local_exprs, rinfo->clause);
 	}

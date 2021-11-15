@@ -58,7 +58,7 @@ typedef struct foreign_glob_cxt
 	 * pushed.  This flag helps us identify if we are walking through the list
 	 * of join conditions.
 	 */
-	bool		is_join_cond;	/* true for join relations */
+	bool		is_remote_cond;	/* true for join relations */
 } foreign_glob_cxt;
 
 /*
@@ -139,9 +139,11 @@ static void mysql_append_conditions(List *exprs, deparse_expr_cxt *context);
 static void mysql_deparse_explicit_target_list(List *tlist,
 											   List **retrieved_attrs,
 											   deparse_expr_cxt *context);
-static void mysql_deparse_from_expr(StringInfo buf, PlannerInfo *root,
-									RelOptInfo *foreignrel, bool use_alias,
-									List **param_list);
+static void mysql_deparse_from_expr_for_rel(StringInfo buf, PlannerInfo *root,
+											RelOptInfo *foreignrel,
+											bool use_alias, List **param_list);
+static void mysql_deparse_from_expr(List *quals, deparse_expr_cxt *context);
+static void mysql_append_function_name(Oid funcid, deparse_expr_cxt *context);
 
 /*
  * Functions to construct string representation of a specific types.
@@ -257,22 +259,18 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 	context.foreignrel = rel;
 	context.params_list = params_list;
 
-	/* Construct SELECT clause and FROM clause */
+	/* Construct SELECT clause */
 	mysql_deparse_select_sql(tlist, retrieved_attrs, &context);
 
-	/* Construct WHERE clause */
-	if (remote_conds != NIL)
-	{
-		appendStringInfoString(buf, " WHERE ");
-		mysql_append_conditions(remote_conds, &context);
-	}
+	/* Construct FROM and WHERE clauses */
+	mysql_deparse_from_expr(remote_conds, &context);
 }
 
 /*
  * mysql_deparse_select_sql
  * 		Construct a simple SELECT statement that retrieves desired columns
  * 		of the specified foreign table, and append it to "buf".  The output
- * 		contains just "SELECT ... FROM ....".
+ * 		contains just "SELECT ...".
  *
  * tlist is the list of desired columns.  Read prologue of
  * mysql_deparse_select_stmt_for_rel() for details.
@@ -301,12 +299,6 @@ mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
 	{
 		/* For a join relation use the input tlist */
 		mysql_deparse_explicit_target_list(tlist, retrieved_attrs, context);
-
-		/*
-		 * Construct FROM clause
-		 */
-		appendStringInfoString(buf, " FROM ");
-		mysql_deparse_from_expr(buf, root, foreignrel, true, context->params_list);
 	}
 	else
 	{
@@ -326,12 +318,6 @@ mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
 
 		mysql_deparse_target_list(buf, root, foreignrel->relid, rel,
 								  fpinfo->attrs_used, retrieved_attrs);
-
-		/*
-		 * Construct FROM clause
-		 */
-		appendStringInfoString(buf, " FROM ");
-		mysql_deparse_relation(buf, rel);
 
 #if PG_VERSION_NUM < 130000
 		heap_close(rel, NoLock);
@@ -377,6 +363,38 @@ mysql_deparse_explicit_target_list(List *tlist, List **retrieved_attrs,
 
 	if (i == 0)
 		appendStringInfoString(buf, "NULL");
+}
+
+/*
+ * mysql_deparse_from_expr
+ * 		Construct a FROM clause and, if needed, a WHERE clause, and
+ * 		append those to "buf".
+ *
+ * quals is the list of clauses to be included in the WHERE clause.
+ */
+static void
+mysql_deparse_from_expr(List *quals, deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	bool		use_alias;
+
+#if PG_VERSION_NUM >= 100000
+	use_alias = IS_JOIN_REL(context->foreignrel);
+#else
+	use_alias = (context->foreignrel->reloptkind == RELOPT_JOINREL);
+#endif
+
+	/* Construct FROM clause */
+	appendStringInfoString(buf, " FROM ");
+	mysql_deparse_from_expr_for_rel(buf, context->root, context->foreignrel,
+									use_alias, context->params_list);
+
+	/* Construct WHERE clause */
+	if (quals != NIL)
+	{
+		appendStringInfoString(buf, " WHERE ");
+		mysql_append_conditions(quals, context);
+	}
 }
 
 /*
@@ -1017,26 +1035,14 @@ static void
 mysql_deparse_func_expr(FuncExpr *node, deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
-	HeapTuple	proctup;
-	Form_pg_proc procform;
-	const char *proname;
 	bool		first;
 	ListCell   *arg;
 
 	/*
 	 * Normal function: display as proname(args).
 	 */
-	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(node->funcid));
-	if (!HeapTupleIsValid(proctup))
-		elog(ERROR, "cache lookup failed for function %u", node->funcid);
-
-	procform = (Form_pg_proc) GETSTRUCT(proctup);
-
-	/* Translate PostgreSQL function into mysql function */
-	proname = mysql_replace_function(NameStr(procform->proname));
-
-	/* Deparse the function name ... */
-	appendStringInfo(buf, "%s(", proname);
+	mysql_append_function_name(node->funcid, context);
+	appendStringInfoChar(buf, '(');
 
 	/* ... and all the arguments */
 	first = true;
@@ -1049,8 +1055,6 @@ mysql_deparse_func_expr(FuncExpr *node, deparse_expr_cxt *context)
 	}
 
 	appendStringInfoChar(buf, ')');
-
-	ReleaseSysCache(proctup);
 }
 
 /*
@@ -1488,7 +1492,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 #endif
 
 				/* Should not be in the join clauses of the Join-pushdown */
-				if (glob_cxt->is_join_cond)
+				if (glob_cxt->is_remote_cond)
 					return false;
 
 				/* Assignment should not be in restrictions. */
@@ -1529,7 +1533,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				FuncExpr   *fe = (FuncExpr *) node;
 
 				/* Should not be in the join clauses of the Join-pushdown */
-				if (glob_cxt->is_join_cond)
+				if (glob_cxt->is_remote_cond)
 					return false;
 
 				/*
@@ -1582,7 +1586,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				/*
 				 * Join-pushdown allows only a few operators to be pushed down.
 				 */
-				if (glob_cxt->is_join_cond &&
+				if (glob_cxt->is_remote_cond &&
 					(!(strcmp(operatorName, "<") == 0 ||
 					   strcmp(operatorName, ">") == 0 ||
 					   strcmp(operatorName, "<=") == 0 ||
@@ -1637,7 +1641,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				ScalarArrayOpExpr *oe = (ScalarArrayOpExpr *) node;
 
 				/* Should not be in the join clauses of the Join-pushdown */
-				if (glob_cxt->is_join_cond)
+				if (glob_cxt->is_remote_cond)
 					return false;
 
 				/*
@@ -1730,7 +1734,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				ArrayExpr  *a = (ArrayExpr *) node;
 
 				/* Should not be in the join clauses of the Join-pushdown */
-				if (glob_cxt->is_join_cond)
+				if (glob_cxt->is_remote_cond)
 					return false;
 
 				/*
@@ -1850,7 +1854,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
  */
 bool
 mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
-					  bool is_join_cond)
+					  bool is_remote_cond)
 {
 	foreign_glob_cxt glob_cxt;
 	foreign_loc_cxt loc_cxt;
@@ -1861,15 +1865,18 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
 	 */
 	glob_cxt.root = root;
 	glob_cxt.foreignrel = baserel;
-	glob_cxt.is_join_cond = is_join_cond;
+	glob_cxt.is_remote_cond = is_remote_cond;
 	loc_cxt.collation = InvalidOid;
 	loc_cxt.state = FDW_COLLATE_NONE;
 	if (!foreign_expr_walker((Node *) expr, &glob_cxt, &loc_cxt))
 		return false;
 
-	/* Expressions examined here should be boolean, ie noncollatable */
-	Assert(loc_cxt.collation == InvalidOid);
-	Assert(loc_cxt.state == FDW_COLLATE_NONE);
+	/*
+	 * If the expression has a valid collation that does not arise from a
+	 * foreign var, the expression can not be sent over.
+	 */
+	if (loc_cxt.state == FDW_COLLATE_UNSAFE)
+		return false;
 
 	/*
 	 * An expression which includes any mutable functions can't be sent over
@@ -1889,7 +1896,8 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
  * mysql_append_conditions
  * 		Deparse conditions from the provided list and append them to buf.
  *
- * The conditions in the list are assumed to be ANDed.
+ * The conditions in the list are assumed to be ANDed.  This function is used
+ * to deparse WHERE clauses, JOIN .. ON clauses.
  *
  * Depending on the caller, the list elements might be either RestrictInfos
  * or bare clauses.
@@ -1929,13 +1937,13 @@ mysql_append_conditions(List *exprs, deparse_expr_cxt *context)
 }
 
 /*
- * mysql_deparse_from_expr
+ * mysql_deparse_from_expr_for_rel
  * 		Construct a FROM clause
  */
 void
-mysql_deparse_from_expr(StringInfo buf, PlannerInfo *root,
-						RelOptInfo *foreignrel, bool use_alias,
-						List **params_list)
+mysql_deparse_from_expr_for_rel(StringInfo buf, PlannerInfo *root,
+								RelOptInfo *foreignrel, bool use_alias,
+								List **params_list)
 {
 	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) foreignrel->fdw_private;
 
@@ -1952,11 +1960,13 @@ mysql_deparse_from_expr(StringInfo buf, PlannerInfo *root,
 
 		/* Deparse outer relation */
 		initStringInfo(&join_sql_o);
-		mysql_deparse_from_expr(&join_sql_o, root, rel_o, true, params_list);
+		mysql_deparse_from_expr_for_rel(&join_sql_o, root, rel_o, true,
+										params_list);
 
 		/* Deparse inner relation */
 		initStringInfo(&join_sql_i);
-		mysql_deparse_from_expr(&join_sql_i, root, rel_i, true, params_list);
+		mysql_deparse_from_expr_for_rel(&join_sql_i, root, rel_i, true,
+										params_list);
 
 		/*
 		 * For a join relation FROM clause entry is deparsed as
@@ -2047,4 +2057,32 @@ mysql_get_jointype_name(JoinType jointype)
 
 	/* Keep compiler happy */
 	return NULL;
+}
+
+/*
+ * mysql_append_function_name
+ *		Deparses function name from given function oid.
+ */
+static void
+mysql_append_function_name(Oid funcid, deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	HeapTuple	proctup;
+	Form_pg_proc procform;
+	const char *proname;
+
+	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", funcid);
+	procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+	/* Always print the function name */
+	proname = NameStr(procform->proname);
+
+	/* Translate PostgreSQL function into MySQL function */
+	proname = mysql_replace_function(NameStr(procform->proname));
+
+	appendStringInfoString(buf, proname);
+
+	ReleaseSysCache(proctup);
 }
