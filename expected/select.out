@@ -1400,6 +1400,25 @@ SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
  500 | EMP5 | SALESMAN
 (5 rows)
 
+-- FDW-447: Fix function implicit/explicit coercion.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 WHERE c1 = 12.2;
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2, c3, c4, c5, c6, c7, c8
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c1` = 12.2))
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 WHERE c1::numeric = 12.2;
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2, c3, c4, c5, c6, c7, c8
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c1` = 12.2))
+(3 rows)
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

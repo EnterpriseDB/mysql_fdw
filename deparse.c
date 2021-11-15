@@ -1102,6 +1102,28 @@ mysql_deparse_func_expr(FuncExpr *node, deparse_expr_cxt *context)
 	ListCell   *arg;
 
 	/*
+	 * If the function call came from an implicit coercion, then just show the
+	 * first argument.
+	 */
+	if (node->funcformat == COERCE_IMPLICIT_CAST)
+	{
+		deparseExpr((Expr *) linitial(node->args), context);
+		return;
+	}
+
+	/* If the function call came from a cast, then show the first argument. */
+	if (node->funcformat == COERCE_EXPLICIT_CAST)
+	{
+		int32		coercedTypmod;
+
+		/* Get the typmod if this is a length-coercion function */
+		(void) exprIsLengthCoercion((Node *) node, &coercedTypmod);
+
+		deparseExpr((Expr *) linitial(node->args), context);
+		return;
+	}
+
+	/*
 	 * Normal function: display as proname(args).
 	 */
 	mysql_append_function_name(node->funcid, context);

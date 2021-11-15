@@ -414,6 +414,12 @@ SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
 SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
   ORDER BY 1 limit 5;
 
+-- FDW-447: Fix function implicit/explicit coercion.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 WHERE c1 = 12.2;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 WHERE c1::numeric = 12.2;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
