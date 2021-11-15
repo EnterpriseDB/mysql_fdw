@@ -1,0 +1,1068 @@
+\set MYSQL_HOST			`echo \'"$MYSQL_HOST"\'`
+\set MYSQL_PORT			`echo \'"$MYSQL_PORT"\'`
+\set MYSQL_USER_NAME	`echo \'"$MYSQL_USER_NAME"\'`
+\set MYSQL_PASS			`echo \'"$MYSQL_PWD"\'`
+-- Before running this file User must create database mysql_fdw_regress on
+-- mysql with all permission for MYSQL_USER_NAME user with MYSQL_PWD password
+-- and ran mysql_init.sh file to create tables.
+\c contrib_regression
+CREATE EXTENSION IF NOT EXISTS mysql_fdw;
+-- FDW-132: Support for aggregate pushdown.
+CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (host :MYSQL_HOST, port :MYSQL_PORT);
+CREATE USER MAPPING FOR public SERVER mysql_svr
+  OPTIONS (username :MYSQL_USER_NAME, password :MYSQL_PASS);
+CREATE TYPE user_enum AS ENUM ('foo', 'bar', 'buz');
+CREATE FOREIGN TABLE fdw132_t1(c1 int, c2 int, c3 text COLLATE "C", c4 text COLLATE "C")
+  SERVER mysql_svr OPTIONS(dbname 'mysql_fdw_regress', table_name 'test1');
+CREATE FOREIGN TABLE fdw132_t2(c1 int, c2 int, c3 text COLLATE "C", c4 text COLLATE "C")
+  SERVER mysql_svr OPTIONS(dbname 'mysql_fdw_regress', table_name 'test2');
+INSERT INTO fdw132_t1 values(1, 100, 'AAA1', 'foo');
+INSERT INTO fdw132_t1 values(2, 100, 'AAA2', 'bar');
+INSERT INTO fdw132_t1 values(11, 100, 'AAA11', 'foo');
+INSERT INTO fdw132_t2 values(1, 200, 'BBB1', 'foo');
+INSERT INTO fdw132_t2 values(2, 200, 'BBB2', 'bar');
+INSERT INTO fdw132_t2 values(12, 200, 'BBB12', 'foo');
+ALTER FOREIGN TABLE fdw132_t1 ALTER COLUMN c4 type user_enum;
+ALTER FOREIGN TABLE fdw132_t2 ALTER COLUMN c4 type user_enum;
+-- Simple aggregates
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(c1), avg(c1), min(c2), max(c1), sum(c1) * (random() <= 1)::int AS sum2 FROM fdw132_t1 WHERE c2 > 5 GROUP BY c2 ORDER BY 1, 2;
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Result
+   Output: (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), ((sum(c1)) * ((random() <= '1'::double precision))::integer), c2
+   ->  Sort
+         Output: (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), c2
+         Sort Key: (sum(fdw132_t1.c1)), (avg(fdw132_t1.c1))
+         ->  Foreign Scan
+               Output: (sum(c1)), (avg(c1)), (min(c2)), (max(c1)), c2
+               Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+               Remote query: SELECT sum(`c1`), avg(`c1`), min(`c2`), max(`c1`), `c2` FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 5)) GROUP BY 5
+(9 rows)
+
+SELECT sum(c1), avg(c1), min(c2), max(c1), sum(c1) * (random() <= 1)::int AS sum2 FROM fdw132_t1 WHERE c2 > 5 GROUP BY c2 ORDER BY 1, 2;
+ sum |  avg   | min | max | sum2 
+-----+--------+-----+-----+------
+  14 | 4.6667 | 100 |  11 |   14
+(1 row)
+
+-- Aggregate is not pushed down as aggregation contains random()
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(c1 * (random() <= 1)::int) AS sum, avg(c1) FROM fdw132_t1;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate
+   Output: sum((c1 * ((random() <= '1'::double precision))::integer)), avg(c1)
+   ->  Foreign Scan on public.fdw132_t1
+         Output: c1, c2, c3, c4
+         Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1`
+(5 rows)
+
+SELECT sum(c1 * (random() <= 1)::int) AS sum, avg(c1) FROM fdw132_t1;
+ sum |        avg         
+-----+--------------------
+  14 | 4.6666666666666667
+(1 row)
+
+-- Aggregate over join query
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*), sum(t1.c1), avg(t2.c1) FROM  fdw132_t1 t1 INNER JOIN fdw132_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c1 = 2;
+                                                                                           QUERY PLAN                                                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Output: (count(*)), (sum(t1.c1)), (avg(t2.c1))
+   Relations: Aggregate on ((mysql_fdw_regress.fdw132_t1 t1) INNER JOIN (mysql_fdw_regress.fdw132_t2 t2))
+   Remote query: SELECT count(*), sum(r1.`c1`), avg(r2.`c1`) FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) WHERE ((r2.`c1` = 2)) AND ((r1.`c1` = 2))
+(4 rows)
+
+SELECT count(*), sum(t1.c1), avg(t2.c1) FROM  fdw132_t1 t1 INNER JOIN fdw132_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c1 = 2;
+ count | sum |  avg   
+-------+-----+--------
+     1 |   2 | 2.0000
+(1 row)
+
+-- Not pushed down due to local conditions present in underneath input rel
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t1.c1), count(t2.c1) FROM fdw132_t1 t1 INNER JOIN fdw132_t2 t2 ON (t1.c1 = t2.c1) WHERE ((t1.c1 * t2.c1)/(t1.c1 * t2.c1)) * random() <= 1;
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   Output: sum(t1.c1), count(t2.c1)
+   ->  Foreign Scan
+         Output: t1.c1, t2.c1
+         Filter: (((((t1.c1 * t2.c1) / (t1.c1 * t2.c1)))::double precision * random()) <= '1'::double precision)
+         Relations: (mysql_fdw_regress.fdw132_t1 t1) INNER JOIN (mysql_fdw_regress.fdw132_t2 t2)
+         Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
+(7 rows)
+
+SELECT sum(t1.c1), count(t2.c1) FROM fdw132_t1 t1 INNER JOIN fdw132_t2 t2 ON (t1.c1 = t2.c1) WHERE ((t1.c1 * t2.c1)/(t1.c1 * t2.c1)) * random() <= 1;
+ sum | count 
+-----+-------
+   3 |     2
+(1 row)
+
+-- GROUP BY clause HAVING expressions
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2+2, sum(c2) * (c2+2) FROM fdw132_t1 GROUP BY c2+2 ORDER BY c2+2;
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: ((c2 + 2)), ((sum(c2) * (c2 + 2)))
+   Sort Key: ((fdw132_t1.c2 + 2))
+   ->  Foreign Scan
+         Output: ((c2 + 2)), ((sum(c2) * (c2 + 2)))
+         Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+         Remote query: SELECT (`c2` + 2), (sum(`c2`) * (`c2` + 2)) FROM `mysql_fdw_regress`.`test1` GROUP BY 1
+(7 rows)
+
+SELECT c2+2, sum(c2) * (c2+2) FROM fdw132_t1 GROUP BY c2+2 ORDER BY c2+2;
+ ?column? | ?column? 
+----------+----------
+      102 |    30600
+(1 row)
+
+-- Aggregates in subquery are pushed down.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(x.a), sum(x.a) FROM (SELECT c2 a, sum(c1) b FROM fdw132_t1 GROUP BY c2 ORDER BY 1, 2) x;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Aggregate
+   Output: count(fdw132_t1.c2), sum(fdw132_t1.c2)
+   ->  Sort
+         Output: fdw132_t1.c2, (sum(fdw132_t1.c1))
+         Sort Key: fdw132_t1.c2, (sum(fdw132_t1.c1))
+         ->  Foreign Scan
+               Output: fdw132_t1.c2, (sum(fdw132_t1.c1))
+               Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+               Remote query: SELECT `c2`, sum(`c1`) FROM `mysql_fdw_regress`.`test1` GROUP BY 1
+(9 rows)
+
+SELECT count(x.a), sum(x.a) FROM (SELECT c2 a, sum(c1) b FROM fdw132_t1 GROUP BY c2 ORDER BY 1, 2) x;
+ count | sum 
+-------+-----
+     1 | 100
+(1 row)
+
+-- Aggregate is still pushed down by taking unshippable expression out
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2 * (random() <= 1)::int AS sum1, sum(c1) * c2 AS sum2 FROM fdw132_t1 GROUP BY c2 ORDER BY 1, 2;
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: ((c2 * ((random() <= '1'::double precision))::integer)), ((sum(c1) * c2)), c2
+   Sort Key: ((fdw132_t1.c2 * ((random() <= '1'::double precision))::integer)), ((sum(fdw132_t1.c1) * fdw132_t1.c2))
+   ->  Foreign Scan
+         Output: (c2 * ((random() <= '1'::double precision))::integer), ((sum(c1) * c2)), c2
+         Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+         Remote query: SELECT (sum(`c1`) * `c2`), `c2` FROM `mysql_fdw_regress`.`test1` GROUP BY 2
+(7 rows)
+
+SELECT c2 * (random() <= 1)::int AS sum1, sum(c1) * c2 AS sum2 FROM fdw132_t1 GROUP BY c2 ORDER BY 1, 2;
+ sum1 | sum2 
+------+------
+  100 | 1400
+(1 row)
+
+-- Aggregate with unshippable GROUP BY clause are not pushed
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2 * (random() <= 1)::int AS c2 FROM fdw132_t2 GROUP BY c2 * (random() <= 1)::int ORDER BY 1;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Sort
+   Output: ((c2 * ((random() <= '1'::double precision))::integer))
+   Sort Key: ((fdw132_t2.c2 * ((random() <= '1'::double precision))::integer))
+   ->  HashAggregate
+         Output: ((c2 * ((random() <= '1'::double precision))::integer))
+         Group Key: (fdw132_t2.c2 * ((random() <= '1'::double precision))::integer)
+         ->  Foreign Scan on public.fdw132_t2
+               Output: (c2 * ((random() <= '1'::double precision))::integer)
+               Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test2`
+(9 rows)
+
+SELECT c2 * (random() <= 1)::int AS c2 FROM fdw132_t2 GROUP BY c2 * (random() <= 1)::int ORDER BY 1;
+ c2  
+-----
+ 200
+(1 row)
+
+-- GROUP BY clause in various forms, cardinal, alias and constant expression
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(c2) w, c2 x, 5 y, 7.0 z FROM fdw132_t1 GROUP BY 2, y, 9.0::int ORDER BY 2;
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (count(c2)), c2, 5, 7.0, 9
+   Sort Key: fdw132_t1.c2
+   ->  Foreign Scan
+         Output: (count(c2)), c2, 5, 7.0, 9
+         Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+         Remote query: SELECT count(`c2`), `c2`, 5, 7.0, 9 FROM `mysql_fdw_regress`.`test1` GROUP BY 2, 3, 5
+(7 rows)
+
+SELECT count(c2) w, c2 x, 5 y, 7.0 z FROM fdw132_t1 GROUP BY 2, y, 9.0::int ORDER BY 2;
+ w |  x  | y |  z  
+---+-----+---+-----
+ 3 | 100 | 5 | 7.0
+(1 row)
+
+-- Testing HAVING clause shippability
+SET enable_sort TO ON;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw132_t2 GROUP BY c2 HAVING avg(c1) < 500 and sum(c1) < 49800 ORDER BY c2;
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: c2, (sum(c1))
+   Sort Key: fdw132_t2.c2
+   ->  Foreign Scan
+         Output: c2, (sum(c1))
+         Relations: Aggregate on (mysql_fdw_regress.fdw132_t2)
+         Remote query: SELECT `c2`, sum(`c1`) FROM `mysql_fdw_regress`.`test2` GROUP BY 1 HAVING ((avg(`c1`) < 500)) AND ((sum(`c1`) < 49800))
+(7 rows)
+
+SELECT c2, sum(c1) FROM fdw132_t2 GROUP BY c2 HAVING avg(c1) < 500 and sum(c1) < 49800 ORDER BY c2;
+ c2  | sum 
+-----+-----
+ 200 |  15
+(1 row)
+
+-- Using expressions in HAVING clause
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING sqrt(max(c1)) = sqrt(2) ORDER BY 1, 2;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Sort
+   Output: c3, (count(c1))
+   Sort Key: fdw132_t1.c3 COLLATE "C", (count(fdw132_t1.c1))
+   ->  Foreign Scan
+         Output: c3, (count(c1))
+         Filter: (sqrt(((max(fdw132_t1.c1)))::double precision) = '1.4142135623731'::double precision)
+         Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+         Remote query: SELECT `c3`, count(`c1`), max(`c1`) FROM `mysql_fdw_regress`.`test1` GROUP BY 1
+(8 rows)
+
+SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING sqrt(max(c1)) = sqrt(2) ORDER BY 1, 2;
+  c3  | count 
+------+-------
+ AAA2 |     1
+(1 row)
+
+SET enable_sort TO off;
+-- Unshippable HAVING clause will be evaluated locally, and other qual in HAVING clause is pushed down
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM (SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING (avg(c1) / avg(c1)) * random() <= 1 and avg(c1) < 500) x;
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Foreign Scan
+         Output: fdw132_t1.c3, NULL::bigint
+         Filter: (((((avg(fdw132_t1.c1)) / (avg(fdw132_t1.c1))))::double precision * random()) <= '1'::double precision)
+         Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+         Remote query: SELECT `c3`, NULL, avg(`c1`) FROM `mysql_fdw_regress`.`test1` GROUP BY 1 HAVING ((avg(`c1`) < 500))
+(7 rows)
+
+SELECT count(*) FROM (SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING (avg(c1) / avg(c1)) * random() <= 1 and avg(c1) < 500) x;
+ count 
+-------
+     3
+(1 row)
+
+-- Aggregate in HAVING clause is not pushable, and thus aggregation is not pushed down
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(c1) FROM fdw132_t1 GROUP BY c2 HAVING avg(c1 * (random() <= 1)::int) > 1 ORDER BY 1;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (sum(c1)), c2
+   Sort Key: (sum(fdw132_t1.c1))
+   ->  HashAggregate
+         Output: sum(c1), c2
+         Group Key: fdw132_t1.c2
+         Filter: (avg((fdw132_t1.c1 * ((random() <= '1'::double precision))::integer)) > '1'::numeric)
+         ->  Foreign Scan on public.fdw132_t1
+               Output: c1, c2, c3, c4
+               Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1`
+(10 rows)
+
+SELECT sum(c1) FROM fdw132_t1 GROUP BY c2 HAVING avg(c1 * (random() <= 1)::int) > 1 ORDER BY 1;
+ sum 
+-----
+  14
+(1 row)
+
+-- Testing ORDER BY, DISTINCT, FILTER, Ordered-sets and VARIADIC within aggregates
+-- ORDER BY within aggregates (same column used to order) are not pushed
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(c1 ORDER BY c1) FROM fdw132_t1 WHERE c1 < 100 GROUP BY c2 ORDER BY 1;
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (sum(c1 ORDER BY c1)), c2
+   Sort Key: (sum(fdw132_t1.c1 ORDER BY fdw132_t1.c1))
+   ->  GroupAggregate
+         Output: sum(c1 ORDER BY c1), c2
+         Group Key: fdw132_t1.c2
+         ->  Sort
+               Output: c2, c1
+               Sort Key: fdw132_t1.c2
+               ->  Foreign Scan on public.fdw132_t1
+                     Output: c2, c1
+                     Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1` WHERE ((`c1` < 100))
+(12 rows)
+
+SELECT sum(c1 ORDER BY c1) FROM fdw132_t1 WHERE c1 < 100 GROUP BY c2 ORDER BY 1;
+ sum 
+-----
+  14
+(1 row)
+
+-- ORDER BY within aggregate (different column used to order also using DESC)
+-- are not pushed.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(c2 ORDER BY c1 desc) FROM fdw132_t2 WHERE c1 > 1 and c2 > 50;
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Aggregate
+   Output: sum(c2 ORDER BY c1 DESC)
+   ->  Foreign Scan on public.fdw132_t2
+         Output: c1, c2, c3, c4
+         Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test2` WHERE ((`c1` > 1)) AND ((`c2` > 50))
+(5 rows)
+
+SELECT sum(c2 ORDER BY c1 desc) FROM fdw132_t2 WHERE c1 > 1 and c2 > 50;
+ sum 
+-----
+ 400
+(1 row)
+
+-- DISTINCT within aggregate
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(DISTINCT (c1)%5) FROM fdw132_t2 WHERE c2 = 200 and c1 < 50;
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Output: (sum(DISTINCT (c1 % 5)))
+   Relations: Aggregate on (mysql_fdw_regress.fdw132_t2)
+   Remote query: SELECT sum(DISTINCT (`c1` % 5)) FROM `mysql_fdw_regress`.`test2` WHERE ((`c1` < 50)) AND ((`c2` = 200))
+(4 rows)
+
+SELECT sum(DISTINCT (c1)%5) FROM fdw132_t2 WHERE c2 = 200 and c1 < 50;
+ sum 
+-----
+   3
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(DISTINCT (t1.c1)%5) FROM fdw132_t1 t1 join fdw132_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c1 < 20 or (t1.c1 is null and t2.c1 < 5) GROUP BY (t2.c1)%3 ORDER BY 1;
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (sum(DISTINCT (t1.c1 % 5))), ((t2.c1 % 3))
+   Sort Key: (sum(DISTINCT (t1.c1 % 5)))
+   ->  Foreign Scan
+         Output: (sum(DISTINCT (t1.c1 % 5))), ((t2.c1 % 3))
+         Relations: Aggregate on ((mysql_fdw_regress.fdw132_t1 t1) INNER JOIN (mysql_fdw_regress.fdw132_t2 t2))
+         Remote query: SELECT sum(DISTINCT (r1.`c1` % 5)), (r2.`c1` % 3) FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON ((((r1.`c1` < 20) OR ((r1.`c1` IS NULL) AND (r2.`c1` < 5)))) AND ((r1.`c1` = r2.`c1`)))) WHERE (((r1.`c1` < 20) OR (r1.`c1` IS NULL))) GROUP BY 2
+(7 rows)
+
+SELECT sum(DISTINCT (t1.c1)%5) FROM fdw132_t1 t1 join fdw132_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c1 < 20 or (t1.c1 is null and t2.c1 < 5) GROUP BY (t2.c1)%3 ORDER BY 1;
+ sum 
+-----
+   1
+   2
+(2 rows)
+
+-- DISTINCT with aggregate within aggregate
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(DISTINCT c1) FROM fdw132_t2 WHERE c2 = 200 and c1 < 50;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Output: (sum(DISTINCT c1))
+   Relations: Aggregate on (mysql_fdw_regress.fdw132_t2)
+   Remote query: SELECT sum(DISTINCT `c1`) FROM `mysql_fdw_regress`.`test2` WHERE ((`c1` < 50)) AND ((`c2` = 200))
+(4 rows)
+
+SELECT sum(DISTINCT c1) FROM fdw132_t2 WHERE c2 = 200 and c1 < 50;
+ sum 
+-----
+  15
+(1 row)
+
+-- DISTINCT combined with ORDER BY within aggregate is not pushed.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT array_agg(DISTINCT (t1.c1)%5 ORDER BY (t1.c1)%5) FROM fdw132_t1 t1 join fdw132_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c1 < 20 or (t1.c1 is null and t2.c1 < 5) GROUP BY (t2.c1)%3 ORDER BY 1;
+                                                                                                                                     QUERY PLAN                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (array_agg(DISTINCT (t1.c1 % 5) ORDER BY (t1.c1 % 5))), ((t2.c1 % 3))
+   Sort Key: (array_agg(DISTINCT (t1.c1 % 5) ORDER BY (t1.c1 % 5)))
+   ->  GroupAggregate
+         Output: array_agg(DISTINCT (t1.c1 % 5) ORDER BY (t1.c1 % 5)), ((t2.c1 % 3))
+         Group Key: ((t2.c1 % 3))
+         ->  Sort
+               Output: ((t2.c1 % 3)), t1.c1
+               Sort Key: ((t2.c1 % 3))
+               ->  Foreign Scan
+                     Output: (t2.c1 % 3), t1.c1
+                     Relations: (mysql_fdw_regress.fdw132_t1 t1) INNER JOIN (mysql_fdw_regress.fdw132_t2 t2)
+                     Remote query: SELECT r2.`c1`, r1.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON ((((r1.`c1` < 20) OR ((r1.`c1` IS NULL) AND (r2.`c1` < 5)))) AND ((r1.`c1` = r2.`c1`)))) WHERE (((r1.`c1` < 20) OR (r1.`c1` IS NULL)))
+(13 rows)
+
+SELECT array_agg(DISTINCT (t1.c1)%5 ORDER BY (t1.c1)%5) FROM fdw132_t1 t1 join fdw132_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c1 < 20 or (t1.c1 is null and t2.c1 < 5) GROUP BY (t2.c1)%3 ORDER BY 1;
+ array_agg 
+-----------
+ {1}
+ {2}
+(2 rows)
+
+-- DISTINCT, ORDER BY and FILTER within aggregate, not pushed down.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(c1%3), sum(DISTINCT c1%3 ORDER BY c1%3) filter (WHERE c1%3 < 2), c2 FROM fdw132_t1 WHERE c2 = 100 GROUP BY c2;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ GroupAggregate
+   Output: sum((c1 % 3)), sum(DISTINCT (c1 % 3) ORDER BY (c1 % 3)) FILTER (WHERE ((c1 % 3) < 2)), c2
+   Group Key: fdw132_t1.c2
+   ->  Foreign Scan on public.fdw132_t1
+         Output: c1, c2, c3, c4
+         Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` = 100))
+(6 rows)
+
+SELECT sum(c1%3), sum(DISTINCT c1%3 ORDER BY c1%3) filter (WHERE c1%3 < 2), c2 FROM fdw132_t1 WHERE c2 = 100 GROUP BY c2;
+ sum | sum | c2  
+-----+-----+-----
+   5 |   1 | 100
+(1 row)
+
+-- FILTER within aggregate, not pushed
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(c1) filter (WHERE c1 < 100 and c2 > 5) FROM fdw132_t1 GROUP BY c2 ORDER BY 1 nulls last;
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Sort
+   Output: (sum(c1) FILTER (WHERE ((c1 < 100) AND (c2 > 5)))), c2
+   Sort Key: (sum(fdw132_t1.c1) FILTER (WHERE ((fdw132_t1.c1 < 100) AND (fdw132_t1.c2 > 5))))
+   ->  HashAggregate
+         Output: sum(c1) FILTER (WHERE ((c1 < 100) AND (c2 > 5))), c2
+         Group Key: fdw132_t1.c2
+         ->  Foreign Scan on public.fdw132_t1
+               Output: c1, c2, c3, c4
+               Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1`
+(9 rows)
+
+SELECT sum(c1) filter (WHERE c1 < 100 and c2 > 5) FROM fdw132_t1 GROUP BY c2 ORDER BY 1 nulls last;
+ sum 
+-----
+  14
+(1 row)
+
+-- Outer query is aggregation query
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT DISTINCT (SELECT count(*) filter (WHERE t2.c2 = 200 and t2.c1 < 10) FROM fdw132_t1 t1 WHERE t1.c1 = 2) FROM fdw132_t2 t2 ORDER BY 1;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Unique
+   Output: ((SubPlan 1))
+   ->  Sort
+         Output: ((SubPlan 1))
+         Sort Key: ((SubPlan 1))
+         ->  Aggregate
+               Output: (SubPlan 1)
+               ->  Foreign Scan on public.fdw132_t2 t2
+                     Output: t2.c1, t2.c2, t2.c3, t2.c4
+                     Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test2`
+               SubPlan 1
+                 ->  Foreign Scan on public.fdw132_t1 t1
+                       Output: count(*) FILTER (WHERE ((t2.c2 = 200) AND (t2.c1 < 10)))
+                       Remote query: SELECT NULL FROM `mysql_fdw_regress`.`test1` WHERE ((`c1` = 2))
+(14 rows)
+
+SELECT DISTINCT (SELECT count(*) filter (WHERE t2.c2 = 200 and t2.c1 < 10) FROM fdw132_t1 t1 WHERE t1.c1 = 2) FROM fdw132_t2 t2 ORDER BY 1;
+ count 
+-------
+     2
+(1 row)
+
+-- Inner query is aggregation query
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT DISTINCT (SELECT count(t1.c1) filter (WHERE t2.c2 = 200 and t2.c1 < 10) FROM fdw132_t1 t1 WHERE t1.c1 = 2) FROM fdw132_t2 t2 ORDER BY 1;
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Unique
+   Output: ((SubPlan 1))
+   ->  Sort
+         Output: ((SubPlan 1))
+         Sort Key: ((SubPlan 1))
+         ->  Foreign Scan on public.fdw132_t2 t2
+               Output: (SubPlan 1)
+               Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test2`
+               SubPlan 1
+                 ->  Aggregate
+                       Output: count(t1.c1) FILTER (WHERE ((t2.c2 = 200) AND (t2.c1 < 10)))
+                       ->  Foreign Scan on public.fdw132_t1 t1
+                             Output: t1.c1, t1.c2, t1.c3, t1.c4
+                             Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` WHERE ((`c1` = 2))
+(14 rows)
+
+SELECT DISTINCT (SELECT count(t1.c1) filter (WHERE t2.c2 = 200 and t2.c1 < 10) FROM fdw132_t1 t1 WHERE t1.c1 = 2) FROM fdw132_t2 t2 ORDER BY 1;
+ count 
+-------
+     0
+     1
+(2 rows)
+
+-- Ordered-sets within aggregate, not pushed down.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, rank('10'::varchar) within group (ORDER BY c3), percentile_cont(c2/200::numeric) within group (ORDER BY c1) FROM fdw132_t2 GROUP BY c2 HAVING percentile_cont(c2/200::numeric) within group (ORDER BY c1) < 500 ORDER BY c2;
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ GroupAggregate
+   Output: c2, rank('10'::text) WITHIN GROUP (ORDER BY c3), percentile_cont((((c2)::numeric / '200'::numeric))::double precision) WITHIN GROUP (ORDER BY ((c1)::double precision))
+   Group Key: fdw132_t2.c2
+   Filter: (percentile_cont((((fdw132_t2.c2)::numeric / '200'::numeric))::double precision) WITHIN GROUP (ORDER BY ((fdw132_t2.c1)::double precision)) < '500'::double precision)
+   ->  Sort
+         Output: c2, c3, c1
+         Sort Key: fdw132_t2.c2
+         ->  Foreign Scan on public.fdw132_t2
+               Output: c2, c3, c1
+               Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test2`
+(10 rows)
+
+SELECT c2, rank('10'::varchar) within group (ORDER BY c3), percentile_cont(c2/200::numeric) within group (ORDER BY c1) FROM fdw132_t2 GROUP BY c2 HAVING percentile_cont(c2/200::numeric) within group (ORDER BY c1) < 500 ORDER BY c2;
+ c2  | rank | percentile_cont 
+-----+------+-----------------
+ 200 |    1 |              12
+(1 row)
+
+-- Using multiple arguments within aggregates
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, rank(c1, c2) within group (ORDER BY c1, c2) FROM fdw132_t1 GROUP BY c1, c2 HAVING c1 = 2 ORDER BY 1;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ GroupAggregate
+   Output: c1, rank(c1, c2) WITHIN GROUP (ORDER BY c1, c2), c2
+   Group Key: fdw132_t1.c1, fdw132_t1.c2
+   ->  Sort
+         Output: c1, c2
+         Sort Key: fdw132_t1.c2
+         ->  Foreign Scan on public.fdw132_t1
+               Output: c1, c2
+               Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1` WHERE ((`c1` = 2))
+(9 rows)
+
+SELECT c1, rank(c1, c2) within group (ORDER BY c1, c2) FROM fdw132_t1 GROUP BY c1, c2 HAVING c1 = 2 ORDER BY 1;
+ c1 | rank 
+----+------
+  2 |    1
+(1 row)
+
+-- Subquery in FROM clause HAVING aggregate
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*), x.b FROM fdw132_t1, (SELECT c1 a, sum(c1) b FROM fdw132_t2 GROUP BY c1) x WHERE fdw132_t1.c1 = x.a GROUP BY x.b ORDER BY 1, 2;
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (count(*)), x.b
+   Sort Key: (count(*)), x.b
+   ->  HashAggregate
+         Output: count(*), x.b
+         Group Key: x.b
+         ->  Hash Join
+               Output: x.b
+               Inner Unique: true
+               Hash Cond: (fdw132_t1.c1 = x.a)
+               ->  Foreign Scan on public.fdw132_t1
+                     Output: fdw132_t1.c1, fdw132_t1.c2, fdw132_t1.c3, fdw132_t1.c4
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1`
+               ->  Hash
+                     Output: x.b, x.a
+                     ->  Subquery Scan on x
+                           Output: x.b, x.a
+                           ->  Foreign Scan
+                                 Output: fdw132_t2.c1, (sum(fdw132_t2.c1))
+                                 Relations: Aggregate on (mysql_fdw_regress.fdw132_t2)
+                                 Remote query: SELECT `c1`, sum(`c1`) FROM `mysql_fdw_regress`.`test2` GROUP BY 1
+(21 rows)
+
+SELECT count(*), x.b FROM fdw132_t1, (SELECT c1 a, sum(c1) b FROM fdw132_t2 GROUP BY c1) x WHERE fdw132_t1.c1 = x.a GROUP BY x.b ORDER BY 1, 2;
+ count | b 
+-------+---
+     1 | 1
+     1 | 2
+(2 rows)
+
+-- Join with IS NULL check in HAVING
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT avg(t1.c1), sum(t2.c1) FROM fdw132_t1 t1 join fdw132_t2 t2 ON (t1.c1 = t2.c1) GROUP BY t2.c1 HAVING (avg(t1.c1) is null and sum(t2.c1) > 10) or sum(t2.c1) is null ORDER BY 1 nulls last, 2;
+                                                                                                                                  QUERY PLAN                                                                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (avg(t1.c1)), (sum(t2.c1)), t2.c1
+   Sort Key: (avg(t1.c1)), (sum(t2.c1))
+   ->  Foreign Scan
+         Output: (avg(t1.c1)), (sum(t2.c1)), t2.c1
+         Relations: Aggregate on ((mysql_fdw_regress.fdw132_t1 t1) INNER JOIN (mysql_fdw_regress.fdw132_t2 t2))
+         Remote query: SELECT avg(r1.`c1`), sum(r2.`c1`), r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) GROUP BY 3 HAVING ((((avg(r1.`c1`) IS NULL) AND (sum(r2.`c1`) > 10)) OR (sum(r2.`c1`) IS NULL)))
+(7 rows)
+
+SELECT avg(t1.c1), sum(t2.c1) FROM fdw132_t1 t1 join fdw132_t2 t2 ON (t1.c1 = t2.c1) GROUP BY t2.c1 HAVING (avg(t1.c1) is null and sum(t2.c1) > 10) or sum(t2.c1) is null ORDER BY 1 nulls last, 2;
+ avg | sum 
+-----+-----
+(0 rows)
+
+-- ORDER BY expression is part of the target list but not pushed down to
+-- foreign server.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(c2) * (random() <= 1)::int AS sum FROM fdw132_t1 ORDER BY 1;
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Sort
+   Output: (((sum(c2)) * ((random() <= '1'::double precision))::integer))
+   Sort Key: (((sum(fdw132_t1.c2)) * ((random() <= '1'::double precision))::integer))
+   ->  Foreign Scan
+         Output: ((sum(c2)) * ((random() <= '1'::double precision))::integer)
+         Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+         Remote query: SELECT sum(`c2`) FROM `mysql_fdw_regress`.`test1`
+(7 rows)
+
+SELECT sum(c2) * (random() <= 1)::int AS sum FROM fdw132_t1 ORDER BY 1;
+ sum 
+-----
+ 300
+(1 row)
+
+-- LATERAL join, with parameterization
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum FROM fdw132_t1 t1, lateral (SELECT sum(t2.c1 + t1.c1) sum FROM fdw132_t2 t2 GROUP BY t2.c1) qry WHERE t1.c2 * 2 = qry.sum and t1.c2 > 10 ORDER BY 1;
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: t1.c2, qry.sum
+   Sort Key: t1.c2
+   ->  Nested Loop
+         Output: t1.c2, qry.sum
+         ->  Foreign Scan on public.fdw132_t1 t1
+               Output: t1.c1, t1.c2, t1.c3, t1.c4
+               Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 10))
+         ->  Subquery Scan on qry
+               Output: qry.sum, t2.c1
+               Filter: ((t1.c2 * 2) = qry.sum)
+               ->  Foreign Scan
+                     Output: (sum((t2.c1 + t1.c1))), t2.c1
+                     Relations: Aggregate on (mysql_fdw_regress.fdw132_t2 t2)
+                     Remote query: SELECT sum((`c1` + ?)), `c1` FROM `mysql_fdw_regress`.`test2` GROUP BY 2
+(15 rows)
+
+-- Check with placeHolderVars
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT q.b, count(fdw132_t1.c1), sum(q.a) FROM fdw132_t1 left join (SELECT min(13), avg(fdw132_t1.c1), sum(fdw132_t2.c1) FROM fdw132_t1 right join fdw132_t2 ON (fdw132_t1.c1 = fdw132_t2.c1) WHERE fdw132_t1.c1 = 12) q(a, b, c) ON (fdw132_t1.c1 = q.b) WHERE fdw132_t1.c1 between 10 and 15 GROUP BY q.b ORDER BY 1 nulls last, 2;
+                                                                                                       QUERY PLAN                                                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: q.b, (count(fdw132_t1.c1)), (sum(q.a))
+   Sort Key: q.b, (count(fdw132_t1.c1))
+   ->  HashAggregate
+         Output: q.b, count(fdw132_t1.c1), sum(q.a)
+         Group Key: q.b
+         ->  Hash Left Join
+               Output: q.b, fdw132_t1.c1, q.a
+               Inner Unique: true
+               Hash Cond: ((fdw132_t1.c1)::numeric = q.b)
+               ->  Foreign Scan on public.fdw132_t1
+                     Output: fdw132_t1.c1, fdw132_t1.c2, fdw132_t1.c3, fdw132_t1.c4
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` WHERE ((`c1` >= 10)) AND ((`c1` <= 15))
+               ->  Hash
+                     Output: q.b, q.a
+                     ->  Subquery Scan on q
+                           Output: q.b, q.a
+                           ->  Foreign Scan
+                                 Output: (min(13)), (avg(fdw132_t1_1.c1)), NULL::bigint
+                                 Relations: Aggregate on ((mysql_fdw_regress.fdw132_t1) INNER JOIN (mysql_fdw_regress.fdw132_t2))
+                                 Remote query: SELECT min(13), avg(r1.`c1`), NULL FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) WHERE ((r2.`c1` = 12)) AND ((r1.`c1` = 12))
+(21 rows)
+
+SELECT q.b, count(fdw132_t1.c1), sum(q.a) FROM fdw132_t1 left join (SELECT min(13), avg(fdw132_t1.c1), sum(fdw132_t2.c1) FROM fdw132_t1 right join fdw132_t2 ON (fdw132_t1.c1 = fdw132_t2.c1) WHERE fdw132_t1.c1 = 12) q(a, b, c) ON (fdw132_t1.c1 = q.b) WHERE fdw132_t1.c1 between 10 and 15 GROUP BY q.b ORDER BY 1 nulls last, 2;
+ b | count | sum 
+---+-------+-----
+   |     1 |    
+(1 row)
+
+-- Not supported cases
+-- Grouping sets
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw132_t1 WHERE c2 > 3 GROUP BY rollup(c2) ORDER BY 1 nulls last;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Sort
+   Output: c2, (sum(c1))
+   Sort Key: fdw132_t1.c2
+   ->  MixedAggregate
+         Output: c2, sum(c1)
+         Hash Key: fdw132_t1.c2
+         Group Key: ()
+         ->  Foreign Scan on public.fdw132_t1
+               Output: c1, c2, c3, c4
+               Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 3))
+(10 rows)
+
+SELECT c2, sum(c1) FROM fdw132_t1 WHERE c2 > 3 GROUP BY rollup(c2) ORDER BY 1 nulls last;
+ c2  | sum 
+-----+-----
+ 100 |  14
+     |  14
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw132_t1 WHERE c2 > 3 GROUP BY cube(c2) ORDER BY 1 nulls last;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Sort
+   Output: c2, (sum(c1))
+   Sort Key: fdw132_t1.c2
+   ->  MixedAggregate
+         Output: c2, sum(c1)
+         Hash Key: fdw132_t1.c2
+         Group Key: ()
+         ->  Foreign Scan on public.fdw132_t1
+               Output: c1, c2, c3, c4
+               Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 3))
+(10 rows)
+
+SELECT c2, sum(c1) FROM fdw132_t1 WHERE c2 > 3 GROUP BY cube(c2) ORDER BY 1 nulls last;
+ c2  | sum 
+-----+-----
+ 100 |  14
+     |  14
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, c3, sum(c1) FROM fdw132_t1 WHERE c2 > 3 GROUP BY grouping sets(c2, c3) ORDER BY 1 nulls last, 2 nulls last;
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Sort
+   Output: c2, c3, (sum(c1))
+   Sort Key: fdw132_t1.c2, fdw132_t1.c3 COLLATE "C"
+   ->  HashAggregate
+         Output: c2, c3, sum(c1)
+         Hash Key: fdw132_t1.c2
+         Hash Key: fdw132_t1.c3
+         ->  Foreign Scan on public.fdw132_t1
+               Output: c1, c2, c3, c4
+               Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 3))
+(10 rows)
+
+SELECT c2, c3, sum(c1) FROM fdw132_t1 WHERE c2 > 3 GROUP BY grouping sets(c2, c3) ORDER BY 1 nulls last, 2 nulls last;
+ c2  |  c3   | sum 
+-----+-------+-----
+ 100 |       |  14
+     | AAA1  |   1
+     | AAA11 |  11
+     | AAA2  |   2
+(4 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1), grouping(c2) FROM fdw132_t1 WHERE c2 > 3 GROUP BY c2 ORDER BY 1 nulls last;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Sort
+   Output: c2, (sum(c1)), (GROUPING(c2))
+   Sort Key: fdw132_t1.c2
+   ->  HashAggregate
+         Output: c2, sum(c1), GROUPING(c2)
+         Group Key: fdw132_t1.c2
+         ->  Foreign Scan on public.fdw132_t1
+               Output: c1, c2, c3, c4
+               Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 3))
+(9 rows)
+
+SELECT c2, sum(c1), grouping(c2) FROM fdw132_t1 WHERE c2 > 3 GROUP BY c2 ORDER BY 1 nulls last;
+ c2  | sum | grouping 
+-----+-----+----------
+ 100 |  14 |        0
+(1 row)
+
+-- DISTINCT itself is not pushed down, whereas underneath aggregate is pushed
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT DISTINCT sum(c1) s FROM fdw132_t1 WHERE c2 > 6 GROUP BY c2 ORDER BY 1;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Unique
+   Output: (sum(c1)), c2
+   ->  Sort
+         Output: (sum(c1)), c2
+         Sort Key: (sum(fdw132_t1.c1))
+         ->  Foreign Scan
+               Output: (sum(c1)), c2
+               Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+               Remote query: SELECT sum(`c1`), `c2` FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 6)) GROUP BY 2
+(9 rows)
+
+SELECT DISTINCT sum(c1) s FROM fdw132_t1 WHERE c2 > 6 GROUP BY c2 ORDER BY 1;
+ s  
+----
+ 14
+(1 row)
+
+-- WindowAgg
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c2), count(c2) over (partition by c2%2) FROM fdw132_t1 WHERE c2 > 10 GROUP BY c2 ORDER BY 1;
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: c2, (sum(c2)), (count(c2) OVER (?)), ((c2 % 2))
+   Sort Key: fdw132_t1.c2
+   ->  WindowAgg
+         Output: c2, (sum(c2)), count(c2) OVER (?), ((c2 % 2))
+         ->  Sort
+               Output: c2, ((c2 % 2)), (sum(c2))
+               Sort Key: ((fdw132_t1.c2 % 2))
+               ->  Foreign Scan
+                     Output: c2, ((c2 % 2)), (sum(c2))
+                     Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+                     Remote query: SELECT `c2`, (`c2` % 2), sum(`c2`) FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 10)) GROUP BY 1
+(12 rows)
+
+SELECT c2, sum(c2), count(c2) over (partition by c2%2) FROM fdw132_t1 WHERE c2 > 10 GROUP BY c2 ORDER BY 1;
+ c2  | sum | count 
+-----+-----+-------
+ 100 | 300 |     1
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, array_agg(c2) over (partition by c2%2 ORDER BY c2 desc) FROM fdw132_t1 WHERE c2 > 10 GROUP BY c2 ORDER BY 1;
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: c2, (array_agg(c2) OVER (?)), ((c2 % 2))
+   Sort Key: fdw132_t1.c2
+   ->  WindowAgg
+         Output: c2, array_agg(c2) OVER (?), ((c2 % 2))
+         ->  Sort
+               Output: c2, ((c2 % 2))
+               Sort Key: ((fdw132_t1.c2 % 2)), fdw132_t1.c2 DESC
+               ->  Foreign Scan
+                     Output: c2, ((c2 % 2))
+                     Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+                     Remote query: SELECT `c2`, (`c2` % 2) FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 10)) GROUP BY 1
+(12 rows)
+
+SELECT c2, array_agg(c2) over (partition by c2%2 ORDER BY c2 desc) FROM fdw132_t1 WHERE c2 > 10 GROUP BY c2 ORDER BY 1;
+ c2  | array_agg 
+-----+-----------
+ 100 | {100}
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, array_agg(c2) over (partition by c2%2 ORDER BY c2 range between current row and unbounded following) FROM fdw132_t1 WHERE c2 > 10 GROUP BY c2 ORDER BY 1;
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: c2, (array_agg(c2) OVER (?)), ((c2 % 2))
+   Sort Key: fdw132_t1.c2
+   ->  WindowAgg
+         Output: c2, array_agg(c2) OVER (?), ((c2 % 2))
+         ->  Sort
+               Output: c2, ((c2 % 2))
+               Sort Key: ((fdw132_t1.c2 % 2)), fdw132_t1.c2
+               ->  Foreign Scan
+                     Output: c2, ((c2 % 2))
+                     Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
+                     Remote query: SELECT `c2`, (`c2` % 2) FROM `mysql_fdw_regress`.`test1` WHERE ((`c2` > 10)) GROUP BY 1
+(12 rows)
+
+SELECT c2, array_agg(c2) over (partition by c2%2 ORDER BY c2 range between current row and unbounded following) FROM fdw132_t1 WHERE c2 > 10 GROUP BY c2 ORDER BY 1;
+ c2  | array_agg 
+-----+-----------
+ 100 | {100}
+(1 row)
+
+-- User defined function for user defined aggregate, VARIADIC
+CREATE FUNCTION least_accum(anyelement, variadic anyarray)
+returns anyelement language sql AS
+  'SELECT least($1, min($2[i])) FROM generate_subscripts($2,2) g(i)';
+CREATE aggregate least_agg(variadic items anyarray) (
+  stype = anyelement, sfunc = least_accum
+);
+-- Not pushed down due to user defined aggregate
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, least_agg(c1) FROM fdw132_t1 GROUP BY c2 ORDER BY c2;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Sort
+   Output: c2, (least_agg(VARIADIC ARRAY[c1]))
+   Sort Key: fdw132_t1.c2
+   ->  HashAggregate
+         Output: c2, least_agg(VARIADIC ARRAY[c1])
+         Group Key: fdw132_t1.c2
+         ->  Foreign Scan on public.fdw132_t1
+               Output: c1, c2, c3, c4
+               Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1`
+(9 rows)
+
+SELECT c2, least_agg(c1) FROM fdw132_t1 GROUP BY c2 ORDER BY c2;
+ c2  | least_agg 
+-----+-----------
+ 100 |          
+(1 row)
+
+-- Delete existing data and load new data for partition-wise aggregate test
+-- cases.
+DELETE FROM fdw132_t1;
+DELETE FROM fdw132_t2;
+INSERT INTO fdw132_t1 values(1, 1, 'AAA1', 'foo');
+INSERT INTO fdw132_t1 values(2, 2, 'AAA2', 'bar');
+INSERT INTO fdw132_t2 values(3, 3, 'AAA11', 'foo');
+INSERT INTO fdw132_t2 values(4, 4, 'AAA12', 'foo');
+-- Test partition-wise aggregates
+SET enable_partitionwise_aggregate TO on;
+-- Create the partition table in plpgsql block as those are failing with
+-- different error messages on back-branches.
+-- All test cases related to partition-wise join gives an error on v96 as
+-- partition syntax is not supported there.
+DO
+$$
+BEGIN
+  EXECUTE 'CREATE TABLE fprt1 (c1 int, c2 int, c3 varchar, c4 varchar) PARTITION BY RANGE(c1)';
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'syntax error';
+END;
+$$
+LANGUAGE plpgsql;
+CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (1) TO (2)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test1');
+CREATE FOREIGN TABLE ftprt1_p2 PARTITION OF fprt1 FOR VALUES FROM (3) TO (4)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', TABLE_NAME 'test2');
+-- Plan with partitionwise aggregates is enabled
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, sum(c1) FROM fprt1 GROUP BY c1 ORDER BY 2;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Sort
+   Output: ftprt1_p1.c1, (sum(ftprt1_p1.c1))
+   Sort Key: (sum(ftprt1_p1.c1))
+   ->  Append
+         ->  Foreign Scan
+               Output: ftprt1_p1.c1, (sum(ftprt1_p1.c1))
+               Relations: Aggregate on (mysql_fdw_regress.ftprt1_p1 fprt1)
+               Remote query: SELECT `c1`, sum(`c1`) FROM `mysql_fdw_regress`.`test1` GROUP BY 1
+         ->  Foreign Scan
+               Output: ftprt1_p2.c1, (sum(ftprt1_p2.c1))
+               Relations: Aggregate on (mysql_fdw_regress.ftprt1_p2 fprt1)
+               Remote query: SELECT `c1`, sum(`c1`) FROM `mysql_fdw_regress`.`test2` GROUP BY 1
+(12 rows)
+
+SELECT c1, sum(c1) FROM fprt1 GROUP BY c1 ORDER BY 2;
+ c1 | sum 
+----+-----
+  1 |   1
+  2 |   2
+  3 |   3
+  4 |   4
+(4 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, sum(c2), min(c2), count(*) FROM fprt1 GROUP BY c1 HAVING avg(c2) < 22 ORDER BY 2;
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: ftprt1_p1.c1, (sum(ftprt1_p1.c2)), (min(ftprt1_p1.c2)), (count(*))
+   Sort Key: (sum(ftprt1_p1.c2))
+   ->  Append
+         ->  Foreign Scan
+               Output: ftprt1_p1.c1, (sum(ftprt1_p1.c2)), (min(ftprt1_p1.c2)), (count(*))
+               Relations: Aggregate on (mysql_fdw_regress.ftprt1_p1 fprt1)
+               Remote query: SELECT `c1`, sum(`c2`), min(`c2`), count(*) FROM `mysql_fdw_regress`.`test1` GROUP BY 1 HAVING ((avg(`c2`) < 22))
+         ->  Foreign Scan
+               Output: ftprt1_p2.c1, (sum(ftprt1_p2.c2)), (min(ftprt1_p2.c2)), (count(*))
+               Relations: Aggregate on (mysql_fdw_regress.ftprt1_p2 fprt1)
+               Remote query: SELECT `c1`, sum(`c2`), min(`c2`), count(*) FROM `mysql_fdw_regress`.`test2` GROUP BY 1 HAVING ((avg(`c2`) < 22))
+(12 rows)
+
+SELECT c1, sum(c2), min(c2), count(*) FROM fprt1 GROUP BY c1 HAVING avg(c2) < 22 ORDER BY 1;
+ c1 | sum | min | count 
+----+-----+-----+-------
+  1 |   1 |   1 |     1
+  2 |   2 |   2 |     1
+  3 |   3 |   3 |     1
+  4 |   4 |   4 |     1
+(4 rows)
+
+-- Check with whole-row reference
+-- Should have all the columns in the target list for the given relation
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, count(t1) FROM fprt1 t1 GROUP BY c1 HAVING avg(c2) < 22 ORDER BY 1;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ GroupAggregate
+   Output: t1.c1, count(((t1.*)::fprt1))
+   Group Key: t1.c1
+   Filter: (avg(t1.c2) < '22'::numeric)
+   ->  Sort
+         Output: t1.c1, ((t1.*)::fprt1), t1.c2
+         Sort Key: t1.c1
+         ->  Append
+               ->  Foreign Scan on public.ftprt1_p1 t1
+                     Output: t1.c1, t1.*, t1.c2
+                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1`
+               ->  Foreign Scan on public.ftprt1_p2 t1_1
+                     Output: t1_1.c1, t1_1.*, t1_1.c2
+                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2`
+(14 rows)
+
+SELECT c1, count(t1) FROM fprt1 t1 GROUP BY c1 HAVING avg(c2) < 22 ORDER BY 1;
+ c1 | count 
+----+-------
+  1 |     1
+  2 |     1
+  3 |     1
+  4 |     1
+(4 rows)
+
+-- When GROUP BY clause does not match with PARTITION KEY.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, avg(c1), max(c1), count(*) FROM fprt1 GROUP BY c2 HAVING sum(c1) < 700 ORDER BY 1;
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Sort
+   Output: ftprt1_p1.c2, (avg(ftprt1_p1.c1)), (max(ftprt1_p1.c1)), (count(*))
+   Sort Key: ftprt1_p1.c2
+   ->  HashAggregate
+         Output: ftprt1_p1.c2, avg(ftprt1_p1.c1), max(ftprt1_p1.c1), count(*)
+         Group Key: ftprt1_p1.c2
+         Filter: (sum(ftprt1_p1.c1) < 700)
+         ->  Append
+               ->  Foreign Scan on public.ftprt1_p1
+                     Output: ftprt1_p1.c2, ftprt1_p1.c1
+                     Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test1`
+               ->  Foreign Scan on public.ftprt1_p2
+                     Output: ftprt1_p2.c2, ftprt1_p2.c1
+                     Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test2`
+(14 rows)
+
+SELECT c2, avg(c1), max(c1), count(*) FROM fprt1 GROUP BY c2 HAVING sum(c1) < 700 ORDER BY 1;
+ c2 |          avg           | max | count 
+----+------------------------+-----+-------
+  1 | 1.00000000000000000000 |   1 |     1
+  2 |     2.0000000000000000 |   2 |     1
+  3 |     3.0000000000000000 |   3 |     1
+  4 |     4.0000000000000000 |   4 |     1
+(4 rows)
+
+SET enable_partitionwise_aggregate TO off;
+-- Cleanup
+DROP aggregate least_agg(variadic items anyarray);
+DROP FUNCTION least_accum(anyelement, variadic anyarray);
+DELETE FROM fdw132_t1;
+DELETE FROM fdw132_t2;
+DROP FOREIGN TABLE fdw132_t1;
+DROP FOREIGN TABLE fdw132_t2;
+DROP FOREIGN TABLE ftprt1_p1;
+DROP FOREIGN TABLE ftprt1_p2;
+DROP TABLE IF EXISTS fprt1;
+DROP TYPE user_enum;
+DROP USER MAPPING FOR public SERVER mysql_svr;
+DROP SERVER mysql_svr;
+DROP EXTENSION mysql_fdw;

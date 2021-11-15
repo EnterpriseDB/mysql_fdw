@@ -1097,20 +1097,13 @@ SELECT * FROM f_enum_t1 WHERE size = 'medium' ORDER BY id;
 
 -- Remote aggregate in combination with a local Param (for the output
 -- of an initplan)
-EXPLAIN (VERBOSE, COSTS OFF)
 SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- Aggregate
-   Output: $0, sum(f_enum_t1.id)
-   InitPlan 1 (returns $0)
-     ->  Seq Scan on pg_catalog.pg_enum
-   ->  Foreign Scan on public.f_enum_t1
-         Output: f_enum_t1.id, f_enum_t1.size
-         Remote query: SELECT `id` FROM `mysql_fdw_regress`.`enum_t1`
-(7 rows)
+ exists | sum 
+--------+-----
+ t      |   6
+(1 row)
 
-SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1;
+SELECT EXISTS(SELECT 1 FROM pg_enum), sum(id) from f_enum_t1 GROUP BY 1;
  exists | sum 
 --------+-----
  t      |   6
@@ -1249,30 +1242,6 @@ SELECT * FROM local_t1 lt1 WHERE lt1.c1 =
 ----+-------
   1 | SALES
 (1 row)
-
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
-  SELECT c1 FROM f_test_tbl2 WHERE c1 = (
-    SELECT min(c1) + 1 FROM f_test_tbl2)) ORDER BY c1;
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
- Sort
-   Output: f_test_tbl1.c1, f_test_tbl1.c2
-   Sort Key: f_test_tbl1.c1
-   InitPlan 2 (returns $1)
-     ->  Foreign Scan on public.f_test_tbl2 f_test_tbl2_1
-           Output: f_test_tbl2_1.c1
-           Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl2` WHERE ((`c1` = ?))
-           InitPlan 1 (returns $0)
-             ->  Aggregate
-                   Output: (min(f_test_tbl2.c1) + 1)
-                   ->  Foreign Scan on public.f_test_tbl2
-                         Output: f_test_tbl2.c1, f_test_tbl2.c2, f_test_tbl2.c3
-                         Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl2`
-   ->  Foreign Scan on public.f_test_tbl1
-         Output: f_test_tbl1.c1, f_test_tbl1.c2
-         Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c8` = ?))
-(16 rows)
 
 SELECT c1, c2 FROM f_test_tbl1 WHERE c8 = (
   SELECT c1 FROM f_test_tbl2 WHERE c1 = (
