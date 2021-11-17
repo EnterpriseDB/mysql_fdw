@@ -2228,6 +2228,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	{
 		char	   *tablename = row[0];
 		bool		first_item = true;
+		bool		has_set = false;
 
 		resetStringInfo(&buf);
 		appendStringInfo(&buf, "CREATE FOREIGN TABLE %s (\n",
@@ -2242,8 +2243,12 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			char	   *attnotnull;
 			char	   *attdefault;
 
-			/* If table has no columns, we'll see nulls here */
-			if (row[1] == NULL)
+			/*
+			 * If the table has no columns, we'll see nulls here. Also, if we
+			 * have already discovered this table has a SET type column, we
+			 * better skip the rest of the checking.
+			 */
+			if (row[1] == NULL || has_set)
 				continue;
 
 			attname = row[1];
@@ -2261,6 +2266,21 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 						(errmsg("error while generating the table definition"),
 						 errhint("If you encounter an error, you may need to execute the following first:\nDO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = '%s') THEN CREATE TYPE %s AS %s; END IF; END$$;\n",
 								 typename, typename, typedfn)));
+
+			/*
+			 * PostgreSQL does not have an equivalent data type to map with
+			 * SET, so skip the table definitions for the ones having SET type
+			 * column.
+			 */
+			if (strncmp(typedfn, "set", 3) == 0)
+			{
+				ereport(WARNING,
+						(errmsg("skipping import for relation \"%s\"", quote_identifier(tablename)),
+						 errdetail("MySQL SET columns are not supported.")));
+
+				has_set = true;
+				continue;
+			}
 
 			if (first_item)
 				first_item = false;
@@ -2281,6 +2301,13 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 		}
 		while ((row = mysql_fetch_row(res)) &&
 			   (strcmp(row[0], tablename) == 0));
+
+		/*
+		 * As explained above, skip importing relations that have SET type
+		 * column.
+		 */
+		if (has_set)
+			continue;
 
 		/*
 		 * Add server name and table-level options.  We specify remote

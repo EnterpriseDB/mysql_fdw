@@ -420,6 +420,13 @@ SELECT * FROM f_test_tbl1 WHERE c1 = 12.2;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM f_test_tbl1 WHERE c1::numeric = 12.2;
 
+-- FDW-408: Skip importing relations that have SET type because Postgres
+-- doesn't have equivalent datatype which can be mapped to MySQL SET.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (test_set, mysql_test, test_tbl1)
+  FROM SERVER mysql_svr INTO public;
+SELECT relname FROM pg_class
+  WHERE relname IN ('test_set', 'mysql_test', 'test_tbl1') AND relnamespace = 'public'::regnamespace;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
@@ -441,6 +448,8 @@ DROP FOREIGN TABLE f_test_tbl3;
 DROP FOREIGN TABLE test5;
 DROP FOREIGN TABLE test5_1;
 DROP FOREIGN TABLE test5_2;
+DROP FOREIGN TABLE mysql_test;
+DROP FOREIGN TABLE test_tbl1;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;
