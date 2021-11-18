@@ -113,9 +113,9 @@ unsigned int ((mysql_num_rows) (MYSQL_RES *result));
 
 /*
  * In PG 9.5.1 the number will be 90501,
- * our version is 2.6.1 so number will be 20601
+ * our version is 2.7.0 so number will be 20700
  */
-#define CODE_VERSION   20601
+#define CODE_VERSION   20700
 
 /*
  * Indexes of FDW-private information stored in fdw_private lists.
