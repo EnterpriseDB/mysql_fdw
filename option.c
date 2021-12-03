@@ -19,6 +19,7 @@
 #include "catalog/pg_user_mapping.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "mysql_fdw.h"
 #include "utils/lsyscache.h"
@@ -52,6 +53,7 @@ static struct MySQLFdwOption valid_options[] =
 	{"fetch_size", ForeignServerRelationId},
 	{"fetch_size", ForeignTableRelationId},
 	{"reconnect", ForeignServerRelationId},
+	{"character_set", ForeignServerRelationId},
 	{"ssl_key", ForeignServerRelationId},
 	{"ssl_cert", ForeignServerRelationId},
 	{"ssl_ca", ForeignServerRelationId},
@@ -252,6 +254,9 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 		if (strcmp(def->defname, "reconnect") == 0)
 			opt->reconnect = defGetBoolean(def);
 
+		if (strcmp(def->defname, "character_set") == 0)
+			opt->character_set = defGetString(def);
+
 		if (strcmp(def->defname, "ssl_key") == 0)
 			opt->ssl_key = defGetString(def);
 
@@ -292,6 +297,13 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 	/* Default value for fetch_size */
 	if (!opt->fetch_size)
 		opt->fetch_size = MYSQL_PREFETCH_ROWS;
+
+	/* Default value for character_set */
+	if (!opt->character_set)
+		opt->character_set = MYSQL_AUTODETECT_CHARSET_NAME;
+	/* Special value provided for existing behavior */
+	else if (strcmp(opt->character_set, "PGDatabaseEncoding") == 0)
+		opt->character_set = (char *) GetDatabaseEncodingName();
 
 	return opt;
 }

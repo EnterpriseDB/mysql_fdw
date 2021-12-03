@@ -139,6 +139,11 @@ The following parameters can be set on a MySQL foreign server object:
     get in each fetch operation. It can be specified for a foreign table or
     a foreign server. The option specified on a table overrides an option
     specified for the server. The default is `100`.
+  * `character_set`: The character set to use for MySQL connection. Default
+    is `auto` which means autodetect based on the operating system setting.
+    Before the introduction of the character_set option, the character set
+    was set similar to the PostgreSQL database encoding. To get this older
+    behavior set the character_set to special value `PGDatabaseEncoding`.
 
 The following parameters can be set on a MySQL foreign table object:
 

@@ -194,5 +194,24 @@ ALTER SERVER reconnect1 OPTIONS ( SET reconnect 'abc1' );
 -- Cleanup reconnect option test objects.
 DROP SERVER reconnect1;
 
+-- FDW-404: Support for character_set option at server level.
+CREATE SERVER charset101 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS( character_set 'utf8' );
+
+SELECT count(*)
+  FROM pg_foreign_server
+  WHERE srvname = 'charset101'
+  AND srvoptions @> array['character_set=utf8'];
+
+ALTER SERVER charset101 OPTIONS( SET character_set 'latin' );
+
+SELECT count(*)
+  FROM pg_foreign_server
+  WHERE srvname = 'charset101'
+  AND srvoptions @> array['character_set=latin'];
+
+-- Cleanup character_set test objects.
+DROP SERVER charset101;
+
 -- Cleanup
 DROP EXTENSION mysql_fdw;

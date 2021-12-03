@@ -17,7 +17,6 @@
 #if PG_VERSION_NUM >= 130000
 #include "common/hashfn.h"
 #endif
-#include "mb/pg_wchar.h"
 #include "mysql_fdw.h"
 #include "utils/hsearch.h"
 #include "utils/inval.h"
@@ -233,7 +232,7 @@ mysql_connect(mysql_opt *opt)
 				(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
 				 errmsg("failed to initialise the MySQL connection object")));
 
-	mysql_options(conn, MYSQL_SET_CHARSET_NAME, GetDatabaseEncodingName());
+	mysql_options(conn, MYSQL_SET_CHARSET_NAME, opt->character_set);
 #if MYSQL_VERSION_ID < 80000
 	mysql_options(conn, MYSQL_SECURE_AUTH, &secure_auth);
 #endif
