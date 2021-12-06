@@ -34,7 +34,7 @@ $$
 BEGIN
   SELECT * FROM f_mysql_test ORDER BY 1, 2;
   EXCEPTION WHEN others THEN
-	IF SQLERRM LIKE 'failed to connect to MySQL: Unknown MySQL server host ''localhos'' (%)' THEN
+	IF SQLERRM LIKE 'failed to connect to MySQL: Unknown %server host ''localhos'' (%)' THEN
 	  RAISE NOTICE 'failed to connect to MySQL: Unknown MySQL server host ''localhos''';
     ELSE
 	  RAISE NOTICE '%', SQLERRM;
