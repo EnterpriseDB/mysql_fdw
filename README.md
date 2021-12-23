@@ -159,6 +159,15 @@ The following parameters need to supplied while creating user mapping.
   * `username`: Username to use when connecting to MySQL.
   * `password`: Password to authenticate to the MySQL server with.
 
+The following parameters can be set on IMPORT FOREIGN SCHEMA command:
+
+  * `import_default`: This option controls whether column DEFAULT
+  expressions are included in the definitions of foreign tables imported
+  from a foreign server. The default is `false`.
+  * `import_not_null`: This option controls whether column NOT NULL
+  constraints are included in the definitions of foreign tables imported
+  from a foreign server. The default is `true`.
+
 Examples
 --------
 
