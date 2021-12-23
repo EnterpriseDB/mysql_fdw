@@ -2091,6 +2091,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	List	   *commands = NIL;
 	bool		import_default = false;
 	bool		import_not_null = true;
+	bool		import_enum_as_text = false;
 	ForeignServer *server;
 	UserMapping *user;
 	mysql_opt  *options;
@@ -2109,6 +2110,8 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			import_default = defGetBoolean(def);
 		else if (strcmp(def->defname, "import_not_null") == 0)
 			import_not_null = defGetBoolean(def);
+		else if (strcmp(def->defname, "import_enum_as_text") == 0)
+			import_enum_as_text = defGetBoolean(def);
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
@@ -2262,10 +2265,20 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			attdefault = row[5] == NULL ? (char *) NULL : row[5];
 
 			if (strncmp(typedfn, "enum(", 5) == 0)
-				ereport(NOTICE,
-						(errmsg("error while generating the table definition"),
-						 errhint("If you encounter an error, you may need to execute the following first:\nDO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = '%s') THEN CREATE TYPE %s AS %s; END IF; END$$;\n",
-								 typename, typename, typedfn)));
+			{
+				/*
+				 * If import_enum_as_text is set, then map MySQL enum type to
+				 * text while import, else emit a warning to create mapping
+				 * TYPE.
+				 */
+				if (import_enum_as_text)
+					typename = "text";
+				else
+					ereport(NOTICE,
+							(errmsg("error while generating the table definition"),
+							 errhint("If you encounter an error, you may need to execute the following first:\nDO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = '%s') THEN CREATE TYPE %s AS %s; END IF; END$$;\n",
+									 typename, typename, typedfn)));
+			}
 
 			/*
 			 * PostgreSQL does not have an equivalent data type to map with

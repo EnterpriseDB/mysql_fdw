@@ -167,6 +167,9 @@ The following parameters can be set on IMPORT FOREIGN SCHEMA command:
   * `import_not_null`: This option controls whether column NOT NULL
   constraints are included in the definitions of foreign tables imported
   from a foreign server. The default is `true`.
+  * `import_enum_as_text`: This option can be used to map MySQL ENUM type
+  to TEXT type in the definitions of foreign tables, otherwise emit a
+  warning for type to be created. The default is `false`.
 
 Examples
 --------

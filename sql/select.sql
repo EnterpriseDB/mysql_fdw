@@ -318,6 +318,18 @@ SELECT * FROM enum_t2 ORDER BY id;
 DROP FOREIGN TABLE enum_t1;
 DROP FOREIGN TABLE enum_t2;
 
+-- FDW-217: IMPORT FOREIGN SCHEMA command with 'import_enum_as_text' option as
+-- true should map MySQL ENUM type to TEXT type in PG.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (enum_t1, enum_t2)
+  FROM SERVER mysql_svr INTO public OPTIONS (import_enum_as_text 'true');
+SELECT attrelid::regclass, atttypid::regtype FROM pg_attribute
+  WHERE (attrelid = 'enum_t1'::regclass OR attrelid = 'enum_t2'::regclass) AND
+    attnum > 1 ORDER BY 1;
+SELECT * FROM enum_t1 ORDER BY id;
+SELECT * FROM enum_t2 ORDER BY id;
+DROP FOREIGN TABLE enum_t1;
+DROP FOREIGN TABLE enum_t2;
+
 -- FDW-248: IMPORT FOREIGN SCHEMA command should work correctly if called
 -- multiple times. Earlier we wrongly used PG_TRY/CATCH block to get the server
 -- options without clearing the error state and that exceeded
