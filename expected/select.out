@@ -1464,6 +1464,33 @@ SELECT relname FROM pg_class
  test_tbl1
 (2 rows)
 
+-- FDW-417: Updating a NOT NULL column with NULL should throw an error
+-- if we set sql_mode to STRICT_ALL_TABLES.
+ALTER SERVER mysql_svr OPTIONS (sql_mode 'ANSI_QUOTES,STRICT_ALL_TABLES');
+UPDATE f_mysql_test SET b = NULL WHERE a = 1;
+ERROR:  failed to execute the MySQL query: 
+Column 'b' cannot be null
+SELECT * FROM f_mysql_test ORDER BY 1;
+ a | b 
+---+---
+ 1 | 1
+(1 row)
+
+ALTER SERVER mysql_svr OPTIONS (DROP sql_mode);
+UPDATE f_mysql_test SET b = NULL WHERE a = 1;
+SELECT * FROM f_mysql_test ORDER BY 1;
+ a | b 
+---+---
+ 1 | 0
+(1 row)
+
+UPDATE f_mysql_test SET b = 1 WHERE a = 1;
+-- We should get a run-time error when sql_mode is set to invalid value.
+ALTER SERVER mysql_svr OPTIONS (sql_mode 'ABCD');
+SELECT * FROM f_mysql_test ORDER BY 1;
+ERROR:  failed to execute the MySQL query: 
+Variable 'sql_mode' can't be set to the value of 'ABCD'
+ALTER SERVER mysql_svr OPTIONS (DROP sql_mode);
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

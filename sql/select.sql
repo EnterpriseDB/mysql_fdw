@@ -439,6 +439,20 @@ IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (test_set, mysql_test, test_tbl
 SELECT relname FROM pg_class
   WHERE relname IN ('test_set', 'mysql_test', 'test_tbl1') AND relnamespace = 'public'::regnamespace;
 
+-- FDW-417: Updating a NOT NULL column with NULL should throw an error
+-- if we set sql_mode to STRICT_ALL_TABLES.
+ALTER SERVER mysql_svr OPTIONS (sql_mode 'ANSI_QUOTES,STRICT_ALL_TABLES');
+UPDATE f_mysql_test SET b = NULL WHERE a = 1;
+SELECT * FROM f_mysql_test ORDER BY 1;
+ALTER SERVER mysql_svr OPTIONS (DROP sql_mode);
+UPDATE f_mysql_test SET b = NULL WHERE a = 1;
+SELECT * FROM f_mysql_test ORDER BY 1;
+UPDATE f_mysql_test SET b = 1 WHERE a = 1;
+-- We should get a run-time error when sql_mode is set to invalid value.
+ALTER SERVER mysql_svr OPTIONS (sql_mode 'ABCD');
+SELECT * FROM f_mysql_test ORDER BY 1;
+ALTER SERVER mysql_svr OPTIONS (DROP sql_mode);
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

@@ -575,6 +575,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	int			numParams;
 	int			rtindex;
 	List	   *fdw_private = fsplan->fdw_private;
+	char		sql_mode[255];
 
 	/*
 	 * We'll save private state in node->fdw_state.
@@ -669,7 +670,10 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 		mysql_query(festate->conn, timeout);
 	}
 
-	mysql_query(festate->conn, "SET sql_mode='ANSI_QUOTES'");
+	snprintf(sql_mode, sizeof(sql_mode), "SET sql_mode = '%s'",
+			 options->sql_mode);
+	if (mysql_query(festate->conn, sql_mode) != 0)
+		mysql_error_print(festate->conn);
 
 	/* Initialize the MySQL statement */
 	festate->stmt = mysql_stmt_init(festate->conn);
@@ -976,6 +980,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 	const char *database;
 	const char *relname;
 	const char *refname;
+	char		sql_mode[255];
 
 	fpinfo = (MySQLFdwRelationInfo *) palloc0(sizeof(MySQLFdwRelationInfo));
 	baserel->fdw_private = (void *) fpinfo;
@@ -993,7 +998,10 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 	/* Connect to the server */
 	conn = mysql_get_connection(server, user, options);
 
-	mysql_query(conn, "SET sql_mode='ANSI_QUOTES'");
+	snprintf(sql_mode, sizeof(sql_mode), "SET sql_mode = '%s'",
+			 options->sql_mode);
+	if (mysql_query(conn, sql_mode) != 0)
+		mysql_error_print(conn);
 
 #if PG_VERSION_NUM >= 90600
 	pull_varattnos((Node *) baserel->reltarget->exprs, baserel->relid,
@@ -1801,16 +1809,23 @@ mysqlExecForeignInsert(EState *estate,
 	int			n_params;
 	MemoryContext oldcontext;
 	bool	   *isnull;
+	char		sql_mode[255];
+	Oid			foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 
 	fmstate = (MySQLFdwExecState *) resultRelInfo->ri_FdwState;
 	n_params = list_length(fmstate->retrieved_attrs);
+
+	fmstate->mysqlFdwOptions = mysql_get_options(foreignTableId, true);
 
 	oldcontext = MemoryContextSwitchTo(fmstate->temp_cxt);
 
 	mysql_bind_buffer = (MYSQL_BIND *) palloc0(sizeof(MYSQL_BIND) * n_params);
 	isnull = (bool *) palloc0(sizeof(bool) * n_params);
 
-	mysql_query(fmstate->conn, "SET sql_mode='ANSI_QUOTES'");
+	snprintf(sql_mode, sizeof(sql_mode), "SET sql_mode = '%s'",
+			 fmstate->mysqlFdwOptions->sql_mode);
+	if (mysql_query(fmstate->conn, sql_mode) != 0)
+		mysql_error_print(fmstate->conn);
 
 	foreach(lc, fmstate->retrieved_attrs)
 	{

@@ -54,6 +54,7 @@ static struct MySQLFdwOption valid_options[] =
 	{"fetch_size", ForeignTableRelationId},
 	{"reconnect", ForeignServerRelationId},
 	{"character_set", ForeignServerRelationId},
+	{"sql_mode", ForeignServerRelationId},
 	{"ssl_key", ForeignServerRelationId},
 	{"ssl_cert", ForeignServerRelationId},
 	{"ssl_ca", ForeignServerRelationId},
@@ -257,6 +258,9 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 		if (strcmp(def->defname, "character_set") == 0)
 			opt->character_set = defGetString(def);
 
+		if (strcmp(def->defname, "sql_mode") == 0)
+			opt->sql_mode = defGetString(def);
+
 		if (strcmp(def->defname, "ssl_key") == 0)
 			opt->ssl_key = defGetString(def);
 
@@ -304,6 +308,10 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 	/* Special value provided for existing behavior */
 	else if (strcmp(opt->character_set, "PGDatabaseEncoding") == 0)
 		opt->character_set = (char *) GetDatabaseEncodingName();
+
+	/* Default value for sql_mode */
+	if (!opt->sql_mode)
+		opt->sql_mode = "ANSI_QUOTES";
 
 	return opt;
 }

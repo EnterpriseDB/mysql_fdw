@@ -127,6 +127,8 @@ The following parameters can be set on a MySQL foreign server object:
   * `reconnect`: Enable or disable automatic reconnection to the
     MySQL server if the existing connection is found to have been lost.
     Default is `false`.
+  * `sql_mode`: Set MySQL sql_mode for established connection. Default
+    is `ANSI_QUOTES`.
   * `ssl_key`: The path name of the client private key file.
   * `ssl_cert`: The path name of the client public key certificate file.
   * `ssl_ca`: The path name of the Certificate Authority (CA) certificate
