@@ -40,8 +40,6 @@ CREATE FOREIGN TABLE test_memory(c1 INT, c2 INT)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_memory');
 CREATE FOREIGN TABLE test_csv(c1 INT)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_csv');
-CREATE FOREIGN TABLE test_blackhole(c1 INT, c2 INT)
-  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_blackhole');
 
 -- Insert data in MySQL db using foreign tables
 INSERT INTO f_test_tbl1 VALUES (100, 'EMP1', 'ADMIN', 1300, '1980-12-17', 800.23, NULL, 20);
@@ -66,7 +64,6 @@ INSERT INTO f_test_tbl2 VALUES(40, 'HR', 'NAGPUR');
 -- Insert data in MySQL db using foreign tables - non-innodb storage engines
 INSERT INTO test_myisam VALUES (2, 2);
 INSERT INTO test_memory VALUES (2, 2);
-INSERT INTO test_blackhole VALUES (2, 2);
 
 SET datestyle TO ISO;
 
@@ -89,7 +86,6 @@ SELECT c1,c2 FROM test_memory
   ORDER BY c1;
 SELECT c1 FROM test_csv
   ORDER BY c1;
-SELECT c1,c2 FROM test_blackhole;
 
 -- Retrieve Data from Foreign Table using SELECT Statement.
 SELECT c1, c2, c3, c4, c5, c6, c7, c8 FROM f_test_tbl1
@@ -514,7 +510,6 @@ DROP FOREIGN TABLE test_tbl1;
 DROP FOREIGN TABLE test_myisam;
 DROP FOREIGN TABLE test_memory;
 DROP FOREIGN TABLE test_csv;
-DROP FOREIGN TABLE test_blackhole;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;
