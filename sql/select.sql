@@ -41,7 +41,7 @@ CREATE FOREIGN TABLE test_memory(c1 INT, c2 INT)
 CREATE FOREIGN TABLE test_csv(c1 INT)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_csv');
 CREATE FOREIGN TABLE test_blackhole(c1 INT, c2 INT)
-  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_myisam');
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_blackhole');
 
 -- Insert data in MySQL db using foreign tables
 INSERT INTO f_test_tbl1 VALUES (100, 'EMP1', 'ADMIN', 1300, '1980-12-17', 800.23, NULL, 20);
