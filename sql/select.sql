@@ -34,6 +34,15 @@ CREATE FOREIGN TABLE test5_1(c1 INT, c2 CHAR, c3 VARCHAR, c4 BOOLEAN, c5 TEXT, c
 CREATE FOREIGN TABLE test5_2(c1 INT, c2 BYTEA, c3 BYTEA, c4 BYTEA, c5 BYTEA, c6 BYTEA, c7 BYTEA, c8 BYTEA, c9 BYTEA, c10 BYTEA)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test5');
 
+CREATE FOREIGN TABLE test_myisam(c1 INT)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_myisam');
+CREATE FOREIGN TABLE test_memory(c1 INT)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_memory');
+CREATE FOREIGN TABLE test_blackhole(c1 INT)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_myisam');
+CREATE FOREIGN TABLE test_csv(c1 INT)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_csv');
+
 -- Insert data in MySQL db using foreign tables
 INSERT INTO f_test_tbl1 VALUES (100, 'EMP1', 'ADMIN', 1300, '1980-12-17', 800.23, NULL, 20);
 INSERT INTO f_test_tbl1 VALUES (200, 'EMP2', 'SALESMAN', 600, '1981-02-20', 1600.00, 300, 30);
@@ -54,7 +63,42 @@ INSERT INTO f_test_tbl2 VALUES(20, 'ADMINISTRATION', 'BANGLORE');
 INSERT INTO f_test_tbl2 VALUES(30, 'SALES', 'MUMBAI');
 INSERT INTO f_test_tbl2 VALUES(40, 'HR', 'NAGPUR');
 
+-- Insert data in MySQL db using foreign tables - non-innodb storage engines
+INSERT INTO test_myisam VALUES (2);
+INSERT INTO test_memory VALUES (2);
+INSERT INTO test_csv VALUES (2);
+INSERT INTO test_blackhole VALUES (2);
+
 SET datestyle TO ISO;
+
+-- Update data in non-innodb engine tables
+UPDATE test_myisam SET c1 = 3
+  WHERE c1 = 2;
+UPDATE test_memory SET c1 = 3
+  WHERE c1 = 2;
+UPDATE test_blackhole SET c1 = 3
+  WHERE c1 = 2;
+UPDATE test_csv SET c1 = 3
+  WHERE c1 = 2;
+
+-- Delete data from non-innodb engine tables
+DELETE FROM test_myisam
+  WHERE c1 = 1;
+DELETE FROM test_memory
+  WHERE c1 = 1;
+DELETE FROM test_csv
+  WHERE c1 = 1;
+DELETE FROM test_blackhole
+  WHERE c1 = 1;
+
+-- Retrieve data from non-innodb engine tables
+SELECT c1 FROM test_myisam
+  ORDER BY c1;
+SELECT c1 FROM test_csv
+  ORDER BY c1;
+SELECT c1 FROM test_memory
+  ORDER BY c1;
+SELECT c1 FROM test_blackhole;
 
 -- Retrieve Data from Foreign Table using SELECT Statement.
 SELECT c1, c2, c3, c4, c5, c6, c7, c8 FROM f_test_tbl1
