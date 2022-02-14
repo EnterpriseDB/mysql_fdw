@@ -64,7 +64,6 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 	Datum		valueDatum;
 	regproc		typeinput;
 	HeapTuple	tuple;
-	int			typemod;
 	char		str[MAXDATELEN];
 	bytea	   *result;
 
@@ -74,7 +73,6 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 		elog(ERROR, "cache lookup failed for type%u", pgtyp);
 
 	typeinput = ((Form_pg_type) GETSTRUCT(tuple))->typinput;
-	typemod = ((Form_pg_type) GETSTRUCT(tuple))->typtypmod;
 	ReleaseSysCache(tuple);
 
 	switch (pgtyp)
@@ -115,7 +113,7 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 
 	value_datum = OidFunctionCall3(typeinput, valueDatum,
 								   ObjectIdGetDatum(pgtyp),
-								   Int32GetDatum(typemod));
+								   Int32GetDatum(pgtypmod));
 
 	return value_datum;
 }

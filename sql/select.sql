@@ -453,6 +453,30 @@ ALTER SERVER mysql_svr OPTIONS (sql_mode 'ABCD');
 SELECT * FROM f_mysql_test ORDER BY 1;
 ALTER SERVER mysql_svr OPTIONS (DROP sql_mode);
 
+-- FDW-426: The numeric value should display correctly per precision and scale
+-- defined.
+CREATE FOREIGN TABLE f_test6(c1 numeric(6,2))
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test6');
+SELECT * FROM f_test6 ORDER BY 1;
+
+-- Number with the required precision.
+DROP FOREIGN TABLE f_test6;
+CREATE FOREIGN TABLE f_test6(c1 numeric(6,4))
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test6');
+SELECT * FROM f_test6 ORDER BY 1;
+
+-- Number only with precision.
+DROP FOREIGN TABLE f_test6;
+CREATE FOREIGN TABLE f_test6(c1 numeric(6))
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test6');
+SELECT * FROM f_test6 ORDER BY 1;
+
+-- Number with improper precision and scale, should throw an error.
+DROP FOREIGN TABLE f_test6;
+CREATE FOREIGN TABLE f_test6(c1 numeric(3,2))
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test6');
+SELECT * FROM f_test6 ORDER BY 1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
@@ -476,6 +500,7 @@ DROP FOREIGN TABLE test5_1;
 DROP FOREIGN TABLE test5_2;
 DROP FOREIGN TABLE mysql_test;
 DROP FOREIGN TABLE test_tbl1;
+DROP FOREIGN TABLE f_test6;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;
