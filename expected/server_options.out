@@ -19,9 +19,9 @@ DECLARE
   sopts TEXT;
   uopts TEXT;
 BEGIN
-  SELECT e.fdwname, srvname, array_to_string(s.srvoptions, ','), array_to_string(u.umoptions, ',')
+  SELECT e.fdwname, s.srvname, array_to_string(s.srvoptions, ','), array_to_string(u.umoptions, ',')
     INTO ext, srv, sopts, uopts
-    FROM pg_foreign_data_wrapper e LEFT JOIN pg_foreign_server s ON e.oid = s.srvfdw LEFT JOIN pg_user_mapping u ON s.oid = u.umserver
+    FROM pg_foreign_data_wrapper e LEFT JOIN pg_foreign_server s ON e.oid = s.srvfdw LEFT JOIN pg_user_mappings u ON s.oid = u.srvid
     WHERE e.fdwname = 'mysql_fdw'
     ORDER BY 1, 2, 3, 4;
 
