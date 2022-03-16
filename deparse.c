@@ -1896,7 +1896,6 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 					strcmp(func_name, "count") == 0))
 					return false;
 
-
 				/*
 				 * Recurse to input args. aggdirectargs, aggorder and
 				 * aggdistinct are all present in args, so no need to check
@@ -1924,6 +1923,10 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 
 				/* FILTER clause is not supported on MySQL. */
 				if (agg->aggfilter)
+					return false;
+
+				/* VARIADIC not supported on MySQL. */
+				if (agg->aggvariadic)
 					return false;
 
 				/*
@@ -2282,13 +2285,9 @@ static void
 mysql_deparse_aggref(Aggref *node, deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
-	bool		use_variadic;
 
 	/* Only basic, non-split aggregation accepted. */
 	Assert(node->aggsplit == AGGSPLIT_SIMPLE);
-
-	/* Check if need to print VARIADIC (cf. ruleutils.c) */
-	use_variadic = node->aggvariadic;
 
 	/* Find aggregate name from aggfnoid which is a pg_proc entry. */
 	mysql_append_function_name(node->aggfnoid, context);
@@ -2317,14 +2316,6 @@ mysql_deparse_aggref(Aggref *node, deparse_expr_cxt *context)
 			if (!first)
 				appendStringInfoString(buf, ", ");
 			first = false;
-
-			/* Add VARIADIC */
-#if PG_VERSION_NUM >= 130000
-			if (use_variadic && lnext(node->args, arg) == NULL)
-#else
-			if (use_variadic && lnext(arg) == NULL)
-#endif
-				appendStringInfoString(buf, "VARIADIC ");
 
 			deparseExpr((Expr *) n, context);
 		}
