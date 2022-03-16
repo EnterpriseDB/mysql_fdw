@@ -35,6 +35,7 @@
 #include "commands/defrem.h"
 #include "commands/explain.h"
 #include "catalog/heap.h"
+#include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "mysql_query.h"
@@ -84,7 +85,7 @@ bool ((mysql_stmt_bind_result) (MYSQL_STMT *stmt, MYSQL_BIND *bnd));
 
 MYSQL_STMT *((mysql_stmt_init) (MYSQL *mysql));
 MYSQL_RES *((mysql_stmt_result_metadata) (MYSQL_STMT *stmt));
-int ((mysql_stmt_store_result) (MYSQL *mysql));
+int ((mysql_stmt_store_result) (MYSQL_STMT *stmt));
 MYSQL_ROW((mysql_fetch_row) (MYSQL_RES *result));
 MYSQL_FIELD *((mysql_fetch_field) (MYSQL_RES *result));
 MYSQL_FIELD *((mysql_fetch_fields) (MYSQL_RES *result));
@@ -642,6 +643,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 										mysqlFdwScanPrivateRetrievedAttrs);
 	festate->conn = conn;
 	festate->query_executed = false;
+	festate->has_var_size_col = false;
 	festate->attinmeta = TupleDescGetAttInMetadata(tupleDescriptor);
 
 #if PG_VERSION_NUM >= 110000
@@ -731,6 +733,9 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 		if (TupleDescAttr(tupleDescriptor, attnum)->attisdropped)
 			continue;
 
+		if (pgtype == TEXTOID)
+			festate->has_var_size_col = true;
+
 		festate->table->column[atindex].mysql_bind = &festate->table->mysql_bind[atindex];
 
 		mysql_bind_result(pgtype, pgtypmod,
@@ -738,6 +743,14 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 						  &festate->table->column[atindex]);
 		atindex++;
 	}
+
+	/*
+	 * Set STMT_ATTR_UPDATE_MAX_LENGTH so that mysql_stmt_store_result() can
+	 * update metadata MYSQL_FIELD->max_length value, this will be useful to
+	 * determine var length column size.
+	 */
+	mysql_stmt_attr_set(festate->stmt, STMT_ATTR_UPDATE_MAX_LENGTH,
+						&festate->has_var_size_col);
 
 	/* Bind the results pointers for the prepare statements */
 	if (mysql_stmt_bind_result(festate->stmt, festate->table->mysql_bind) != 0)
@@ -2493,7 +2506,8 @@ process_query_params(ExprContext *econtext,
 
 /*
  * Process the query params and bind the same with the statement, if any.
- * Also, execute the statement.
+ * Also, execute the statement. If fetching the var size column then bind
+ * those again to allocate field->max_length memory.
  */
 static void
 bind_stmt_params_and_exec(ForeignScanState *node)
@@ -2503,6 +2517,10 @@ bind_stmt_params_and_exec(ForeignScanState *node)
 	int			numParams = festate->numParams;
 	const char **values = festate->param_values;
 	MYSQL_BIND *mysql_bind_buffer = NULL;
+	ListCell   *lc;
+	TupleDesc	tupleDescriptor = festate->attinmeta->tupdesc;
+	int			atindex = 0;
+	MemoryContext oldcontext;
 
 	/*
 	 * Construct array of query parameter values in text format.  We do the
@@ -2538,6 +2556,45 @@ bind_stmt_params_and_exec(ForeignScanState *node)
 
 	/* Mark the query as executed */
 	festate->query_executed = true;
+
+	if (!festate->has_var_size_col)
+		return;
+
+	/* Bind the result columns in long-lived memory context */
+	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+
+	if (mysql_stmt_store_result(festate->stmt) != 0)
+		mysql_stmt_error_print(festate, "failed to store the result");
+
+	/* Bind only var size columns as per field->max_length */
+	foreach(lc, festate->retrieved_attrs)
+	{
+		int			attnum = lfirst_int(lc) - 1;
+		Oid			pgtype = TupleDescAttr(tupleDescriptor, attnum)->atttypid;
+		int32		pgtypmod = TupleDescAttr(tupleDescriptor, attnum)->atttypmod;
+
+		if (TupleDescAttr(tupleDescriptor, attnum)->attisdropped)
+			continue;
+
+		if (pgtype != TEXTOID)
+		{
+			atindex++;
+			continue;
+		}
+
+		festate->table->column[atindex].mysql_bind = &festate->table->mysql_bind[atindex];
+
+		mysql_bind_result(pgtype, pgtypmod,
+						  &festate->table->mysql_fields[atindex],
+						  &festate->table->column[atindex]);
+		atindex++;
+	}
+
+	/* Bind the results pointers for the prepare statements */
+	if (mysql_stmt_bind_result(festate->stmt, festate->table->mysql_bind) != 0)
+		mysql_stmt_error_print(festate, "failed to bind the MySQL query");
+
+	MemoryContextSwitchTo(oldcontext);
 }
 
 Datum

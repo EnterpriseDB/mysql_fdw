@@ -477,6 +477,14 @@ CREATE FOREIGN TABLE f_test6(c1 numeric(3,2))
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test6');
 SELECT * FROM f_test6 ORDER BY 1;
 
+-- FDW-156: Long string data in column greater than MAXDATALEN length should
+-- be fetched correctly.
+CREATE FOREIGN TABLE f_test7(c1 int, c2 text)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test7');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, length(c2) FROM f_test7 ORDER BY 1;
+SELECT c1, length(c2) FROM f_test7 ORDER BY 1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
@@ -501,6 +509,7 @@ DROP FOREIGN TABLE test5_2;
 DROP FOREIGN TABLE mysql_test;
 DROP FOREIGN TABLE test_tbl1;
 DROP FOREIGN TABLE f_test6;
+DROP FOREIGN TABLE f_test7;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;

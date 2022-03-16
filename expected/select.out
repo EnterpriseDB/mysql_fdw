@@ -1528,6 +1528,28 @@ CREATE FOREIGN TABLE f_test6(c1 numeric(3,2))
 SELECT * FROM f_test6 ORDER BY 1;
 ERROR:  numeric field overflow
 DETAIL:  A field with precision 3, scale 2 must round to an absolute value less than 10^1.
+-- FDW-156: Long string data in column greater than MAXDATALEN length should
+-- be fetched correctly.
+CREATE FOREIGN TABLE f_test7(c1 int, c2 text)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test7');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c1, length(c2) FROM f_test7 ORDER BY 1;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Sort
+   Output: c1, (length(c2))
+   Sort Key: f_test7.c1
+   ->  Foreign Scan on public.f_test7
+         Output: c1, length(c2)
+         Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test7`
+(6 rows)
+
+SELECT c1, length(c2) FROM f_test7 ORDER BY 1;
+ c1 | length 
+----+--------
+  1 |  67500
+(1 row)
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
@@ -1552,6 +1574,7 @@ DROP FOREIGN TABLE test5_2;
 DROP FOREIGN TABLE mysql_test;
 DROP FOREIGN TABLE test_tbl1;
 DROP FOREIGN TABLE f_test6;
+DROP FOREIGN TABLE f_test7;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;

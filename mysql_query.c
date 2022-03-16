@@ -66,6 +66,7 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 	HeapTuple	tuple;
 	char		str[MAXDATELEN];
 	bytea	   *result;
+	char	   *text_result = NULL;
 
 	/* get the type's output function */
 	tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(pgtyp));
@@ -107,6 +108,14 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 			sprintf(str, "%d", dec_bin(*((int *) column->value)));
 			valueDatum = CStringGetDatum((char *) str);
 			break;
+
+		case TEXTOID:
+			text_result = (char *) palloc(column->length + 1);
+			memcpy(text_result, (char *) column->value, column->length);
+			text_result[column->length] = '\0';
+			valueDatum = CStringGetDatum((char *) text_result);
+			break;
+
 		default:
 			valueDatum = CStringGetDatum((char *) column->value);
 	}
@@ -114,6 +123,9 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 	value_datum = OidFunctionCall3(typeinput, valueDatum,
 								   ObjectIdGetDatum(pgtyp),
 								   Int32GetDatum(pgtypmod));
+
+	if (text_result)
+		pfree(text_result);
 
 	return value_datum;
 }
@@ -406,6 +418,8 @@ mysql_bind_result(Oid pgtyp, int pgtypmod, MYSQL_FIELD *field,
 {
 	MYSQL_BIND *mbind = column->mysql_bind;
 
+	memset(mbind, 0, sizeof(MYSQL_BIND));
+
 #if MYSQL_VERSION_ID < 80000 || MARIADB_VERSION_ID >= 100000
 	mbind->is_null = (my_bool *) &column->is_null;
 	mbind->error = (my_bool *) &column->error;
@@ -423,6 +437,20 @@ mysql_bind_result(Oid pgtyp, int pgtypmod, MYSQL_FIELD *field,
 			column->value = (Datum) palloc0(MAX_BLOB_WIDTH + VARHDRSZ);
 			mbind->buffer = VARDATA(column->value);
 			mbind->buffer_length = MAX_BLOB_WIDTH;
+			break;
+		case TEXTOID:
+			mbind->buffer_type = MYSQL_TYPE_VAR_STRING;
+			if (field->max_length == 0)
+			{
+				column->value = (Datum) palloc0(MAXDATALEN);
+				mbind->buffer_length = MAXDATALEN;
+			}
+			else
+			{
+				column->value = (Datum) palloc0(field->max_length);
+				mbind->buffer_length = field->max_length;
+			}
+			mbind->buffer = (char *) column->value;
 			break;
 		default:
 			mbind->buffer_type = MYSQL_TYPE_VAR_STRING;

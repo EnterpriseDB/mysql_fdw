@@ -185,6 +185,7 @@ typedef struct MySQLFdwExecState
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
 	AttInMetadata *attinmeta;
 	AttrNumber	rowidAttno;		/* attnum of resjunk rowid column */
+	bool		has_var_size_col;	/* true if fetching var size columns */
 
 	/*
 	 * Members used for constructing the ForeignScan result row when whole-row
@@ -265,7 +266,7 @@ extern bool ((mysql_stmt_bind_result) (MYSQL_STMT *stmt, MYSQL_BIND *bnd));
 
 extern MYSQL_STMT *((mysql_stmt_init) (MYSQL *mysql));
 extern MYSQL_RES *((mysql_stmt_result_metadata) (MYSQL_STMT *stmt));
-extern int ((mysql_stmt_store_result) (MYSQL *mysql));
+extern int ((mysql_stmt_store_result) (MYSQL_STMT *stmt));
 extern MYSQL_ROW((mysql_fetch_row) (MYSQL_RES *result));
 extern MYSQL_FIELD *((mysql_fetch_field) (MYSQL_RES *result));
 extern MYSQL_FIELD *((mysql_fetch_fields) (MYSQL_RES *result));
