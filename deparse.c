@@ -153,12 +153,10 @@ static void mysql_deparse_from_expr_for_rel(StringInfo buf, PlannerInfo *root,
 static void mysql_deparse_from_expr(List *quals, deparse_expr_cxt *context);
 static void mysql_append_function_name(Oid funcid, deparse_expr_cxt *context);
 static void mysql_deparse_aggref(Aggref *node, deparse_expr_cxt *context);
-#if PG_VERSION_NUM >= 100000
 static void mysql_append_groupby_clause(List *tlist, deparse_expr_cxt *context);
 static Node *mysql_deparse_sort_group_clause(Index ref, List *tlist,
 											 bool force_colno,
 											 deparse_expr_cxt *context);
-#endif
 
 /*
  * Functions to construct string representation of a specific types.
@@ -259,33 +257,20 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 {
 	deparse_expr_cxt context;
 	List	   *quals;
-#if PG_VERSION_NUM >= 100000
 	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) rel->fdw_private;
-#endif
 
 	/*
 	 * We handle relations for foreign tables and joins between those and upper
 	 * relations.
 	 */
-#if PG_VERSION_NUM >= 100000
 	Assert(IS_JOIN_REL(rel) || IS_SIMPLE_REL(rel) || IS_UPPER_REL(rel));
-#else
-	Assert(rel->reloptkind == RELOPT_JOINREL ||
-		   rel->reloptkind == RELOPT_BASEREL ||
-		   rel->reloptkind == RELOPT_UPPER_REL ||
-		   rel->reloptkind == RELOPT_OTHER_MEMBER_REL);
-#endif
 
 	/* Fill portions of context common to base relation */
 	context.buf = buf;
 	context.root = root;
 	context.foreignrel = rel;
 	context.params_list = params_list;
-#if PG_VERSION_NUM >= 100000
 	context.scanrel = IS_UPPER_REL(rel) ? fpinfo->outerrel : rel;
-#else
-	context.scanrel = rel;
-#endif
 
 	/* Construct SELECT clause */
 	mysql_deparse_select_sql(tlist, retrieved_attrs, &context);
@@ -295,7 +280,6 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 	 * conditions of the underlying scan relation; otherwise, we can use the
 	 * supplied list of remote conditions directly.
 	 */
-#if PG_VERSION_NUM >= 100000
 	if (IS_UPPER_REL(rel))
 	{
 		MySQLFdwRelationInfo *ofpinfo;
@@ -304,13 +288,11 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 		quals = ofpinfo->remote_conds;
 	}
 	else
-#endif
 		quals = remote_conds;
 
 	/* Construct FROM and WHERE clauses */
 	mysql_deparse_from_expr(quals, &context);
 
-#if PG_VERSION_NUM >= 100000
 	if (IS_UPPER_REL(rel))
 	{
 		/* Append GROUP BY clause */
@@ -323,7 +305,6 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 			mysql_append_conditions(remote_conds, &context);
 		}
 	}
-#endif
 }
 
 /*
@@ -351,12 +332,7 @@ mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
 	 */
 	appendStringInfoString(buf, "SELECT ");
 
-#if PG_VERSION_NUM >= 100000
 	if (IS_JOIN_REL(foreignrel) || IS_UPPER_REL(foreignrel))
-#else
-	if (foreignrel->reloptkind == RELOPT_JOINREL ||
-		foreignrel->reloptkind == RELOPT_UPPER_REL)
-#endif
 	{
 		/*
 		 * For a join or upper relation the input tlist gives the list of
@@ -436,10 +412,8 @@ mysql_deparse_from_expr(List *quals, deparse_expr_cxt *context)
 	RelOptInfo *scanrel = context->scanrel;
 
 	/* For upper relations, scanrel must be either a joinrel or a baserel */
-#if PG_VERSION_NUM >= 100000
 	Assert(!IS_UPPER_REL(context->foreignrel) ||
 		   IS_JOIN_REL(scanrel) || IS_SIMPLE_REL(scanrel));
-#endif
 
 	/* Construct FROM clause */
 	appendStringInfoString(buf, " FROM ");
@@ -1875,7 +1849,6 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				ListCell   *lc;
 				const char *func_name = get_func_name(agg->aggfnoid);
 
-#if PG_VERSION_NUM >= 100000
 				/* Not safe to pushdown when not in grouping context */
 				if (!IS_UPPER_REL(glob_cxt->foreignrel))
 					return false;
@@ -1883,7 +1856,6 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				/* Only non-split aggregates are pushable. */
 				if (agg->aggsplit != AGGSPLIT_SIMPLE)
 					return false;
-#endif
 
 				/* As usual, it must be shippable. */
 				if (!is_builtin(agg->aggfnoid))
@@ -2031,9 +2003,7 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
 {
 	foreign_glob_cxt glob_cxt;
 	foreign_loc_cxt loc_cxt;
-#if PG_VERSION_NUM >= 100000
 	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) (baserel->fdw_private);
-#endif
 
 	/*
 	 * Check that the expression consists of nodes that are safe to execute
@@ -2048,11 +2018,9 @@ mysql_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expr,
 	 * because the upperrel's own relids currently aren't set to anything
 	 * meaningful by the core code.  For other relation, use their own relids.
 	 */
-#if PG_VERSION_NUM >= 100000
 	if (IS_UPPER_REL(baserel))
 		glob_cxt.relids = fpinfo->outerrel->relids;
 	else
-#endif
 		glob_cxt.relids = baserel->relids;
 
 	loc_cxt.collation = InvalidOid;
@@ -2136,11 +2104,7 @@ mysql_deparse_from_expr_for_rel(StringInfo buf, PlannerInfo *root,
 {
 	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) foreignrel->fdw_private;
 
-#if PG_VERSION_NUM >= 100000
 	if (IS_JOIN_REL(foreignrel))
-#else
-	if (foreignrel->reloptkind == RELOPT_JOINREL)
-#endif
 	{
 		RelOptInfo *rel_o = fpinfo->outerrel;
 		RelOptInfo *rel_i = fpinfo->innerrel;
@@ -2328,7 +2292,6 @@ mysql_deparse_aggref(Aggref *node, deparse_expr_cxt *context)
  * mysql_append_groupby_clause
  * 		Deparse GROUP BY clause.
  */
-#if PG_VERSION_NUM >= 100000
 static void
 mysql_append_groupby_clause(List *tlist, deparse_expr_cxt *context)
 {
@@ -2404,7 +2367,6 @@ mysql_deparse_sort_group_clause(Index ref, List *tlist, bool force_colno,
 
 	return (Node *) expr;
 }
-#endif
 
 /*
  * mysql_is_foreign_param
@@ -2434,13 +2396,11 @@ mysql_is_foreign_param(PlannerInfo *root,
 				/* It would have to be sent unless it's a foreign Var. */
 				Var		   *var = (Var *) expr;
 				Relids		relids;
-#if PG_VERSION_NUM >= 100000
 				MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) (baserel->fdw_private);
 
 				if (IS_UPPER_REL(baserel))
 					relids = fpinfo->outerrel->relids;
 				else
-#endif
 					relids = baserel->relids;
 
 				if (bms_is_member(var->varno, relids) && var->varlevelsup == 0)

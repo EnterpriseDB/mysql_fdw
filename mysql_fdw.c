@@ -205,23 +205,14 @@ static void mysqlGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel,
 static bool mysqlAnalyzeForeignTable(Relation relation,
 									 AcquireSampleRowsFunc *func,
 									 BlockNumber *totalpages);
-#if PG_VERSION_NUM >= 90500
 static ForeignScan *mysqlGetForeignPlan(PlannerInfo *root,
 										RelOptInfo *foreignrel,
 										Oid foreigntableid,
 										ForeignPath *best_path, List *tlist,
 										List *scan_clauses, Plan *outer_plan);
-#else
-static ForeignScan *mysqlGetForeignPlan(PlannerInfo *root,
-										RelOptInfo *foreignrel,
-										Oid foreigntableid,
-										ForeignPath *best_path, List *tlist,
-										List *scan_clauses);
-#endif
 static void mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel,
 							   Cost *startup_cost, Cost *total_cost,
 							   Oid foreigntableid);
-#if PG_VERSION_NUM >= 90600
 static void mysqlGetForeignJoinPaths(PlannerInfo *root,
 									 RelOptInfo *joinrel,
 									 RelOptInfo *outerrel,
@@ -230,7 +221,6 @@ static void mysqlGetForeignJoinPaths(PlannerInfo *root,
 									 JoinPathExtraData *extra);
 static bool mysqlRecheckForeignScan(ForeignScanState *node,
 									TupleTableSlot *slot);
-#endif
 
 #if PG_VERSION_NUM >= 110000
 static void mysqlGetForeignUpperPaths(PlannerInfo *root,
@@ -244,11 +234,8 @@ static void mysqlGetForeignUpperPaths(PlannerInfo *root,
 									  RelOptInfo *input_rel,
 									  RelOptInfo *output_rel);
 #endif
-
-#if PG_VERSION_NUM >= 90500
 static List *mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt,
 									  Oid serverOid);
-#endif
 
 #if PG_VERSION_NUM >= 110000
 static void mysqlBeginForeignInsert(ModifyTableState *mtstate,
@@ -280,7 +267,6 @@ static void process_query_params(ExprContext *econtext,
 								 Oid *param_types);
 
 static void bind_stmt_params_and_exec(ForeignScanState *node);
-#if PG_VERSION_NUM >= 90600
 static bool mysql_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 								  JoinType jointype, RelOptInfo *outerrel,
 								  RelOptInfo *innerrel,
@@ -292,7 +278,6 @@ static List *mysql_adjust_whole_row_ref(PlannerInfo *root,
 static List *mysql_build_scan_list_for_baserel(Oid relid, Index varno,
 											   Bitmapset *attrs_used,
 											   List **retrieved_attrs);
-#endif
 static void mysql_build_whole_row_constr_info(MySQLFdwExecState *festate,
 											  TupleDesc tupdesc,
 											  Bitmapset *relids,
@@ -516,9 +501,7 @@ mysql_fdw_handler(PG_FUNCTION_ARGS)
 	fdwroutine->EndForeignModify = mysqlEndForeignModify;
 
 	/* Function for EvalPlanQual rechecks */
-#if PG_VERSION_NUM >= 90600
 	fdwroutine->RecheckForeignScan = mysqlRecheckForeignScan;
-#endif
 
 	/* Support functions for EXPLAIN */
 	fdwroutine->ExplainForeignScan = mysqlExplainForeignScan;
@@ -527,9 +510,7 @@ mysql_fdw_handler(PG_FUNCTION_ARGS)
 	fdwroutine->AnalyzeForeignTable = mysqlAnalyzeForeignTable;
 
 	/* Support functions for IMPORT FOREIGN SCHEMA */
-#if PG_VERSION_NUM >= 90500
 	fdwroutine->ImportForeignSchema = mysqlImportForeignSchema;
-#endif
 
 #if PG_VERSION_NUM >= 110000
 	/* Partition routing and/or COPY from */
@@ -537,15 +518,11 @@ mysql_fdw_handler(PG_FUNCTION_ARGS)
 	fdwroutine->EndForeignInsert = mysqlEndForeignInsert;
 #endif
 
-#if PG_VERSION_NUM >= 90600
 	/* Support functions for join push-down */
 	fdwroutine->GetForeignJoinPaths = mysqlGetForeignJoinPaths;
-#endif
 
-#if PG_VERSION_NUM >= 100000
 	/* Support functions for upper relation push-down */
 	fdwroutine->GetForeignUpperPaths = mysqlGetForeignUpperPaths;
-#endif
 
 	PG_RETURN_POINTER(fdwroutine);
 }
@@ -1016,13 +993,8 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 	if (mysql_query(conn, sql_mode) != 0)
 		mysql_error_print(conn);
 
-#if PG_VERSION_NUM >= 90600
 	pull_varattnos((Node *) baserel->reltarget->exprs, baserel->relid,
 				   &attrs_used);
-#else
-	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid,
-				   &attrs_used);
-#endif
 
 	foreach(lc, baserel->baserestrictinfo)
 	{
@@ -1034,13 +1006,8 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 			fpinfo->local_conds = lappend(fpinfo->local_conds, ri);
 	}
 
-#if PG_VERSION_NUM >= 90600
 	pull_varattnos((Node *) baserel->reltarget->exprs, baserel->relid,
 				   &fpinfo->attrs_used);
-#else
-	pull_varattnos((Node *) baserel->reltargetlist, baserel->relid,
-				   &fpinfo->attrs_used);
-#endif
 
 	foreach(lc, fpinfo->local_conds)
 	{
@@ -1218,17 +1185,13 @@ mysqlGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel,
 	/* Create a ForeignPath node and add it as only possible path */
 	add_path(baserel, (Path *)
 			 create_foreignscan_path(root, baserel,
-#if PG_VERSION_NUM >= 90600
 									 NULL,	/* default pathtarget */
-#endif
 									 baserel->rows,
 									 startup_cost,
 									 total_cost,
 									 NIL,	/* no pathkeys */
 									 baserel->lateral_relids,
-#if PG_VERSION_NUM >= 90500
 									 NULL,	/* no extra plan */
-#endif
 									 NULL));	/* no fdw_private data */
 }
 
@@ -1237,17 +1200,10 @@ mysqlGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel,
  * mysqlGetForeignPlan
  * 		Get a foreign scan plan node
  */
-#if PG_VERSION_NUM >= 90500
 static ForeignScan *
 mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 					Oid foreigntableid, ForeignPath *best_path,
 					List *tlist, List *scan_clauses, Plan *outer_plan)
-#else
-static ForeignScan *
-mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
-					Oid foreigntableid, ForeignPath *best_path,
-					List *tlist, List *scan_clauses)
-#endif
 {
 	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) foreignrel->fdw_private;
 	Index		scan_relid;
@@ -1307,12 +1263,10 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 			local_exprs = lappend(local_exprs, rinfo->clause);
 	}
 
-#if PG_VERSION_NUM >= 100000
 	if (IS_UPPER_REL(foreignrel))
 		scan_var_list = pull_var_clause((Node *) fpinfo->grouped_tlist,
 										PVC_RECURSE_AGGREGATES);
 	else
-#endif
 		scan_var_list = pull_var_clause((Node *) foreignrel->reltarget->exprs,
 										PVC_RECURSE_PLACEHOLDERS);
 
@@ -1338,12 +1292,7 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 						attr->attname.data)));
 	}
 
-#if PG_VERSION_NUM >= 90600
-#if PG_VERSION_NUM >= 100000
 	if (IS_JOIN_REL(foreignrel))
-#else
-	if (foreignrel->reloptkind == RELOPT_JOINREL)
-#endif
 	{
 		scan_var_list = list_concat_unique(NIL, scan_var_list);
 
@@ -1386,9 +1335,7 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 			 * joins.  Queries involving aggregates or grouping do not require
 			 * EPQ mechanism, hence should not have an outer plan here.
 			 */
-#if PG_VERSION_NUM >= 100000
 			Assert(!IS_UPPER_REL(foreignrel));
-#endif
 
 			foreach(lc, local_exprs)
 			{
@@ -1415,8 +1362,6 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 			}
 		}
 	}
-#endif  /* PG_VERSION_NUM >= 90600 */
-#if PG_VERSION_NUM >= 100000
 	else if (IS_UPPER_REL(foreignrel))
 	{
 		/*
@@ -1435,7 +1380,6 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 		fdw_scan_tlist = fpinfo->grouped_tlist;
 		local_exprs = extract_actual_clauses(fpinfo->local_conds, false);
 	}
-#endif
 
 	/*
 	 * Build the query string to be sent for execution, and identify
@@ -1464,12 +1408,7 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 	 */
 
 	fdw_private = list_make2(makeString(sql.data), retrieved_attrs);
-#if PG_VERSION_NUM >= 100000
 	if (IS_JOIN_REL(foreignrel) || IS_UPPER_REL(foreignrel))
-#else
-	if (foreignrel->reloptkind == RELOPT_JOINREL ||
-		foreignrel->reloptkind == RELOPT_UPPER_REL)
-#endif
 	{
 		fdw_private = lappend(fdw_private,
 							  makeString(fpinfo->relation_name->data));
@@ -1498,13 +1437,8 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 	 * field of the finished plan node; we can't keep them in private state
 	 * because then they wouldn't be subject to later planner processing.
 	 */
-#if PG_VERSION_NUM >= 90500
 	return make_foreignscan(tlist, local_exprs, scan_relid, params_list,
 							fdw_private, fdw_scan_tlist, NIL, outer_plan);
-#else
-	return make_foreignscan(tlist, local_exprs, scan_relid, params_list,
-							fdw_private);
-#endif
 }
 
 /*
@@ -2112,7 +2046,6 @@ mysqlEndForeignModify(EState *estate, ResultRelInfo *resultRelInfo)
  * mysqlImportForeignSchema
  * 		Import a foreign schema (9.5+)
  */
-#if PG_VERSION_NUM >= 90500
 static List *
 mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 {
@@ -2373,7 +2306,6 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 
 	return commands;
 }
-#endif
 
 #if PG_VERSION_NUM >= 110000
 /*
@@ -2452,11 +2384,7 @@ prepare_query_params(PlanState *node,
 	 * benefit, and it'd require postgres_fdw to know more than is desirable
 	 * about Param evaluation.)
 	 */
-#if PG_VERSION_NUM >= 100000
 	*param_exprs = ExecInitExprList(fdw_exprs, node);
-#else
-	*param_exprs = (List *) ExecInitExpr((Expr *) fdw_exprs, node);
-#endif
 
 	/* Allocate buffer for text form of query parameters. */
 	*param_values = (const char **) palloc0(numParams * sizeof(char *));
@@ -2484,11 +2412,7 @@ process_query_params(ExprContext *econtext,
 		bool		isNull;
 
 		/* Evaluate the parameter expression */
-#if PG_VERSION_NUM >= 100000
 		expr_value = ExecEvalExpr(expr_state, econtext, &isNull);
-#else
-		expr_value = ExecEvalExpr(expr_state, econtext, &isNull, NULL);
-#endif
 		mysql_bind_sql_var(param_types[i], i, expr_value, *mysql_bind_buf,
 						   &isNull);
 
@@ -2667,11 +2591,7 @@ getUpdateTargetAttrs(RangeTblEntry *rte)
 {
 	List	   *targetAttrs = NIL;
 
-#if PG_VERSION_NUM >= 90500
 	Bitmapset  *tmpset = bms_copy(rte->updatedCols);
-#else
-	Bitmapset  *tmpset = bms_copy(rte->modifiedCols);
-#endif
 	AttrNumber	col;
 
 	while ((col = bms_first_member(tmpset)) >= 0)
@@ -2696,7 +2616,6 @@ getUpdateTargetAttrs(RangeTblEntry *rte)
  * mysqlGetForeignJoinPaths
  *		Add possible ForeignPath to joinrel, if join is safe to push down.
  */
-#if PG_VERSION_NUM >= 90600
 static void
 mysqlGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 						 RelOptInfo *outerrel, RelOptInfo *innerrel,
@@ -2920,12 +2839,8 @@ mysql_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 		Relids		relids;
 
 		/* PlaceHolderInfo refers to parent relids, not child relids. */
-#if PG_VERSION_NUM >= 100000
 		relids = IS_OTHER_REL(joinrel) ?
 			joinrel->top_parent_relids : joinrel->relids;
-#else
-		relids = joinrel->relids;
-#endif			/* PG_VERSION_NUM >= 100000 */
 
 		if (bms_is_subset(phinfo->ph_eval_at, relids) &&
 			bms_nonempty_difference(relids, phinfo->ph_eval_at))
@@ -3224,7 +3139,6 @@ mysql_build_scan_list_for_baserel(Oid relid, Index varno,
 
 	return tlist;
 }
-#endif     /* PG_VERSION_NUM >= 90600 */
 
 /*
  * mysql_build_whole_row_constr_info
@@ -3301,11 +3215,8 @@ mysql_build_whole_row_constr_info(MySQLFdwExecState *festate,
 
 			Assert(IsA(var, Var) &&var->varno == cnt_rt);
 
-#if PG_VERSION_NUM >= 100000
 			tle_sl = tlist_member((Expr *) var, scan_tlist);
-#else
-			tle_sl = tlist_member((Node *) var, scan_tlist);
-#endif
+
 			Assert(tle_sl);
 
 			wr_state->attr_pos[cnt_attr++] = tle_sl->resno - 1;
@@ -3341,11 +3252,7 @@ mysql_build_whole_row_constr_info(MySQLFdwExecState *festate,
 			fs_attr_pos[cnt_attr] = -var->varno;
 		else
 		{
-#if PG_VERSION_NUM >= 100000
 			TargetEntry *tle_sl = tlist_member((Expr *) var, scan_tlist);
-#else
-			TargetEntry *tle_sl = tlist_member((Node *) var, scan_tlist);
-#endif
 
 			Assert(tle_sl);
 			fs_attr_pos[cnt_attr] = tle_sl->resno - 1;
@@ -3439,13 +3346,6 @@ mysql_form_whole_row(MySQLWRState *wr_state, Datum *values, bool *nulls)
 	return heap_form_tuple(wr_state->tupdesc, wr_state->values,
 						   wr_state->nulls);
 }
-
-/*
- * Aggregate pushdown is supported from V10 onwards, so for compiling on
- * branches less than V10, define the aggregate pushdown related functions only
- * for versions later to V10.
- */
-#if PG_VERSION_NUM >= 100000
 
 /*
  * mysql_foreign_grouping_ok
@@ -3839,4 +3739,3 @@ mysql_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	/* Add generated path into grouped_rel by add_path(). */
 	add_path(grouped_rel, (Path *) grouppath);
 }
-#endif		/* PG_VERSION_NUM >= 100000. End of APD related functions. */

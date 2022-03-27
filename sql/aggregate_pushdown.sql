@@ -246,19 +246,8 @@ INSERT INTO fdw132_t2 values(4, 4, 'AAA12', 'foo');
 -- Test partition-wise aggregates
 SET enable_partitionwise_aggregate TO on;
 
--- Create the partition table in plpgsql block as those are failing with
--- different error messages on back-branches.
--- All test cases related to partition-wise join gives an error on v96 as
--- partition syntax is not supported there.
-DO
-$$
-BEGIN
-  EXECUTE 'CREATE TABLE fprt1 (c1 int, c2 int, c3 varchar, c4 varchar) PARTITION BY RANGE(c1)';
-EXCEPTION WHEN others THEN
-  RAISE NOTICE 'syntax error';
-END;
-$$
-LANGUAGE plpgsql;
+-- Create the partition table.
+CREATE TABLE fprt1 (c1 int, c2 int, c3 varchar, c4 varchar) PARTITION BY RANGE(c1);
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (1) TO (2)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test1');
 CREATE FOREIGN TABLE ftprt1_p2 PARTITION OF fprt1 FOR VALUES FROM (3) TO (4)

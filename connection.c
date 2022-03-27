@@ -119,10 +119,6 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 
 	if (entry->conn == NULL)
 	{
-#if PG_VERSION_NUM < 90600
-		Oid			umoid;
-#endif
-
 		entry->conn = mysql_connect(opt);
 		elog(DEBUG3, "new mysql_fdw connection %p for server \"%s\"",
 			 entry->conn, server->servername);
@@ -136,25 +132,10 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 		entry->server_hashvalue =
 			GetSysCacheHashValue1(FOREIGNSERVEROID,
 								  ObjectIdGetDatum(server->serverid));
-#if PG_VERSION_NUM >= 90600
+
 		entry->mapping_hashvalue =
 			GetSysCacheHashValue1(USERMAPPINGOID,
 								  ObjectIdGetDatum(user->umid));
-#else
-		/* Pre-9.6, UserMapping doesn't store its OID, so look it up again */
-		umoid = GetSysCacheOid2(USERMAPPINGUSERSERVER,
-								ObjectIdGetDatum(user->userid),
-								ObjectIdGetDatum(user->serverid));
-		if (!OidIsValid(umoid))
-		{
-			/* Not found for the specific user -- try PUBLIC */
-			umoid = GetSysCacheOid2(USERMAPPINGUSERSERVER,
-									ObjectIdGetDatum(InvalidOid),
-									ObjectIdGetDatum(user->serverid));
-		}
-		entry->mapping_hashvalue =
-			GetSysCacheHashValue1(USERMAPPINGOID, ObjectIdGetDatum(umoid));
-#endif
 	}
 	return entry->conn;
 }

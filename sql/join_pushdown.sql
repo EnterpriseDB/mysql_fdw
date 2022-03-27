@@ -51,7 +51,7 @@ ALTER FOREIGN TABLE fdw139_t1 ALTER COLUMN c4 type user_enum;
 ALTER FOREIGN TABLE fdw139_t2 ALTER COLUMN c4 type user_enum;
 
 -- Join two tables
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -62,7 +62,7 @@ SELECT t1.c1, t2.c1
 
 -- INNER JOIN with where condition.  Should execute where condition separately
 -- on remote side.
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c2 = 100
@@ -72,7 +72,7 @@ SELECT t1.c1, t2.c1
   ORDER BY t1.c3, t1.c1;
 
 -- INNER JOIN in which join clause is not pushable.
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (abs(t1.c1) = t2.c1) WHERE t1.c2 = 100
@@ -82,7 +82,7 @@ SELECT t1.c1, t2.c1
   ORDER BY t1.c3, t1.c1;
 
 -- Join three tables
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c2, t3.c3
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) JOIN fdw139_t3 t3 ON (t3.c1 = t1.c1)
@@ -147,7 +147,7 @@ SELECT t1.c1, t1.c2, t2.c1, t2.c2
   WHERE (t2.c1 < 10 OR t2.c1 IS NULL) AND t1.c1 < 10;
 
 -- RIGHT OUTER JOIN
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 RIGHT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -158,7 +158,7 @@ SELECT t1.c1, t2.c1
 
 -- Combinations of various joins
 -- INNER JOIN + RIGHT JOIN
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c2, t3.c3
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN fdw139_t3 t3 ON (t1.c1 = t3.c1)
@@ -179,7 +179,7 @@ SELECT t1.c1, t2.c1
 
 -- Join two tables with FOR UPDATE clause
 -- tests whole-row reference for row marks
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -188,7 +188,7 @@ SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c3, t1.c1 FOR UPDATE OF t1;
 
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -198,7 +198,7 @@ SELECT t1.c1, t2.c1
   ORDER BY t1.c3, t1.c1 FOR UPDATE;
 
 -- Join two tables with FOR SHARE clause
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -207,7 +207,7 @@ SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c3, t1.c1 FOR SHARE OF t1;
 
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -309,7 +309,7 @@ SELECT t1.c1, t2.c1
 -- in the SELECT clause.  In this test unsafe clause needs to have column
 -- references from both joining sides so that the clause is not pushed down
 -- into one of the joining sides.
--- target list order is different for v10 and v96.
+-- target list order is different for v10.
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c4 = t2.c4
@@ -423,33 +423,14 @@ INSERT INTO tmp_t4 values(8, 8, 'CCC13');
 -- Test partition-wise join
 SET enable_partitionwise_join TO on;
 
--- Create the partition table in plpgsql block as those are failing with
--- different error messages on back-branches.
--- All test cases related to partition-wise join gives an error on v96 and v95
--- as partition syntax is not supported there.
-DO
-$$
-BEGIN
-  EXECUTE 'CREATE TABLE fprt1 (c1 int, c2 int, c3 varchar, c4 varchar) PARTITION BY RANGE(c1)';
-EXCEPTION WHEN others THEN
-  RAISE NOTICE 'syntax error';
-END;
-$$
-LANGUAGE plpgsql;
+-- Create the partition table.
+CREATE TABLE fprt1 (c1 int, c2 int, c3 varchar, c4 varchar) PARTITION BY RANGE(c1);
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (1) TO (4)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test1');
 CREATE FOREIGN TABLE ftprt1_p2 PARTITION OF fprt1 FOR VALUES FROM (5) TO (8)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', TABLE_NAME 'test2');
 
-DO
-$$
-BEGIN
-  EXECUTE 'CREATE TABLE fprt2 (c1 int, c2 int, c3 varchar) PARTITION BY RANGE(c2)';
-EXCEPTION WHEN syntax_error THEN
-  RAISE NOTICE 'syntax error';
-END;
-$$
-LANGUAGE plpgsql;
+CREATE TABLE fprt2 (c1 int, c2 int, c3 varchar) PARTITION BY RANGE(c2);
 CREATE FOREIGN TABLE ftprt2_p1 PARTITION OF fprt2 FOR VALUES FROM (1) TO (4)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test3');
 CREATE FOREIGN TABLE ftprt2_p2 PARTITION OF fprt2 FOR VALUES FROM (5) TO (8)
