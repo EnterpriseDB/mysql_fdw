@@ -112,7 +112,7 @@ static void mysql_deparse_param(Param *node, deparse_expr_cxt *context);
 #if PG_VERSION_NUM < 120000
 static void mysql_deparse_array_ref(ArrayRef *node, deparse_expr_cxt *context);
 #else
-static void mysql_deparse_array_ref(SubscriptingRef *node,
+static void mysql_deparse_subscripting_ref(SubscriptingRef *node,
 									deparse_expr_cxt *context);
 #endif
 static void mysql_deparse_func_expr(FuncExpr *node, deparse_expr_cxt *context);
@@ -679,7 +679,7 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 			mysql_deparse_array_ref((ArrayRef *) node, context);
 #else
 		case T_SubscriptingRef:
-			mysql_deparse_array_ref((SubscriptingRef *) node, context);
+			mysql_deparse_subscripting_ref((SubscriptingRef *) node, context);
 #endif
 			break;
 		case T_FuncExpr:
@@ -1003,53 +1003,41 @@ mysql_deparse_param(Param *node, deparse_expr_cxt *context)
  */
 static void
 #if PG_VERSION_NUM < 120000
-mysql_deparse_array_ref(ArrayRef *node, deparse_expr_cxt *context)
+mysql_deparse_array_ref(ArrayRef * node, deparse_expr_cxt *context)
 #else
-mysql_deparse_array_ref(SubscriptingRef *node, deparse_expr_cxt *context)
+mysql_deparse_subscripting_ref(SubscriptingRef *node, deparse_expr_cxt *context)
 #endif
 {
-	StringInfo	buf = context->buf;
-	ListCell   *lowlist_item;
 	ListCell   *uplist_item;
+	ListCell   *lc;
+	StringInfo	buf = context->buf;
+	bool		first = true;
+	ArrayExpr  *array_expr = (ArrayExpr *) node->refexpr;
 
-	/* Always parenthesize the expression. */
-	appendStringInfoChar(buf, '(');
+	/* Not support slice function, which is excluded in pushdown checking */
+	Assert(node->reflowerindexpr == NULL);
+	Assert(node->refupperindexpr != NULL);
 
-	/*
-	 * Deparse referenced array expression first.  If that expression includes
-	 * a cast, we have to parenthesize to prevent the array subscript from
-	 * being taken as typename decoration.  We can avoid that in the typical
-	 * case of subscripting a Var, but otherwise do it.
-	 */
-	if (IsA(node->refexpr, Var))
-		deparseExpr(node->refexpr, context);
-	else
+	/* Transform array subscripting to ELT(index number, str1, str2, ...) */
+	appendStringInfoString(buf, "ELT(");
+
+	/* Append index number of ELT() expression */
+	uplist_item = list_head(node->refupperindexpr);
+	deparseExpr(lfirst(uplist_item), context);
+	appendStringInfoString(buf, ", ");
+
+	/* Deparse Array Expression in form of ELT syntax */
+	foreach(lc, array_expr->elements)
 	{
-		appendStringInfoChar(buf, '(');
-		deparseExpr(node->refexpr, context);
-		appendStringInfoChar(buf, ')');
+		if (!first)
+			appendStringInfoString(buf, ", ");
+		deparseExpr(lfirst(lc), context);
+		first = false;
 	}
 
-	/* Deparse subscript expressions. */
-	lowlist_item = list_head(node->reflowerindexpr);	/* could be NULL */
-	foreach(uplist_item, node->refupperindexpr)
-	{
-		appendStringInfoChar(buf, '[');
-		if (lowlist_item)
-		{
-			deparseExpr(lfirst(lowlist_item), context);
-			appendStringInfoChar(buf, ':');
-#if PG_VERSION_NUM < 130000
-			lowlist_item = lnext(lowlist_item);
-#else
-			lowlist_item = lnext(node->reflowerindexpr, lowlist_item);
-#endif
-		}
-		deparseExpr(lfirst(uplist_item), context);
-		appendStringInfoChar(buf, ']');
-	}
-
+	/* Enclose the ELT() expression */
 	appendStringInfoChar(buf, ')');
+
 }
 
 /*
@@ -1493,6 +1481,11 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 					/* Var belongs to foreign table */
 					collation = var->varcollid;
 					state = OidIsValid(collation) ? FDW_COLLATE_SAFE : FDW_COLLATE_NONE;
+
+					/* Mysql do not have Array data type */
+					if (type_is_array(var->vartype))
+						elog(ERROR, "mysql_fdw: Not support array data type\n");
+
 				}
 				else
 				{
@@ -1549,6 +1542,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 			{
 				SubscriptingRef *ar = (SubscriptingRef *) node;
 #endif
+				Assert(list_length(ar->refupperindexpr) > 0);
 
 				/* Should not be in the join clauses of the Join-pushdown */
 				if (glob_cxt->is_remote_cond)
@@ -1558,25 +1552,55 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				if (ar->refassgnexpr != NULL)
 					return false;
 
+#if PG_VERSION_NUM >= 140000
+
+				/*
+				 * Recurse into the remaining subexpressions.  The container
+				 * subscripts will not affect collation of the SubscriptingRef
+				 * result, so do those first and reset inner_cxt afterwards.
+				 */
+#else
+
 				/*
 				 * Recurse to remaining subexpressions.  Since the array
 				 * subscripts must yield (noncollatable) integers, they won't
 				 * affect the inner_cxt state.
 				 */
+#endif
+				/* Allow 1-D subcription, other case does not push down */
+				if (list_length(ar->refupperindexpr) > 1)
+					return false;
+
 				if (!foreign_expr_walker((Node *) ar->refupperindexpr,
 										 glob_cxt, &inner_cxt))
 					return false;
-				if (!foreign_expr_walker((Node *) ar->reflowerindexpr,
-										 glob_cxt, &inner_cxt))
+
+				/* Disable slice by checking reflowerindexpr [:] */
+				if (ar->reflowerindexpr)
 					return false;
+
+#if PG_VERSION_NUM >= 140000
+				inner_cxt.collation = InvalidOid;
+				inner_cxt.state = FDW_COLLATE_NONE;
+#endif
+				/* Disble subcripting for Var, eg: c1[1] by checking T_Var */
 				if (!foreign_expr_walker((Node *) ar->refexpr,
 										 glob_cxt, &inner_cxt))
 					return false;
+#if PG_VERSION_NUM >= 140000
 
 				/*
-				 * Array subscripting should yield same collation as input,
-				 * but for safety use same logic as for function nodes.
+				 * Container subscripting typically yields same collation as
+				 * refexpr's, but in case it doesn't, use same logic as for
+				 * function nodes.
 				 */
+#else
+
+				/*
+				 * Container subscripting should yield same collation as
+				 * input, but for safety use same logic as for function nodes.
+				 */
+#endif
 				collation = ar->refcollid;
 				if (collation == InvalidOid)
 					state = FDW_COLLATE_NONE;

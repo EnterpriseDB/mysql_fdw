@@ -556,6 +556,12 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	char		sql_mode[255];
 
 	/*
+	 * Do nothing in EXPLAIN (no ANALYZE) case. node->fdw_state stays NULL.
+	 */
+	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+		return;
+
+	/*
 	 * We'll save private state in node->fdw_state.
 	 */
 	festate = (MySQLFdwExecState *) palloc(sizeof(MySQLFdwExecState));
@@ -861,7 +867,6 @@ mysqlIterateForeignScan(ForeignScanState *node)
 static void
 mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
-	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
 	RangeTblEntry *rte;
 	ForeignScan *fsplan = (ForeignScan *) node->ss.ps.plan;
 	int			rtindex;
@@ -901,10 +906,14 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 			ExplainPropertyLong("Remote server startup cost", 25, es);
 #endif
 	}
-
 	/* Show the remote query in verbose mode */
 	if (es->verbose)
-		ExplainPropertyText("Remote query", festate->query, es);
+	{
+		char	   *remote_sql = strVal(list_nth(fdw_private,
+												 mysqlFdwScanPrivateSelectSql));
+
+		ExplainPropertyText("Remote query", remote_sql, es);
+	}
 }
 
 /*
@@ -915,6 +924,10 @@ static void
 mysqlEndForeignScan(ForeignScanState *node)
 {
 	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
+
+	/* if festate is NULL, we are in EXPLAIN; do nothing */
+	if (festate == NULL)
+		return;
 
 	if (festate->table && festate->table->mysql_res)
 	{
