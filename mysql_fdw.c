@@ -1283,28 +1283,6 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 		scan_var_list = pull_var_clause((Node *) foreignrel->reltarget->exprs,
 										PVC_RECURSE_PLACEHOLDERS);
 
-	/* System attributes are not allowed. */
-	foreach(lc, scan_var_list)
-	{
-		Var		   *var = lfirst(lc);
-		const FormData_pg_attribute *attr;
-
-		Assert(IsA(var, Var));
-
-		if (var->varattno >= 0)
-			continue;
-
-#if PG_VERSION_NUM >= 120000
-		attr = SystemAttributeDefinition(var->varattno);
-#else
-		attr = SystemAttributeDefinition(var->varattno, false);
-#endif
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_COLUMN_NAME_NOT_FOUND),
-				 errmsg("system attribute \"%s\" can't be fetched from remote relation",
-						attr->attname.data)));
-	}
-
 	if (IS_JOIN_REL(foreignrel))
 	{
 		scan_var_list = list_concat_unique(NIL, scan_var_list);

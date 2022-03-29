@@ -1307,13 +1307,68 @@ SELECT t1.c1, (SELECT c2 FROM f_test_tbl1 WHERE c1 =(SELECT 500))
 
 -- FDW-255: Should throw an error when we select system attribute.
 SELECT xmin FROM f_test_tbl1;
-ERROR:  system attribute "xmin" can't be fetched from remote relation
+ xmin 
+------
+   96
+   96
+   96
+   96
+   96
+   96
+   96
+   96
+   96
+   96
+   96
+   96
+   96
+   96
+(14 rows)
+
 SELECT ctid, xmax, tableoid FROM f_test_tbl1;
-ERROR:  system attribute "ctid" can't be fetched from remote relation
+      ctid      |    xmax    | tableoid 
+----------------+------------+----------
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+ (4294967295,0) | 4294967295 |    16480
+(14 rows)
+
 SELECT xmax, c1 FROM f_test_tbl1;
-ERROR:  system attribute "xmax" can't be fetched from remote relation
+    xmax    |  c1  
+------------+------
+ 4294967295 |  100
+ 4294967295 |  200
+ 4294967295 |  300
+ 4294967295 |  400
+ 4294967295 |  500
+ 4294967295 |  600
+ 4294967295 |  700
+ 4294967295 |  800
+ 4294967295 |  900
+ 4294967295 | 1000
+ 4294967295 | 1100
+ 4294967295 | 1200
+ 4294967295 | 1300
+ 4294967295 | 1400
+(14 rows)
+
 SELECT count(tableoid) FROM f_test_tbl1;
-ERROR:  system attribute "tableoid" can't be fetched from remote relation
+ count 
+-------
+    14
+(1 row)
+
 -- FDW-333: MySQL BINARY and VARBINARY data type should map to BYTEA in
 -- Postgres while importing the schema.
 IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO ("test5")

@@ -549,9 +549,6 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 						 PlannerInfo *root, bool qualify_col)
 {
 	RangeTblEntry *rte;
-	char	   *colname = NULL;
-	List	   *options;
-	ListCell   *lc;
 
 	/* varno must not be any of OUTER_VAR, INNER_VAR and INDEX_VAR. */
 	Assert(!IS_SPECIAL_VARNO(varno));
@@ -559,37 +556,123 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 	/* Get RangeTblEntry from array in PlannerInfo. */
 	rte = planner_rt_fetch(varno, root);
 
-	/*
-	 * If it's a column of a foreign table, and it has the column_name FDW
-	 * option, use that value.
-	 */
-	options = GetForeignColumnOptions(rte->relid, varattno);
-	foreach(lc, options)
+	/* We not support fetching any system attributes from remote side */
+	if (varattno < 0)
 	{
-		DefElem    *def = (DefElem *) lfirst(lc);
+		/*
+		 * All other system attributes are fetched as 0, except for table OID
+		 * and ctid, table OID is fetched as the local table OID, ctid is
+		 * fectch as invalid value. However, we must be careful; the table
+		 * could be beneath an outer join, in which case it must go to NULL
+		 * whenever the rest of the row does.
+		 */
+		char		fetchval[32];
 
-		if (strcmp(def->defname, "column_name") == 0)
+		if (varattno == TableOidAttributeNumber)
 		{
-			colname = defGetString(def);
-			break;
+			/*
+			 * table OID is fetched as the local table OID
+			 */
+			pg_snprintf(fetchval, sizeof(fetchval), "%u", rte->relid);
 		}
+		else if (varattno == SelfItemPointerAttributeNumber)
+		{
+			/*
+			 * ctid is fetched as '(4294967295,0)' ~ (0xFFFFFFFF, 0) (invalid
+			 * value), which is default value of tupleSlot->tts_tid after run
+			 * ExecClearTuple.
+			 */
+			pg_snprintf(fetchval, sizeof(fetchval), "'(%u,%u)'",
+						InvalidBlockNumber,
+						InvalidOffsetNumber);
+		}
+		else
+		{
+			/* other system attributes are fetched as 0 */
+			pg_snprintf(fetchval, sizeof(fetchval), "%u", 0);
+		}
+
+		appendStringInfo(buf, "%s", fetchval);
 	}
+	else if (varattno == 0)
+	{
+		/* Whole row reference */
+		Relation	rel;
+		Bitmapset  *attrs_used;
 
-	/*
-	 * If it's a column of a regular table or it doesn't have column_name
-	 * FDW option, use attribute name.
-	 */
-	if (colname == NULL)
+		/* Required only to be passed down to deparseTargetList(). */
+		List	   *retrieved_attrs;
+
+		/*
+		 * The lock on the relation will be held by upper callers, so it's
+		 * fine to open it with no lock here.
+		 */
+		rel = table_open(rte->relid, NoLock);
+
+		/*
+		 * The local name of the foreign table can not be recognized by the
+		 * foreign server and the table it references on foreign server might
+		 * have different column ordering or different columns than those
+		 * declared locally. Hence we have to deparse whole-row reference as
+		 * ROW(columns referenced locally). Construct this by deparsing a
+		 * "whole row" attribute.
+		 */
+		attrs_used = bms_add_member(NULL,
+									0 - FirstLowInvalidHeapAttributeNumber);
+
+		/*
+		 * In case the whole-row reference is under an outer join then it has
+		 * to go NULL whenever the rest of the row goes NULL. Deparsing a join
+		 * query would always involve multiple relations, thus qualify_col
+		 * would be true.
+		 */
+
+		mysql_deparse_target_list(buf, root, varno, rel, attrs_used,
+								  &retrieved_attrs);
+
+		table_close(rel, NoLock);
+		bms_free(attrs_used);
+	}
+	else
+	{
+		char	   *colname = NULL;
+		List	   *options;
+		ListCell   *lc;
+
+		/* varno must not be any of OUTER_VAR, INNER_VAR and INDEX_VAR. */
+		Assert(!IS_SPECIAL_VARNO(varno));
+
+		/*
+		 * If it's a column of a foreign table, and it has the column_name FDW
+		 * option, use that value.
+		 */
+		options = GetForeignColumnOptions(rte->relid, varattno);
+		foreach(lc, options)
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+
+			if (strcmp(def->defname, "column_name") == 0)
+			{
+				colname = defGetString(def);
+				break;
+			}
+		}
+
+		/*
+		 * If it's a column of a regular table or it doesn't have column_name
+		 * FDW option, use attribute name.
+		 */
+		if (colname == NULL)
 #if PG_VERSION_NUM >= 110000
-		colname = get_attname(rte->relid, varattno, false);
+			colname = get_attname(rte->relid, varattno, false);
 #else
-		colname = get_relid_attribute_name(rte->relid, varattno);
+			colname = get_relid_attribute_name(rte->relid, varattno);
 #endif
+		if (qualify_col)
+			ADD_REL_QUALIFIER(buf, varno);
 
-	if (qualify_col)
-		ADD_REL_QUALIFIER(buf, varno);
-
-	appendStringInfoString(buf, mysql_quote_identifier(colname, '`'));
+		appendStringInfoString(buf, mysql_quote_identifier(colname, '`'));
+	}
 }
 
 static void
@@ -1476,9 +1559,10 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				 * non-default collation.
 				 */
 				if (bms_is_member(var->varno, glob_cxt->relids) &&
-					var->varlevelsup == 0)
+					var->varlevelsup == 0 && var->varattno > 0)
 				{
 					/* Var belongs to foreign table */
+					/* Else check the collation */
 					collation = var->varcollid;
 					state = OidIsValid(collation) ? FDW_COLLATE_SAFE : FDW_COLLATE_NONE;
 
@@ -1492,6 +1576,15 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 					/* Var belongs to some other table */
 					if (var->varcollid != InvalidOid &&
 						var->varcollid != DEFAULT_COLLATION_OID)
+						return false;
+
+					/*
+					 * System columns should not be sent to
+					 * the remote, since we don't make any effort to ensure
+					 * that local and remote values match (tableoid, in
+					 * particular, almost certainly doesn't match).
+					 */
+					if (var->varattno < 0)
 						return false;
 
 					/* We can consider that it doesn't set collation */
