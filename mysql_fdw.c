@@ -564,7 +564,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	/*
 	 * We'll save private state in node->fdw_state.
 	 */
-	festate = (MySQLFdwExecState *) palloc(sizeof(MySQLFdwExecState));
+	festate = (MySQLFdwExecState *) palloc0(sizeof(MySQLFdwExecState));
 	node->fdw_state = (void *) festate;
 
 	/*
@@ -693,6 +693,9 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Set the pre-fetch rows */
 	mysql_stmt_attr_set(festate->stmt, STMT_ATTR_PREFETCH_ROWS,
 						(void *) &options->fetch_size);
+
+	if (tupleDescriptor->natts == 0)
+		return;
 
 	festate->table = (mysql_table *) palloc0(sizeof(mysql_table));
 	festate->table->column = (mysql_column *) palloc0(sizeof(mysql_column) * tupleDescriptor->natts);
