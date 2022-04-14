@@ -41,15 +41,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6 AS "salary", c8 FROM f_test_tbl1 e
   WHERE c6 IN (800,2450)
   ORDER BY c1;
-                                                        QUERY PLAN                                                         
----------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c6, c8
-         Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c6`  IN ('800', '2450'))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c6`  IN ('800', '2450')) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT c1, c2, c6 AS "salary", c8 FROM f_test_tbl1 e
   WHERE c6 IN (800,2450)
@@ -62,15 +59,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT * FROM f_test_tbl1 e
   WHERE c6 > 3000
   ORDER BY c1;
-                                                               QUERY PLAN                                                               
-----------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c3, c4, c5, c6, c7, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c3, c4, c5, c6, c7, c8
-         Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c6` > 3000))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c6` > 3000)) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT * FROM f_test_tbl1 e
   WHERE c6 > 3000
@@ -84,15 +78,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 = 1500
   ORDER BY c1;
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
- Sort
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c6, c8
-         Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c6` = 1500))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c6` = 1500)) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 = 1500
@@ -106,15 +97,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 BETWEEN 1000 AND 4000
   ORDER BY c1;
-                                                              QUERY PLAN                                                              
---------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c6, c8
-         Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c6` >= 1000)) AND ((`c6` <= 4000))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c6` >= 1000)) AND ((`c6` <= 4000)) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 BETWEEN 1000 AND 4000
@@ -138,15 +126,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c2 IS NOT NULL
   ORDER BY c1;
-                                                     QUERY PLAN                                                      
----------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c6, c8
-         Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c2` IS NOT NULL))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c2` IS NOT NULL)) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c2 IS NOT NULL
@@ -173,15 +158,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT * FROM f_test_tbl1 e
   WHERE c5 <= '1980-12-17'
   ORDER BY c1;
-                                                                   QUERY PLAN                                                                    
--------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c3, c4, c5, c6, c7, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c3, c4, c5, c6, c7, c8
-         Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c5` <= '1980-12-17'))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c5` <= '1980-12-17')) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT * FROM f_test_tbl1 e
   WHERE c5 <= '1980-12-17'
@@ -196,15 +178,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c2 IN ('EMP6', 'EMP12', 'EMP5')
   ORDER BY c1;
-                                                             QUERY PLAN                                                              
--------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c6, c8
-         Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c2`  IN ('EMP6', 'EMP12', 'EMP5'))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c2`  IN ('EMP6', 'EMP12', 'EMP5')) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c2 IN ('EMP6', 'EMP12', 'EMP5')
@@ -220,15 +199,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c2 IN ('EMP6', 'EMP12', 'EMP5')
   ORDER BY c1;
-                                                             QUERY PLAN                                                              
--------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c6, c8
-         Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c2`  IN ('EMP6', 'EMP12', 'EMP5'))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c2`  IN ('EMP6', 'EMP12', 'EMP5')) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c2 IN ('EMP6', 'EMP12', 'EMP5')
@@ -244,15 +220,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c3 LIKE 'SALESMAN'
   ORDER BY c1;
-                                                           QUERY PLAN                                                           
---------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c6, c8
-         Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c3` LIKE BINARY 'SALESMAN'))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c3` LIKE BINARY 'SALESMAN')) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c3 LIKE 'SALESMAN'
@@ -269,15 +242,12 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c3 LIKE 'MANA%'
   ORDER BY c1;
-                                                         QUERY PLAN                                                          
------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Sort Key: e.c1
-   ->  Foreign Scan on public.f_test_tbl1 e
-         Output: c1, c2, c6, c8
-         Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c3` LIKE BINARY 'MANA%'))
-(6 rows)
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c3` LIKE BINARY 'MANA%')) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c3 LIKE 'MANA%'

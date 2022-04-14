@@ -485,6 +485,36 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, length(c2) FROM f_test7 ORDER BY 1;
 SELECT c1, length(c2) FROM f_test7 ORDER BY 1;
 
+-- FDW-130: ORDER BY with collation clause, should not get pushdown.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c2 COLLATE "en_US";
+SELECT * FROM f_test_tbl1 ORDER BY c2 COLLATE "en_US";
+
+-- Order by desc
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c1 DESC;
+SELECT * FROM f_test_tbl1 ORDER BY c1 DESC;
+
+-- Order by is not null
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL;
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL;
+
+-- Order by is not null desc
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL DESC;
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL DESC;
+
+-- Order by desc nulls first
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS FIRST;
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS FIRST;
+
+-- Order by asc nulls last
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST;
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

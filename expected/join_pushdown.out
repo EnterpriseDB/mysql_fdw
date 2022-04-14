@@ -45,16 +45,13 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c3, t1.c1;
-                                                                            QUERY PLAN                                                                             
--------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                           QUERY PLAN                                                                                                            
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c1, t1.c3
-   Sort Key: t1.c3 COLLATE "C", t1.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c1, t1.c3
-         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
-(7 rows)
+   Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+   Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+(4 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -72,16 +69,13 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c2 = 100
   ORDER BY t1.c3, t1.c1;
-                                                                                        QUERY PLAN                                                                                         
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                                       QUERY PLAN                                                                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c1, t1.c3
-   Sort Key: t1.c3 COLLATE "C", t1.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c1, t1.c3
-         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) WHERE ((r1.`c2` = 100))
-(7 rows)
+   Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+   Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) WHERE ((r1.`c2` = 100)) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+(4 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c2 = 100
@@ -98,17 +92,14 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (abs(t1.c1) = t2.c1) WHERE t1.c2 = 100
   ORDER BY t1.c3, t1.c1;
-                                                                                QUERY PLAN                                                                                
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                               QUERY PLAN                                                                                                               
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c1, t1.c3
-   Sort Key: t1.c3 COLLATE "C", t1.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c1, t1.c3
-         Filter: (abs(t1.c1) = t2.c1)
-         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) WHERE ((r1.`c2` = 100))
-(8 rows)
+   Filter: (abs(t1.c1) = t2.c1)
+   Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+   Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) WHERE ((r1.`c2` = 100)) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+(5 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (abs(t1.c1) = t2.c1) WHERE t1.c2 = 100
@@ -125,16 +116,13 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c2, t3.c3
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) JOIN fdw139_t3 t3 ON (t3.c1 = t1.c1)
   ORDER BY t1.c3, t1.c1;
-                                                                                                                    QUERY PLAN                                                                                                                     
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                                                                   QUERY PLAN                                                                                                                                                    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c2, t3.c3, t1.c3
-   Sort Key: t1.c3 COLLATE "C", t1.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c2, t3.c3, t1.c3
-         Relations: ((mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)) INNER JOIN (mysql_fdw_regress.fdw139_t3 t3)
-         Remote query: SELECT r1.`c1`, r2.`c2`, r4.`c3`, r1.`c3` FROM ((`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) INNER JOIN `mysql_fdw_regress`.`test3` r4 ON (((r1.`c1` = r4.`c1`))))
-(7 rows)
+   Relations: ((mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)) INNER JOIN (mysql_fdw_regress.fdw139_t3 t3)
+   Remote query: SELECT r1.`c1`, r2.`c2`, r4.`c3`, r1.`c3` FROM ((`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) INNER JOIN `mysql_fdw_regress`.`test3` r4 ON (((r1.`c1` = r4.`c1`)))) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+(4 rows)
 
 SELECT t1.c1, t2.c2, t3.c3
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) JOIN fdw139_t3 t3 ON (t3.c1 = t1.c1)
@@ -170,16 +158,13 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c1, t2.c1 NULLS LAST;
-                                                                       QUERY PLAN                                                                        
----------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                      QUERY PLAN                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c1
-   Sort Key: t1.c1, t2.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c1
-         Relations: (mysql_fdw_regress.fdw139_t1 t1) LEFT JOIN (mysql_fdw_regress.fdw139_t2 t2)
-         Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 LEFT JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
-(7 rows)
+   Relations: (mysql_fdw_regress.fdw139_t1 t1) LEFT JOIN (mysql_fdw_regress.fdw139_t2 t2)
+   Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 LEFT JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ORDER BY r1.`c1` IS NULL, r1.`c1` ASC, r2.`c1` IS NULL, r2.`c1` ASC
+(4 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -221,8 +206,8 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 LEFT JOIN fdw139_t2 t2 ON (abs(t1.c1) = t2.c1)
   ORDER BY t1.c1, t2.c1;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
  Sort
    Output: t1.c1, t2.c1
    Sort Key: t1.c1, t2.c1
@@ -236,7 +221,7 @@ SELECT t1.c1, t2.c1
                Output: t2.c1
                ->  Foreign Scan on public.fdw139_t2 t2
                      Output: t2.c1
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2`
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
 (14 rows)
 
 SELECT t1.c1, t2.c1
@@ -300,16 +285,13 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 RIGHT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t2.c1, t1.c1 NULLS LAST;
-                                                                       QUERY PLAN                                                                        
----------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                      QUERY PLAN                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c1
-   Sort Key: t2.c1, t1.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c1
-         Relations: (mysql_fdw_regress.fdw139_t2 t2) LEFT JOIN (mysql_fdw_regress.fdw139_t1 t1)
-         Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test2` r2 LEFT JOIN `mysql_fdw_regress`.`test1` r1 ON (((r1.`c1` = r2.`c1`))))
-(7 rows)
+   Relations: (mysql_fdw_regress.fdw139_t2 t2) LEFT JOIN (mysql_fdw_regress.fdw139_t1 t1)
+   Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test2` r2 LEFT JOIN `mysql_fdw_regress`.`test1` r1 ON (((r1.`c1` = r2.`c1`)))) ORDER BY r2.`c1` IS NULL, r2.`c1` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+(4 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 RIGHT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -328,16 +310,13 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c2, t3.c3
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN fdw139_t3 t3 ON (t1.c1 = t3.c1)
   ORDER BY t1.c1 NULLS LAST, t1.c3, t1.c1;
-                                                                                                                    QUERY PLAN                                                                                                                    
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                                                                   QUERY PLAN                                                                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c2, t3.c3, t1.c3
-   Sort Key: t1.c1, t1.c3 COLLATE "C"
-   ->  Foreign Scan
-         Output: t1.c1, t2.c2, t3.c3, t1.c3
-         Relations: (mysql_fdw_regress.fdw139_t3 t3) LEFT JOIN ((mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2))
-         Remote query: SELECT r1.`c1`, r2.`c2`, r4.`c3`, r1.`c3` FROM (`mysql_fdw_regress`.`test3` r4 LEFT JOIN (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ON (((r1.`c1` = r4.`c1`))))
-(7 rows)
+   Relations: (mysql_fdw_regress.fdw139_t3 t3) LEFT JOIN ((mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2))
+   Remote query: SELECT r1.`c1`, r2.`c2`, r4.`c3`, r1.`c3` FROM (`mysql_fdw_regress`.`test3` r4 LEFT JOIN (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ON (((r1.`c1` = r4.`c1`)))) ORDER BY r1.`c1` IS NULL, r1.`c1` ASC, r1.`c3` IS NULL, r1.`c3` ASC
+(4 rows)
 
 SELECT t1.c1, t2.c2, t3.c3
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) RIGHT JOIN fdw139_t3 t3 ON (t1.c1 = t3.c1)
@@ -355,22 +334,22 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 FULL JOIN fdw139_t1 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c1, t2.c1;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
  Sort
    Output: t1.c1, t2.c1
    Sort Key: t1.c1, t2.c1
-   ->  Hash Full Join
+   ->  Merge Full Join
          Output: t1.c1, t2.c1
-         Hash Cond: (t1.c1 = t2.c1)
+         Merge Cond: (t1.c1 = t2.c1)
          ->  Foreign Scan on public.fdw139_t1 t1
                Output: t1.c1, t1.c2, t1.c3, t1.c4
-               Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1`
-         ->  Hash
-               Output: t2.c1
+               Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
+         ->  Materialize
+               Output: t2.c1, t2.c2, t2.c3, t2.c4
                ->  Foreign Scan on public.fdw139_t1 t2
-                     Output: t2.c1
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1`
+                     Output: t2.c1, t2.c2, t2.c3, t2.c4
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
 (14 rows)
 
 SELECT t1.c1, t2.c1
@@ -390,29 +369,26 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c3, t1.c1 FOR UPDATE OF t1;
-                                                                                                      QUERY PLAN                                                                                                      
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                     QUERY PLAN                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  LockRows
    Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-   ->  Sort
+   ->  Foreign Scan
          Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-         Sort Key: t1.c3 COLLATE "C", t1.c1
-         ->  Foreign Scan
-               Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-               Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-               Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
-               ->  Nested Loop
-                     Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
-                     Join Filter: (t1.c1 = t2.c1)
-                     ->  Foreign Scan on public.fdw139_t1 t1
-                           Output: t1.c1, t1.c3, t1.*
-                           Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1`
-                     ->  Materialize
+         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+         ->  Nested Loop
+               Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
+               Join Filter: (t1.c1 = t2.c1)
+               ->  Foreign Scan on public.fdw139_t1 t1
+                     Output: t1.c1, t1.c3, t1.*
+                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1` ORDER BY `c3` IS NULL, `c3` ASC, `c1` IS NULL, `c1` ASC
+               ->  Materialize
+                     Output: t2.c1, t2.*
+                     ->  Foreign Scan on public.fdw139_t2 t2
                            Output: t2.c1, t2.*
-                           ->  Foreign Scan on public.fdw139_t2 t2
-                                 Output: t2.c1, t2.*
-                                 Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2`
-(20 rows)
+                           Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
+(17 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -428,29 +404,26 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c3, t1.c1 FOR UPDATE;
-                                                                                                      QUERY PLAN                                                                                                      
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                     QUERY PLAN                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  LockRows
    Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-   ->  Sort
+   ->  Foreign Scan
          Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-         Sort Key: t1.c3 COLLATE "C", t1.c1
-         ->  Foreign Scan
-               Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-               Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-               Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
-               ->  Nested Loop
-                     Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
-                     Join Filter: (t1.c1 = t2.c1)
-                     ->  Foreign Scan on public.fdw139_t1 t1
-                           Output: t1.c1, t1.c3, t1.*
-                           Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1`
-                     ->  Materialize
+         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+         ->  Nested Loop
+               Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
+               Join Filter: (t1.c1 = t2.c1)
+               ->  Foreign Scan on public.fdw139_t1 t1
+                     Output: t1.c1, t1.c3, t1.*
+                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1` ORDER BY `c3` IS NULL, `c3` ASC, `c1` IS NULL, `c1` ASC
+               ->  Materialize
+                     Output: t2.c1, t2.*
+                     ->  Foreign Scan on public.fdw139_t2 t2
                            Output: t2.c1, t2.*
-                           ->  Foreign Scan on public.fdw139_t2 t2
-                                 Output: t2.c1, t2.*
-                                 Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2`
-(20 rows)
+                           Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
+(17 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -467,29 +440,26 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c3, t1.c1 FOR SHARE OF t1;
-                                                                                                      QUERY PLAN                                                                                                      
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                     QUERY PLAN                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  LockRows
    Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-   ->  Sort
+   ->  Foreign Scan
          Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-         Sort Key: t1.c3 COLLATE "C", t1.c1
-         ->  Foreign Scan
-               Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-               Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-               Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
-               ->  Nested Loop
-                     Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
-                     Join Filter: (t1.c1 = t2.c1)
-                     ->  Foreign Scan on public.fdw139_t1 t1
-                           Output: t1.c1, t1.c3, t1.*
-                           Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1`
-                     ->  Materialize
+         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+         ->  Nested Loop
+               Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
+               Join Filter: (t1.c1 = t2.c1)
+               ->  Foreign Scan on public.fdw139_t1 t1
+                     Output: t1.c1, t1.c3, t1.*
+                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1` ORDER BY `c3` IS NULL, `c3` ASC, `c1` IS NULL, `c1` ASC
+               ->  Materialize
+                     Output: t2.c1, t2.*
+                     ->  Foreign Scan on public.fdw139_t2 t2
                            Output: t2.c1, t2.*
-                           ->  Foreign Scan on public.fdw139_t2 t2
-                                 Output: t2.c1, t2.*
-                                 Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2`
-(20 rows)
+                           Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
+(17 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -505,29 +475,26 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c3, t1.c1 FOR SHARE;
-                                                                                                      QUERY PLAN                                                                                                      
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                     QUERY PLAN                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  LockRows
    Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-   ->  Sort
+   ->  Foreign Scan
          Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-         Sort Key: t1.c3 COLLATE "C", t1.c1
-         ->  Foreign Scan
-               Output: t1.c1, t2.c1, t1.c3, t1.*, t2.*
-               Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-               Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
-               ->  Nested Loop
-                     Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
-                     Join Filter: (t1.c1 = t2.c1)
-                     ->  Foreign Scan on public.fdw139_t1 t1
-                           Output: t1.c1, t1.c3, t1.*
-                           Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1`
-                     ->  Materialize
+         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c2`, r1.`c4`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+         ->  Nested Loop
+               Output: t1.c1, t1.c3, t1.*, t2.c1, t2.*
+               Join Filter: (t1.c1 = t2.c1)
+               ->  Foreign Scan on public.fdw139_t1 t1
+                     Output: t1.c1, t1.c3, t1.*
+                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1` ORDER BY `c3` IS NULL, `c3` ASC, `c1` IS NULL, `c1` ASC
+               ->  Materialize
+                     Output: t2.c1, t2.*
+                     ->  Foreign Scan on public.fdw139_t2 t2
                            Output: t2.c1, t2.*
-                           ->  Foreign Scan on public.fdw139_t2 t2
-                                 Output: t2.c1, t2.*
-                                 Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2`
-(20 rows)
+                           Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
+(17 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -545,16 +512,13 @@ WITH t (c1_1, c1_3, c2_1) AS (
   SELECT t1.c1, t1.c3, t2.c1
     FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
 ) SELECT c1_1, c2_1 FROM t ORDER BY c1_3, c1_1;
-                                                                            QUERY PLAN                                                                             
--------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                           QUERY PLAN                                                                                                            
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c1, t1.c3
-   Sort Key: t1.c3 COLLATE "C", t1.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c1, t1.c3
-         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-         Remote query: SELECT r2.`c1`, r3.`c1`, r2.`c3` FROM (`mysql_fdw_regress`.`test1` r2 INNER JOIN `mysql_fdw_regress`.`test2` r3 ON (((r2.`c1` = r3.`c1`))))
-(7 rows)
+   Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+   Remote query: SELECT r2.`c1`, r3.`c1`, r2.`c3` FROM (`mysql_fdw_regress`.`test1` r2 INNER JOIN `mysql_fdw_regress`.`test2` r3 ON (((r2.`c1` = r3.`c1`)))) ORDER BY r2.`c3` IS NULL, r2.`c3` ASC, r2.`c1` IS NULL, r2.`c1` ASC
+(4 rows)
 
 WITH t (c1_1, c1_3, c2_1) AS (
   SELECT t1.c1, t1.c3, t2.c1
@@ -571,16 +535,13 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1, t2, t1.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c3, t1.c1;
-                                                                                                   QUERY PLAN                                                                                                   
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                                                  QUERY PLAN                                                                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.*, t2.*, t1.c1, t1.c3
-   Sort Key: t1.c3 COLLATE "C", t1.c1
-   ->  Foreign Scan
-         Output: t1.*, t2.*, t1.c1, t1.c3
-         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-         Remote query: SELECT r1.`c1`, r1.`c2`, r1.`c3`, r1.`c4`, r2.`c1`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
-(7 rows)
+   Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+   Remote query: SELECT r1.`c1`, r1.`c2`, r1.`c3`, r1.`c4`, r2.`c1`, r2.`c2`, r2.`c3`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+(4 rows)
 
 SELECT t1, t2, t1.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -596,28 +557,22 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1
   FROM fdw139_t1 t1 WHERE EXISTS (SELECT 1 FROM fdw139_t2 t2 WHERE t1.c1 = t2.c1)
   ORDER BY t1.c1 LIMIT 10;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
  Limit
    Output: t1.c1
-   ->  Sort
+   ->  Nested Loop Semi Join
          Output: t1.c1
-         Sort Key: t1.c1
-         ->  Nested Loop
-               Output: t1.c1
-               Join Filter: (t1.c1 = t2.c1)
-               ->  HashAggregate
+         Join Filter: (t1.c1 = t2.c1)
+         ->  Foreign Scan on public.fdw139_t1 t1
+               Output: t1.c1, t1.c2, t1.c3, t1.c4
+               Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
+         ->  Materialize
+               Output: t2.c1
+               ->  Foreign Scan on public.fdw139_t2 t2
                      Output: t2.c1
-                     Group Key: t2.c1
-                     ->  Foreign Scan on public.fdw139_t2 t2
-                           Output: t2.c1, t2.c2, t2.c3, t2.c4
-                           Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2`
-               ->  Materialize
-                     Output: t1.c1
-                     ->  Foreign Scan on public.fdw139_t1 t1
-                           Output: t1.c1
-                           Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1`
-(19 rows)
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
+(13 rows)
 
 SELECT t1.c1
   FROM fdw139_t1 t1 WHERE EXISTS (SELECT 1 FROM fdw139_t2 t2 WHERE t1.c1 = t2.c1)
@@ -633,25 +588,22 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1
   FROM fdw139_t1 t1 WHERE NOT EXISTS (SELECT 1 FROM fdw139_t2 t2 WHERE t1.c1 = t2.c2)
   ORDER BY t1.c1 LIMIT 10;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
  Limit
    Output: t1.c1
-   ->  Sort
+   ->  Nested Loop Anti Join
          Output: t1.c1
-         Sort Key: t1.c1
-         ->  Nested Loop Anti Join
-               Output: t1.c1
-               Join Filter: (t1.c1 = t2.c2)
-               ->  Foreign Scan on public.fdw139_t1 t1
-                     Output: t1.c1, t1.c2, t1.c3, t1.c4
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1`
-               ->  Materialize
+         Join Filter: (t1.c1 = t2.c2)
+         ->  Foreign Scan on public.fdw139_t1 t1
+               Output: t1.c1, t1.c2, t1.c3, t1.c4
+               Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
+         ->  Materialize
+               Output: t2.c2
+               ->  Foreign Scan on public.fdw139_t2 t2
                      Output: t2.c2
-                     ->  Foreign Scan on public.fdw139_t2 t2
-                           Output: t2.c2
-                           Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test2`
-(16 rows)
+                     Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test2` ORDER BY `c2` IS NULL, `c2` ASC
+(13 rows)
 
 SELECT t1.c1
   FROM fdw139_t1 t1 WHERE NOT EXISTS (SELECT 1 FROM fdw139_t2 t2 WHERE t1.c1 = t2.c2)
@@ -668,18 +620,15 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 CROSS JOIN fdw139_t2 t2
   ORDER BY t1.c1, t2.c1 LIMIT 10;
-                                                                  QUERY PLAN                                                                   
------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                 QUERY PLAN                                                                                                  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
    Output: t1.c1, t2.c1
-   ->  Sort
+   ->  Foreign Scan
          Output: t1.c1, t2.c1
-         Sort Key: t1.c1, t2.c1
-         ->  Foreign Scan
-               Output: t1.c1, t2.c1
-               Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-               Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE))
-(9 rows)
+         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+         Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) ORDER BY r1.`c1` IS NULL, r1.`c1` ASC, r2.`c1` IS NULL, r2.`c1` ASC
+(6 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 CROSS JOIN fdw139_t2 t2
@@ -750,23 +699,20 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t4 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c3, t1.c1;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Sort
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop
    Output: t1.c1, t2.c1, t1.c3
-   Sort Key: t1.c3 COLLATE "C", t1.c1
-   ->  Nested Loop
-         Output: t1.c1, t2.c1, t1.c3
-         Join Filter: (t1.c1 = t2.c1)
-         ->  Foreign Scan on public.fdw139_t1 t1
-               Output: t1.c1, t1.c2, t1.c3, t1.c4
-               Remote query: SELECT `c1`, `c3` FROM `mysql_fdw_regress`.`test1`
-         ->  Materialize
+   Join Filter: (t1.c1 = t2.c1)
+   ->  Foreign Scan on public.fdw139_t1 t1
+         Output: t1.c1, t1.c2, t1.c3, t1.c4
+         Remote query: SELECT `c1`, `c3` FROM `mysql_fdw_regress`.`test1` ORDER BY `c3` IS NULL, `c3` ASC, `c1` IS NULL, `c1` ASC
+   ->  Materialize
+         Output: t2.c1
+         ->  Foreign Scan on public.fdw139_t4 t2
                Output: t2.c1
-               ->  Foreign Scan on public.fdw139_t4 t2
-                     Output: t2.c1
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test3`
-(14 rows)
+               Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test3` ORDER BY `c1` IS NULL, `c1` ASC
+(11 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t4 t2 ON (t1.c1 = t2.c1)
@@ -817,24 +763,25 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c4 = 'foo'
   ORDER BY t1.c1, t2.c1 NULLS LAST;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Sort
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Incremental Sort
    Output: t1.c1, t2.c1
    Sort Key: t1.c1, t2.c1
+   Presorted Key: t1.c1
    ->  Nested Loop Left Join
          Output: t1.c1, t2.c1
          Join Filter: (t1.c1 = t2.c1)
          ->  Foreign Scan on public.fdw139_t1 t1
                Output: t1.c1, t1.c2, t1.c3, t1.c4
                Filter: (t1.c4 = 'foo'::user_enum)
-               Remote query: SELECT `c1`, `c4` FROM `mysql_fdw_regress`.`test1`
+               Remote query: SELECT `c1`, `c4` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
          ->  Materialize
                Output: t2.c1
                ->  Foreign Scan on public.fdw139_t2 t2
                      Output: t2.c1
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2`
-(15 rows)
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
+(16 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c4 = 'foo'
@@ -854,17 +801,14 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c4 = t2.c4
   ORDER BY t1.c3, t1.c1;
-                                                                                     QUERY PLAN                                                                                      
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                                    QUERY PLAN                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c1, t1.c3
-   Sort Key: t1.c3 COLLATE "C", t1.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c1, t1.c3
-         Filter: (t1.c4 = t2.c4)
-         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-         Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c4`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`))))
-(8 rows)
+   Filter: (t1.c4 = t2.c4)
+   Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+   Remote query: SELECT r1.`c1`, r2.`c1`, r1.`c3`, r1.`c4`, r2.`c4` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (((r1.`c1` = r2.`c1`)))) ORDER BY r1.`c3` IS NULL, r1.`c3` ASC, r1.`c1` IS NULL, r1.`c1` ASC
+(5 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1) WHERE t1.c4 = t2.c4
@@ -888,25 +832,26 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN v2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;  -- not pushed down, different view owners
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
  Limit
    Output: fdw139_t1.c1, fdw139_t2.c2, fdw139_t2.c1
-   ->  Sort
+   ->  Incremental Sort
          Output: fdw139_t1.c1, fdw139_t2.c2, fdw139_t2.c1
          Sort Key: fdw139_t1.c1, fdw139_t2.c1, fdw139_t2.c2
+         Presorted Key: fdw139_t1.c1
          ->  Nested Loop Left Join
                Output: fdw139_t1.c1, fdw139_t2.c2, fdw139_t2.c1
                Join Filter: (fdw139_t1.c1 = fdw139_t2.c1)
                ->  Foreign Scan on public.fdw139_t1
                      Output: fdw139_t1.c1, fdw139_t1.c2, fdw139_t1.c3, fdw139_t1.c4
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1`
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
                ->  Materialize
                      Output: fdw139_t2.c2, fdw139_t2.c1
                      ->  Foreign Scan on public.fdw139_t2
                            Output: fdw139_t2.c2, fdw139_t2.c1
-                           Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test2`
-(16 rows)
+                           Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
+(17 rows)
 
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN v2 t2 ON (t1.c1 = t2.c1)
@@ -923,18 +868,15 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN v2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;  -- pushed down
-                                                                               QUERY PLAN                                                                               
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                             QUERY PLAN                                                                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
    Output: fdw139_t1.c1, fdw139_t2.c2, fdw139_t2.c1
-   ->  Sort
+   ->  Foreign Scan
          Output: fdw139_t1.c1, fdw139_t2.c2, fdw139_t2.c1
-         Sort Key: fdw139_t1.c1, fdw139_t2.c1, fdw139_t2.c2
-         ->  Foreign Scan
-               Output: fdw139_t1.c1, fdw139_t2.c2, fdw139_t2.c1
-               Relations: (mysql_fdw_regress.fdw139_t1) LEFT JOIN (mysql_fdw_regress.fdw139_t2)
-               Remote query: SELECT r6.`c1`, r9.`c2`, r9.`c1` FROM (`mysql_fdw_regress`.`test1` r6 LEFT JOIN `mysql_fdw_regress`.`test2` r9 ON (((r6.`c1` = r9.`c1`))))
-(9 rows)
+         Relations: (mysql_fdw_regress.fdw139_t1) LEFT JOIN (mysql_fdw_regress.fdw139_t2)
+         Remote query: SELECT r6.`c1`, r9.`c2`, r9.`c1` FROM (`mysql_fdw_regress`.`test1` r6 LEFT JOIN `mysql_fdw_regress`.`test2` r9 ON (((r6.`c1` = r9.`c1`)))) ORDER BY r6.`c1` IS NULL, r6.`c1` ASC, r9.`c1` IS NULL, r9.`c1` ASC, r9.`c2` IS NULL, r9.`c2` ASC
+(6 rows)
 
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN v2 t2 ON (t1.c1 = t2.c1)
@@ -950,25 +892,26 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;  -- not pushed down, view owner not current user
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
  Limit
    Output: fdw139_t1.c1, t2.c2, t2.c1
-   ->  Sort
+   ->  Incremental Sort
          Output: fdw139_t1.c1, t2.c2, t2.c1
          Sort Key: fdw139_t1.c1, t2.c1, t2.c2
+         Presorted Key: fdw139_t1.c1
          ->  Nested Loop Left Join
                Output: fdw139_t1.c1, t2.c2, t2.c1
                Join Filter: (fdw139_t1.c1 = t2.c1)
                ->  Foreign Scan on public.fdw139_t1
                      Output: fdw139_t1.c1, fdw139_t1.c2, fdw139_t1.c3, fdw139_t1.c4
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1`
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
                ->  Materialize
                      Output: t2.c2, t2.c1
                      ->  Foreign Scan on public.fdw139_t2 t2
                            Output: t2.c2, t2.c1
-                           Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test2`
-(16 rows)
+                           Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
+(17 rows)
 
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -985,18 +928,15 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
   ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;  -- pushed down
-                                                                               QUERY PLAN                                                                               
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                             QUERY PLAN                                                                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
    Output: fdw139_t1.c1, t2.c2, t2.c1
-   ->  Sort
+   ->  Foreign Scan
          Output: fdw139_t1.c1, t2.c2, t2.c1
-         Sort Key: fdw139_t1.c1, t2.c1, t2.c2
-         ->  Foreign Scan
-               Output: fdw139_t1.c1, t2.c2, t2.c1
-               Relations: (mysql_fdw_regress.fdw139_t1) LEFT JOIN (mysql_fdw_regress.fdw139_t2 t2)
-               Remote query: SELECT r6.`c1`, r2.`c2`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r6 LEFT JOIN `mysql_fdw_regress`.`test2` r2 ON (((r6.`c1` = r2.`c1`))))
-(9 rows)
+         Relations: (mysql_fdw_regress.fdw139_t1) LEFT JOIN (mysql_fdw_regress.fdw139_t2 t2)
+         Remote query: SELECT r6.`c1`, r2.`c2`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r6 LEFT JOIN `mysql_fdw_regress`.`test2` r2 ON (((r6.`c1` = r2.`c1`)))) ORDER BY r6.`c1` IS NULL, r6.`c1` ASC, r2.`c1` IS NULL, r2.`c1` ASC, r2.`c2` IS NULL, r2.`c2` ASC
+(6 rows)
 
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
@@ -1016,14 +956,14 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT q.a, fdw139_t2.c1
   FROM (SELECT 13 FROM fdw139_t1 WHERE c1 = 13) q(a) RIGHT JOIN fdw139_t2 ON (q.a = fdw139_t2.c1)
   WHERE fdw139_t2.c1 BETWEEN 10 AND 15;
-                                                 QUERY PLAN                                                 
-------------------------------------------------------------------------------------------------------------
+                                                                 QUERY PLAN                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop Left Join
    Output: (13), fdw139_t2.c1
    Join Filter: (13 = fdw139_t2.c1)
    ->  Foreign Scan on public.fdw139_t2
          Output: fdw139_t2.c1, fdw139_t2.c2, fdw139_t2.c3, fdw139_t2.c4
-         Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2` WHERE ((`c1` >= 10)) AND ((`c1` <= 15))
+         Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2` WHERE ((`c1` >= 10)) AND ((`c1` <= 15)) ORDER BY `c1` IS NULL, `c1` ASC
    ->  Materialize
          Output: (13)
          ->  Foreign Scan on public.fdw139_t1
@@ -1048,18 +988,18 @@ SELECT fdw139_t3.c1, q.*
     WHERE fdw139_t1.c1 = 11
   ) q(a, b, c) ON (fdw139_t3.c1 = q.b)
   WHERE fdw139_t3.c1 BETWEEN 10 AND 15;
-                                                                                     QUERY PLAN                                                                                      
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                        QUERY PLAN                                                                                                         
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop Left Join
    Output: fdw139_t3.c1, (13), fdw139_t1.c1, fdw139_t2.c1
    Join Filter: (fdw139_t3.c1 = fdw139_t1.c1)
    ->  Foreign Scan on public.fdw139_t3
          Output: fdw139_t3.c1, fdw139_t3.c2, fdw139_t3.c3
-         Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test3` WHERE ((`c1` >= 10)) AND ((`c1` <= 15))
+         Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test3` WHERE ((`c1` >= 10)) AND ((`c1` <= 15)) ORDER BY `c1` IS NULL, `c1` ASC
    ->  Foreign Scan
          Output: fdw139_t1.c1, fdw139_t2.c1, 13
          Relations: (mysql_fdw_regress.fdw139_t1) INNER JOIN (mysql_fdw_regress.fdw139_t2)
-         Remote query: SELECT r4.`c1`, r5.`c1` FROM (`mysql_fdw_regress`.`test1` r4 INNER JOIN `mysql_fdw_regress`.`test2` r5 ON (TRUE)) WHERE ((r5.`c1` = 11)) AND ((r4.`c1` = 11))
+         Remote query: SELECT r4.`c1`, r5.`c1` FROM (`mysql_fdw_regress`.`test1` r4 INNER JOIN `mysql_fdw_regress`.`test2` r5 ON (TRUE)) WHERE ((r5.`c1` = 11)) AND ((r4.`c1` = 11)) ORDER BY r4.`c1` IS NULL, r4.`c1` ASC
 (10 rows)
 
 SELECT fdw139_t3.c1, q.*
@@ -1118,21 +1058,19 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1,t2.c2,t3.c3
   FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.c1 = t2.c2) INNER JOIN fprt1 t3 ON (t2.c2 = t3.c1)
   WHERE t1.c1 % 2 =0 ORDER BY 1,2,3;
-                                                                                                                                  QUERY PLAN                                                                                                                                   
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
-   Output: t1.c1, t2.c2, t3.c3
+                                                                                                                                                                  QUERY PLAN                                                                                                                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
    Sort Key: t1.c1, t3.c3
-   ->  Append
-         ->  Foreign Scan
-               Output: t1_1.c1, t2_1.c2, t3_1.c3
-               Relations: ((mysql_fdw_regress.ftprt1_p1 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p1 t2)) INNER JOIN (mysql_fdw_regress.ftprt1_p1 t3)
-               Remote query: SELECT r6.`c1`, r8.`c2`, r10.`c3` FROM ((`mysql_fdw_regress`.`test1` r6 INNER JOIN `mysql_fdw_regress`.`test3` r8 ON (((r6.`c1` = r8.`c2`)))) INNER JOIN `mysql_fdw_regress`.`test1` r10 ON (((r6.`c1` = r10.`c1`)))) WHERE (((r6.`c1` % 2) = 0))
-         ->  Foreign Scan
-               Output: t1_2.c1, t2_2.c2, t3_2.c3
-               Relations: ((mysql_fdw_regress.ftprt1_p2 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p2 t2)) INNER JOIN (mysql_fdw_regress.ftprt1_p2 t3)
-               Remote query: SELECT r7.`c1`, r9.`c2`, r11.`c3` FROM ((`mysql_fdw_regress`.`test2` r7 INNER JOIN `mysql_fdw_regress`.`test4` r9 ON (((r7.`c1` = r9.`c2`)))) INNER JOIN `mysql_fdw_regress`.`test2` r11 ON (((r7.`c1` = r11.`c1`)))) WHERE (((r7.`c1` % 2) = 0))
-(12 rows)
+   ->  Foreign Scan
+         Output: t1_1.c1, t2_1.c2, t3_1.c3
+         Relations: ((mysql_fdw_regress.ftprt1_p1 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p1 t2)) INNER JOIN (mysql_fdw_regress.ftprt1_p1 t3)
+         Remote query: SELECT r6.`c1`, r8.`c2`, r10.`c3` FROM ((`mysql_fdw_regress`.`test1` r6 INNER JOIN `mysql_fdw_regress`.`test3` r8 ON (((r6.`c1` = r8.`c2`)))) INNER JOIN `mysql_fdw_regress`.`test1` r10 ON (((r6.`c1` = r10.`c1`)))) WHERE (((r6.`c1` % 2) = 0)) ORDER BY r6.`c1` IS NULL, r6.`c1` ASC, r10.`c3` IS NULL, r10.`c3` ASC
+   ->  Foreign Scan
+         Output: t1_2.c1, t2_2.c2, t3_2.c3
+         Relations: ((mysql_fdw_regress.ftprt1_p2 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p2 t2)) INNER JOIN (mysql_fdw_regress.ftprt1_p2 t3)
+         Remote query: SELECT r7.`c1`, r9.`c2`, r11.`c3` FROM ((`mysql_fdw_regress`.`test2` r7 INNER JOIN `mysql_fdw_regress`.`test4` r9 ON (((r7.`c1` = r9.`c2`)))) INNER JOIN `mysql_fdw_regress`.`test2` r11 ON (((r7.`c1` = r11.`c1`)))) WHERE (((r7.`c1` % 2) = 0)) ORDER BY r7.`c1` IS NULL, r7.`c1` ASC, r11.`c3` IS NULL, r11.`c3` ASC
+(10 rows)
 
 SELECT t1.c1,t2.c2,t3.c3
   FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.c1 = t2.c2) INNER JOIN fprt1 t3 ON (t2.c2 = t3.c1)
@@ -1151,31 +1089,29 @@ EXPLAIN (VERBOSE, COSTS false)
 SELECT t1, t2, t1.c1
   FROM fprt1 t1 JOIN fprt2 t2 ON (t1.c1 = t2.c2)
   ORDER BY t1.c3, t1.c1;
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Sort
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop
    Output: ((t1.*)::fprt1), ((t2.*)::fprt2), t1.c1, t1.c3
-   Sort Key: t1.c3, t1.c1
-   ->  Nested Loop
-         Output: ((t1.*)::fprt1), ((t2.*)::fprt2), t1.c1, t1.c3
-         Join Filter: (t1.c1 = t2.c2)
+   Join Filter: (t1.c1 = t2.c2)
+   ->  Merge Append
+         Sort Key: t1.c3, t1.c1
+         ->  Foreign Scan on public.ftprt1_p1 t1_1
+               Output: t1_1.*, t1_1.c1, t1_1.c3
+               Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1` ORDER BY `c3` IS NULL, `c3` ASC, `c1` IS NULL, `c1` ASC
+         ->  Foreign Scan on public.ftprt1_p2 t1_2
+               Output: t1_2.*, t1_2.c1, t1_2.c3
+               Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2` ORDER BY `c3` IS NULL, `c3` ASC, `c1` IS NULL, `c1` ASC
+   ->  Materialize
+         Output: ((t2.*)::fprt2), t2.c2
          ->  Append
-               ->  Foreign Scan on public.ftprt1_p1 t1_1
-                     Output: t1_1.*, t1_1.c1, t1_1.c3
-                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test1`
-               ->  Foreign Scan on public.ftprt1_p2 t1_2
-                     Output: t1_2.*, t1_2.c1, t1_2.c3
-                     Remote query: SELECT `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`test2`
-         ->  Materialize
-               Output: ((t2.*)::fprt2), t2.c2
-               ->  Append
-                     ->  Foreign Scan on public.ftprt2_p1 t2_1
-                           Output: t2_1.*, t2_1.c2
-                           Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test3`
-                     ->  Foreign Scan on public.ftprt2_p2 t2_2
-                           Output: t2_2.*, t2_2.c2
-                           Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test4`
-(22 rows)
+               ->  Foreign Scan on public.ftprt2_p1 t2_1
+                     Output: t2_1.*, t2_1.c2
+                     Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test3` ORDER BY `c2` IS NULL, `c2` ASC
+               ->  Foreign Scan on public.ftprt2_p2 t2_2
+                     Output: t2_2.*, t2_2.c2
+                     Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test4` ORDER BY `c2` IS NULL, `c2` ASC
+(20 rows)
 
 SELECT t1, t2, t1.c1
   FROM fprt1 t1 JOIN fprt2 t2 ON (t1.c1 = t2.c2)
@@ -1198,21 +1134,19 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1,t1.c2
   FROM fprt1 t1, LATERAL (SELECT t2.c1, t2.c2 FROM fprt2 t2
   WHERE t1.c1 = t2.c2 AND t1.c2 = t2.c1) q WHERE t1.c1 % 2 = 0 ORDER BY 1,2;
-                                                                                                      QUERY PLAN                                                                                                      
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
-   Output: t1.c1, t1.c2
+                                                                                                                                     QUERY PLAN                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
    Sort Key: t1.c1, t1.c2
-   ->  Append
-         ->  Foreign Scan
-               Output: t1_1.c1, t1_1.c2
-               Relations: (mysql_fdw_regress.ftprt1_p1 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p1 t2)
-               Remote query: SELECT r4.`c1`, r4.`c2` FROM (`mysql_fdw_regress`.`test1` r4 INNER JOIN `mysql_fdw_regress`.`test3` r6 ON (((r4.`c1` = r6.`c2`)) AND ((r4.`c2` = r6.`c1`)))) WHERE (((r4.`c1` % 2) = 0))
-         ->  Foreign Scan
-               Output: t1_2.c1, t1_2.c2
-               Relations: (mysql_fdw_regress.ftprt1_p2 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p2 t2)
-               Remote query: SELECT r5.`c1`, r5.`c2` FROM (`mysql_fdw_regress`.`test2` r5 INNER JOIN `mysql_fdw_regress`.`test4` r7 ON (((r5.`c1` = r7.`c2`)) AND ((r5.`c2` = r7.`c1`)))) WHERE (((r5.`c1` % 2) = 0))
-(12 rows)
+   ->  Foreign Scan
+         Output: t1_1.c1, t1_1.c2
+         Relations: (mysql_fdw_regress.ftprt1_p1 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p1 t2)
+         Remote query: SELECT r4.`c1`, r4.`c2` FROM (`mysql_fdw_regress`.`test1` r4 INNER JOIN `mysql_fdw_regress`.`test3` r6 ON (((r4.`c1` = r6.`c2`)) AND ((r4.`c2` = r6.`c1`)))) WHERE (((r4.`c1` % 2) = 0)) ORDER BY r4.`c1` IS NULL, r4.`c1` ASC, r4.`c2` IS NULL, r4.`c2` ASC
+   ->  Foreign Scan
+         Output: t1_2.c1, t1_2.c2
+         Relations: (mysql_fdw_regress.ftprt1_p2 t1) INNER JOIN (mysql_fdw_regress.ftprt2_p2 t2)
+         Remote query: SELECT r5.`c1`, r5.`c2` FROM (`mysql_fdw_regress`.`test2` r5 INNER JOIN `mysql_fdw_regress`.`test4` r7 ON (((r5.`c1` = r7.`c2`)) AND ((r5.`c2` = r7.`c1`)))) WHERE (((r5.`c1` % 2) = 0)) ORDER BY r5.`c1` IS NULL, r5.`c1` ASC, r5.`c2` IS NULL, r5.`c2` ASC
+(10 rows)
 
 SELECT t1.c1,t1.c2
   FROM fprt1 t1, LATERAL (SELECT t2.c1, t2.c2 FROM fprt2 t2
@@ -1232,35 +1166,37 @@ SELECT t1.c1, t1.phv, t2.c2, t2.phv
   FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE c1 % 2 = 0) t1 LEFT JOIN
     (SELECT 't2_phv' phv, * FROM fprt2 WHERE c2 % 2 = 0) t2 ON (t1.c1 = t2.c2)
   ORDER BY t1.c1, t2.c2;
-                                                  QUERY PLAN                                                   
----------------------------------------------------------------------------------------------------------------
- Sort
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Incremental Sort
    Output: fprt1.c1, 't1_phv'::text, fprt2.c2, ('t2_phv'::text)
    Sort Key: fprt1.c1, fprt2.c2
-   ->  Append
+   Presorted Key: fprt1.c1
+   ->  Merge Append
+         Sort Key: fprt1.c1
          ->  Nested Loop Left Join
                Output: fprt1_1.c1, 't1_phv'::text, fprt2_1.c2, ('t2_phv'::text)
                Join Filter: (fprt1_1.c1 = fprt2_1.c2)
                ->  Foreign Scan on public.ftprt1_p1 fprt1_1
                      Output: fprt1_1.c1
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` WHERE (((`c1` % 2) = 0))
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` WHERE (((`c1` % 2) = 0)) ORDER BY `c1` IS NULL, `c1` ASC
                ->  Materialize
                      Output: fprt2_1.c2, ('t2_phv'::text)
                      ->  Foreign Scan on public.ftprt2_p1 fprt2_1
                            Output: fprt2_1.c2, 't2_phv'::text
-                           Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test3` WHERE (((`c2` % 2) = 0))
+                           Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test3` WHERE (((`c2` % 2) = 0)) ORDER BY `c2` IS NULL, `c2` ASC
          ->  Nested Loop Left Join
                Output: fprt1_2.c1, 't1_phv'::text, fprt2_2.c2, ('t2_phv'::text)
                Join Filter: (fprt1_2.c1 = fprt2_2.c2)
                ->  Foreign Scan on public.ftprt1_p2 fprt1_2
                      Output: fprt1_2.c1
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2` WHERE (((`c1` % 2) = 0))
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2` WHERE (((`c1` % 2) = 0)) ORDER BY `c1` IS NULL, `c1` ASC
                ->  Materialize
                      Output: fprt2_2.c2, ('t2_phv'::text)
                      ->  Foreign Scan on public.ftprt2_p2 fprt2_2
                            Output: fprt2_2.c2, 't2_phv'::text
-                           Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test4` WHERE (((`c2` % 2) = 0))
-(26 rows)
+                           Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test4` WHERE (((`c2` % 2) = 0)) ORDER BY `c2` IS NULL, `c2` ASC
+(28 rows)
 
 SELECT t1.c1, t1.phv, t2.c2, t2.phv
   FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE c1 % 2 = 0) t1 LEFT JOIN

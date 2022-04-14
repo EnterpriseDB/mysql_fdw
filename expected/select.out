@@ -906,20 +906,17 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
   SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
- Sort
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Nested Loop Left Join
    Output: t1.a, t1.b, t2.a, (t1.a)
-   Sort Key: t1.a
-   ->  Nested Loop Left Join
-         Output: t1.a, t1.b, t2.a, (t1.a)
-         ->  Foreign Scan on public.f_mysql_test t1
-               Output: t1.a, t1.b
-               Remote query: SELECT `a`, `b` FROM `mysql_fdw_regress`.`mysql_test`
-         ->  Foreign Scan on public.f_mysql_test t2
-               Output: t2.a, t1.a
-               Remote query: SELECT `a` FROM `mysql_fdw_regress`.`mysql_test` WHERE ((? = `a`))
-(11 rows)
+   ->  Foreign Scan on public.f_mysql_test t1
+         Output: t1.a, t1.b
+         Remote query: SELECT `a`, `b` FROM `mysql_fdw_regress`.`mysql_test` ORDER BY `a` IS NULL, `a` ASC
+   ->  Foreign Scan on public.f_mysql_test t2
+         Output: t2.a, t1.a
+         Remote query: SELECT `a` FROM `mysql_fdw_regress`.`mysql_test` WHERE ((? = `a`))
+(8 rows)
 
 SELECT * FROM f_mysql_test t1 LEFT JOIN LATERAL (
   SELECT t2.a, t1.a AS t1_a FROM f_mysql_test t2) t3 ON t1.a = t3.a ORDER BY 1;
@@ -1205,11 +1202,11 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, c2 FROM f_test_tbl1
   WHERE c8 = (SELECT c1 FROM f_test_tbl2 WHERE c1 = (SELECT 20))
   ORDER BY c1;
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
- Sort
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
    Output: f_test_tbl1.c1, f_test_tbl1.c2
-   Sort Key: f_test_tbl1.c1
+   Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c8` = ?)) ORDER BY `c1` IS NULL, `c1` ASC
    InitPlan 2 (returns $1)
      ->  Foreign Scan on public.f_test_tbl2
            Output: f_test_tbl2.c1
@@ -1217,10 +1214,7 @@ SELECT c1, c2 FROM f_test_tbl1
            InitPlan 1 (returns $0)
              ->  Result
                    Output: 20
-   ->  Foreign Scan on public.f_test_tbl1
-         Output: f_test_tbl1.c1, f_test_tbl1.c2
-         Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c8` = ?))
-(13 rows)
+(10 rows)
 
 SELECT c1, c2 FROM f_test_tbl1
   WHERE c8 = (SELECT c1 FROM f_test_tbl2 WHERE c1 = (SELECT 20))
@@ -1407,18 +1401,15 @@ ALTER SERVER mysql_svr options (SET use_remote_estimate 'false');
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
   ORDER BY 1 limit 5;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
+                                                     QUERY PLAN                                                     
+--------------------------------------------------------------------------------------------------------------------
  Limit
    Output: c1, c2, c3
-   ->  Sort
+   ->  Foreign Scan on public.f_test_tbl1
          Output: c1, c2, c3
-         Sort Key: f_test_tbl1.c1
-         ->  Foreign Scan on public.f_test_tbl1
-               Output: c1, c2, c3
-               Filter: (timeofday() IS NOT NULL)
-               Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test_tbl1`
-(9 rows)
+         Filter: (timeofday() IS NOT NULL)
+         Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c1` IS NULL, `c1` ASC
+(6 rows)
 
 SELECT c1, c2, c3 FROM f_test_tbl1 WHERE pg_catalog.timeofday() IS NOT NULL
   ORDER BY 1 limit 5;
@@ -1534,21 +1525,195 @@ CREATE FOREIGN TABLE f_test7(c1 int, c2 text)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test7');
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, length(c2) FROM f_test7 ORDER BY 1;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- Sort
-   Output: c1, (length(c2))
-   Sort Key: f_test7.c1
-   ->  Foreign Scan on public.f_test7
-         Output: c1, length(c2)
-         Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test7`
-(6 rows)
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test7
+   Output: c1, length(c2)
+   Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test7` ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
 
 SELECT c1, length(c2) FROM f_test7 ORDER BY 1;
  c1 | length 
 ----+--------
   1 |  67500
 (1 row)
+
+-- FDW-130: ORDER BY with collation clause, should not get pushdown.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c2 COLLATE "en_US";
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: c1, c2, c3, c4, c5, c6, c7, c8, ((c2)::character varying(10))
+   Sort Key: f_test_tbl1.c2 COLLATE "en_US"
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: c1, c2, c3, c4, c5, c6, c7, c8, c2
+         Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1`
+(6 rows)
+
+SELECT * FROM f_test_tbl1 ORDER BY c2 COLLATE "en_US";
+  c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
+------+-------+-----------+------+------------+------------+------+----
+  100 | EMP1  | ADMIN     | 1300 | 1980-12-17 |  800.23000 |      | 20
+ 1000 | EMP10 | SALESMAN  |  600 | 1980-09-08 | 1500.00000 |    0 | 30
+ 1100 | EMP11 | ADMIN     |  800 | 1987-05-23 | 1100.00000 |      | 20
+ 1200 | EMP12 | ADMIN     |  600 | 1981-12-03 |  950.00000 |      | 30
+ 1300 | EMP13 | FINANCE   |  400 | 1981-12-03 | 3000.00000 |      | 20
+ 1400 | EMP14 | ADMIN     |  700 | 1982-01-23 | 1300.00000 |      | 10
+  200 | EMP2  | SALESMAN  |  600 | 1981-02-20 | 1600.00000 |  300 | 30
+  300 | EMP3  | SALESMAN  |  600 | 1981-02-22 | 1250.00000 |  500 | 30
+  400 | EMP4  | MANAGER   |  900 | 1981-04-02 | 2975.12000 |      | 20
+  500 | EMP5  | SALESMAN  |  600 | 1981-09-28 | 1250.00000 | 1400 | 30
+  600 | EMP6  | MANAGER   |  900 | 1981-05-01 | 2850.00000 |      | 30
+  700 | EMP7  | MANAGER   |  900 | 1981-06-09 | 2450.45000 |      | 10
+  800 | EMP8  | FINANCE   |  400 | 1987-04-19 | 3000.00000 |      | 20
+  900 | EMP9  | HEAD      |      | 1981-11-17 | 5000.00000 |      | 10
+(14 rows)
+
+-- Order by desc
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c1 DESC;
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2, c3, c4, c5, c6, c7, c8
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c1` IS NOT NULL, `c1` DESC
+(3 rows)
+
+SELECT * FROM f_test_tbl1 ORDER BY c1 DESC;
+  c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
+------+-------+-----------+------+------------+------------+------+----
+ 1400 | EMP14 | ADMIN     |  700 | 1982-01-23 | 1300.00000 |      | 10
+ 1300 | EMP13 | FINANCE   |  400 | 1981-12-03 | 3000.00000 |      | 20
+ 1200 | EMP12 | ADMIN     |  600 | 1981-12-03 |  950.00000 |      | 30
+ 1100 | EMP11 | ADMIN     |  800 | 1987-05-23 | 1100.00000 |      | 20
+ 1000 | EMP10 | SALESMAN  |  600 | 1980-09-08 | 1500.00000 |    0 | 30
+  900 | EMP9  | HEAD      |      | 1981-11-17 | 5000.00000 |      | 10
+  800 | EMP8  | FINANCE   |  400 | 1987-04-19 | 3000.00000 |      | 20
+  700 | EMP7  | MANAGER   |  900 | 1981-06-09 | 2450.45000 |      | 10
+  600 | EMP6  | MANAGER   |  900 | 1981-05-01 | 2850.00000 |      | 30
+  500 | EMP5  | SALESMAN  |  600 | 1981-09-28 | 1250.00000 | 1400 | 30
+  400 | EMP4  | MANAGER   |  900 | 1981-04-02 | 2975.12000 |      | 20
+  300 | EMP3  | SALESMAN  |  600 | 1981-02-22 | 1250.00000 |  500 | 30
+  200 | EMP2  | SALESMAN  |  600 | 1981-02-20 | 1600.00000 |  300 | 30
+  100 | EMP1  | ADMIN     | 1300 | 1980-12-17 |  800.23000 |      | 20
+(14 rows)
+
+-- Order by is not null
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL;
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2, c3, c4, c5, c6, c7, c8, (c7 IS NOT NULL)
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY (`c7` IS NOT NULL) IS NULL, (`c7` IS NOT NULL) ASC
+(3 rows)
+
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL;
+  c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
+------+-------+-----------+------+------------+------------+------+----
+  100 | EMP1  | ADMIN     | 1300 | 1980-12-17 |  800.23000 |      | 20
+  400 | EMP4  | MANAGER   |  900 | 1981-04-02 | 2975.12000 |      | 20
+  600 | EMP6  | MANAGER   |  900 | 1981-05-01 | 2850.00000 |      | 30
+  700 | EMP7  | MANAGER   |  900 | 1981-06-09 | 2450.45000 |      | 10
+  800 | EMP8  | FINANCE   |  400 | 1987-04-19 | 3000.00000 |      | 20
+  900 | EMP9  | HEAD      |      | 1981-11-17 | 5000.00000 |      | 10
+ 1100 | EMP11 | ADMIN     |  800 | 1987-05-23 | 1100.00000 |      | 20
+ 1200 | EMP12 | ADMIN     |  600 | 1981-12-03 |  950.00000 |      | 30
+ 1300 | EMP13 | FINANCE   |  400 | 1981-12-03 | 3000.00000 |      | 20
+ 1400 | EMP14 | ADMIN     |  700 | 1982-01-23 | 1300.00000 |      | 10
+  200 | EMP2  | SALESMAN  |  600 | 1981-02-20 | 1600.00000 |  300 | 30
+  300 | EMP3  | SALESMAN  |  600 | 1981-02-22 | 1250.00000 |  500 | 30
+  500 | EMP5  | SALESMAN  |  600 | 1981-09-28 | 1250.00000 | 1400 | 30
+ 1000 | EMP10 | SALESMAN  |  600 | 1980-09-08 | 1500.00000 |    0 | 30
+(14 rows)
+
+-- Order by is not null desc
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL DESC;
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2, c3, c4, c5, c6, c7, c8, (c7 IS NOT NULL)
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY (`c7` IS NOT NULL) IS NOT NULL, (`c7` IS NOT NULL) DESC
+(3 rows)
+
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL DESC;
+  c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
+------+-------+-----------+------+------------+------------+------+----
+  200 | EMP2  | SALESMAN  |  600 | 1981-02-20 | 1600.00000 |  300 | 30
+  300 | EMP3  | SALESMAN  |  600 | 1981-02-22 | 1250.00000 |  500 | 30
+  500 | EMP5  | SALESMAN  |  600 | 1981-09-28 | 1250.00000 | 1400 | 30
+ 1000 | EMP10 | SALESMAN  |  600 | 1980-09-08 | 1500.00000 |    0 | 30
+  100 | EMP1  | ADMIN     | 1300 | 1980-12-17 |  800.23000 |      | 20
+  400 | EMP4  | MANAGER   |  900 | 1981-04-02 | 2975.12000 |      | 20
+  600 | EMP6  | MANAGER   |  900 | 1981-05-01 | 2850.00000 |      | 30
+  700 | EMP7  | MANAGER   |  900 | 1981-06-09 | 2450.45000 |      | 10
+  800 | EMP8  | FINANCE   |  400 | 1987-04-19 | 3000.00000 |      | 20
+  900 | EMP9  | HEAD      |      | 1981-11-17 | 5000.00000 |      | 10
+ 1100 | EMP11 | ADMIN     |  800 | 1987-05-23 | 1100.00000 |      | 20
+ 1200 | EMP12 | ADMIN     |  600 | 1981-12-03 |  950.00000 |      | 30
+ 1300 | EMP13 | FINANCE   |  400 | 1981-12-03 | 3000.00000 |      | 20
+ 1400 | EMP14 | ADMIN     |  700 | 1982-01-23 | 1300.00000 |      | 10
+(14 rows)
+
+-- Order by desc nulls first
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS FIRST;
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2, c3, c4, c5, c6, c7, c8
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c7` IS NOT NULL, `c7` DESC
+(3 rows)
+
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS FIRST;
+  c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
+------+-------+-----------+------+------------+------------+------+----
+  100 | EMP1  | ADMIN     | 1300 | 1980-12-17 |  800.23000 |      | 20
+  400 | EMP4  | MANAGER   |  900 | 1981-04-02 | 2975.12000 |      | 20
+  600 | EMP6  | MANAGER   |  900 | 1981-05-01 | 2850.00000 |      | 30
+  700 | EMP7  | MANAGER   |  900 | 1981-06-09 | 2450.45000 |      | 10
+  800 | EMP8  | FINANCE   |  400 | 1987-04-19 | 3000.00000 |      | 20
+  900 | EMP9  | HEAD      |      | 1981-11-17 | 5000.00000 |      | 10
+ 1100 | EMP11 | ADMIN     |  800 | 1987-05-23 | 1100.00000 |      | 20
+ 1200 | EMP12 | ADMIN     |  600 | 1981-12-03 |  950.00000 |      | 30
+ 1300 | EMP13 | FINANCE   |  400 | 1981-12-03 | 3000.00000 |      | 20
+ 1400 | EMP14 | ADMIN     |  700 | 1982-01-23 | 1300.00000 |      | 10
+  500 | EMP5  | SALESMAN  |  600 | 1981-09-28 | 1250.00000 | 1400 | 30
+  300 | EMP3  | SALESMAN  |  600 | 1981-02-22 | 1250.00000 |  500 | 30
+  200 | EMP2  | SALESMAN  |  600 | 1981-02-20 | 1600.00000 |  300 | 30
+ 1000 | EMP10 | SALESMAN  |  600 | 1980-09-08 | 1500.00000 |    0 | 30
+(14 rows)
+
+-- Order by asc nulls last
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST;
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2, c3, c4, c5, c6, c7, c8
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c7` IS NULL, `c7` DESC
+(3 rows)
+
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST;
+  c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
+------+-------+-----------+------+------------+------------+------+----
+  500 | EMP5  | SALESMAN  |  600 | 1981-09-28 | 1250.00000 | 1400 | 30
+  300 | EMP3  | SALESMAN  |  600 | 1981-02-22 | 1250.00000 |  500 | 30
+  200 | EMP2  | SALESMAN  |  600 | 1981-02-20 | 1600.00000 |  300 | 30
+ 1000 | EMP10 | SALESMAN  |  600 | 1980-09-08 | 1500.00000 |    0 | 30
+  100 | EMP1  | ADMIN     | 1300 | 1980-12-17 |  800.23000 |      | 20
+  400 | EMP4  | MANAGER   |  900 | 1981-04-02 | 2975.12000 |      | 20
+  600 | EMP6  | MANAGER   |  900 | 1981-05-01 | 2850.00000 |      | 30
+  700 | EMP7  | MANAGER   |  900 | 1981-06-09 | 2450.45000 |      | 10
+  800 | EMP8  | FINANCE   |  400 | 1987-04-19 | 3000.00000 |      | 20
+  900 | EMP9  | HEAD      |      | 1981-11-17 | 5000.00000 |      | 10
+ 1100 | EMP11 | ADMIN     |  800 | 1987-05-23 | 1100.00000 |      | 20
+ 1200 | EMP12 | ADMIN     |  600 | 1981-12-03 |  950.00000 |      | 30
+ 1300 | EMP13 | FINANCE   |  400 | 1981-12-03 | 3000.00000 |      | 20
+ 1400 | EMP14 | ADMIN     |  700 | 1982-01-23 | 1300.00000 |      | 10
+(14 rows)
 
 -- Cleanup
 DROP TABLE l_test_tbl1;

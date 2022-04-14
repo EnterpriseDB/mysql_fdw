@@ -130,15 +130,12 @@ CREATE FOREIGN TABLE f_mysql_test(a int, b int)
 -- Below explain will return actual rows from MySQL, but keeping costs off
 -- here for consistent regression result.
 EXPLAIN (VERBOSE, COSTS OFF) SELECT a FROM f_mysql_test WHERE a < 2 ORDER BY 1;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Sort
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_mysql_test
    Output: a
-   Sort Key: f_mysql_test.a
-   ->  Foreign Scan on public.f_mysql_test
-         Output: a
-         Remote query: SELECT `a` FROM `mysql_fdw_regress`.`mysql_test` WHERE ((`a` < 2))
-(6 rows)
+   Remote query: SELECT `a` FROM `mysql_fdw_regress`.`mysql_test` WHERE ((`a` < 2)) ORDER BY `a` IS NULL, `a` ASC
+(3 rows)
 
 DROP FOREIGN TABLE f_mysql_test;
 DROP USER MAPPING FOR public SERVER mysql_svr1;
