@@ -222,6 +222,9 @@ typedef struct MySQLFdwRelationInfo
 	/* Bitmap of attr numbers we need to fetch from the remote server. */
 	Bitmapset  *attrs_used;
 
+	/* True means that the query_pathkeys is safe to push down */
+	bool		qp_is_pushdown_safe;
+
 	/*
 	 * Name of the relation while EXPLAINing ForeignScan.  It is used for join
 	 * relations but is set for all relations.  For join relation, the name
@@ -236,6 +239,9 @@ typedef struct MySQLFdwRelationInfo
 	List	   *joinclauses;
 	/* Grouping information */
 	List	   *grouped_tlist;
+
+	/* Upper relation information */
+	UpperRelationKind stage;
 } MySQLFdwRelationInfo;
 
 
@@ -313,11 +319,17 @@ extern void mysql_deparse_select_stmt_for_rel(StringInfo buf,
 											  PlannerInfo *root,
 											  RelOptInfo *rel, List *tlist,
 											  List *remote_conds,
+											  List *pathkeys,
+											  bool has_final_sort,
 											  List **retrieved_attrs,
 											  List **params_list);
 extern const char *mysql_get_jointype_name(JoinType jointype);
 extern bool mysql_is_foreign_param(PlannerInfo *root, RelOptInfo *baserel,
 								   Expr *expr);
+extern Expr *mysql_find_em_expr_for_rel(EquivalenceClass *ec, RelOptInfo *rel);
+extern Expr *mysql_find_em_expr_for_input_target(PlannerInfo *root,
+												 EquivalenceClass *ec,
+												 PathTarget *target);
 
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user,

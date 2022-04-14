@@ -157,6 +157,8 @@ static void mysql_append_groupby_clause(List *tlist, deparse_expr_cxt *context);
 static Node *mysql_deparse_sort_group_clause(Index ref, List *tlist,
 											 bool force_colno,
 											 deparse_expr_cxt *context);
+static void mysql_append_orderby_clause(List *pathkeys, bool has_final_sort,
+										deparse_expr_cxt *context);
 
 /*
  * Functions to construct string representation of a specific types.
@@ -240,6 +242,8 @@ mysql_quote_identifier(const char *str, char quotechar)
  *
  * remote_conds is the list of conditions to be deparsed into the WHERE clause.
  *
+ * pathkeys is the list of pathkeys to order the result by.
+ *
  * If params_list is not NULL, it receives a list of Params and other-relation
  * Vars used in the clauses; these values must be transmitted to the remote
  * server as parameter values.
@@ -252,8 +256,9 @@ mysql_quote_identifier(const char *str, char quotechar)
 extern void
 mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 								  RelOptInfo *rel, List *tlist,
-								  List *remote_conds, List **retrieved_attrs,
-								  List **params_list)
+								  List *remote_conds, List *pathkeys,
+								  bool has_final_sort,
+								  List **retrieved_attrs, List **params_list)
 {
 	deparse_expr_cxt context;
 	List	   *quals;
@@ -305,6 +310,10 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 			mysql_append_conditions(remote_conds, &context);
 		}
 	}
+
+	/* Add ORDER BY clause if we found any useful pathkeys */
+	if (pathkeys)
+		mysql_append_orderby_clause(pathkeys, has_final_sort, &context);
 }
 
 /*
@@ -2416,4 +2425,62 @@ mysql_is_foreign_param(PlannerInfo *root,
 			break;
 	}
 	return false;
+}
+
+/*
+ * mysql_append_orderby_clause
+ * 		Deparse ORDER BY clause according to the given pathkeys for given
+ * 		base relation. From given pathkeys expressions belonging entirely
+ * 		to the given base relation are obtained and deparsed.
+ */
+void
+mysql_append_orderby_clause(List *pathkeys, bool has_final_sort,
+							deparse_expr_cxt *context)
+{
+	ListCell   *lcell;
+	char	   *delim = " ";
+	RelOptInfo *baserel = context->scanrel;
+	StringInfo	buf = context->buf;
+
+	appendStringInfo(buf, " ORDER BY");
+	foreach(lcell, pathkeys)
+	{
+		PathKey	   *pathkey = lfirst(lcell);
+		Expr	   *em_expr;
+
+		if (has_final_sort)
+		{
+			/*
+			 * By construction, context->foreignrel is the input relation to
+			 * the final sort.
+			 */
+			em_expr = mysql_find_em_expr_for_input_target(context->root,
+														  pathkey->pk_eclass,
+														  context->foreignrel->reltarget);
+		}
+		else
+			em_expr = mysql_find_em_expr_for_rel(pathkey->pk_eclass, baserel);
+
+		Assert(em_expr != NULL);
+
+		appendStringInfoString(buf, delim);
+		deparseExpr(em_expr, context);
+
+		if (pathkey->pk_nulls_first)\
+			appendStringInfoString(buf, " IS NOT NULL");
+		else
+			appendStringInfoString(buf, " IS NULL");
+
+		/* Add delimiter */
+		appendStringInfoString(buf, ", ");
+
+		deparseExpr(em_expr, context);
+
+		if (pathkey->pk_strategy == BTLessStrategyNumber)
+			appendStringInfoString(buf, " ASC");
+		else
+			appendStringInfoString(buf, " DESC");
+
+		delim = ", ";
+	}
 }
