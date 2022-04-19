@@ -591,9 +591,15 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	char		sql_mode[255];
 
 	/*
+	 * Do nothing in EXPLAIN (no ANALYZE) case. node->fdw_state stays NULL.
+	 */
+	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+		return;
+
+	/*
 	 * We'll save private state in node->fdw_state.
 	 */
-	festate = (MySQLFdwExecState *) palloc(sizeof(MySQLFdwExecState));
+	festate = (MySQLFdwExecState *) palloc0(sizeof(MySQLFdwExecState));
 	node->fdw_state = (void *) festate;
 
 	/*
@@ -722,6 +728,9 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Set the pre-fetch rows */
 	mysql_stmt_attr_set(festate->stmt, STMT_ATTR_PREFETCH_ROWS,
 						(void *) &options->fetch_size);
+
+	if (tupleDescriptor->natts == 0)
+		return;
 
 	festate->table = (mysql_table *) palloc0(sizeof(mysql_table));
 	festate->table->column = (mysql_column *) palloc0(sizeof(mysql_column) * tupleDescriptor->natts);
@@ -896,7 +905,6 @@ mysqlIterateForeignScan(ForeignScanState *node)
 static void
 mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
-	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
 	RangeTblEntry *rte;
 	ForeignScan *fsplan = (ForeignScan *) node->ss.ps.plan;
 	int			rtindex;
@@ -936,10 +944,14 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 			ExplainPropertyLong("Remote server startup cost", 25, es);
 #endif
 	}
-
 	/* Show the remote query in verbose mode */
 	if (es->verbose)
-		ExplainPropertyText("Remote query", festate->query, es);
+	{
+		char	   *remote_sql = strVal(list_nth(fdw_private,
+												 mysqlFdwScanPrivateSelectSql));
+
+		ExplainPropertyText("Remote query", remote_sql, es);
+	}
 }
 
 /*
@@ -950,6 +962,10 @@ static void
 mysqlEndForeignScan(ForeignScanState *node)
 {
 	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
+
+	/* if festate is NULL, we are in EXPLAIN; do nothing */
+	if (festate == NULL)
+		return;
 
 	if (festate->table && festate->table->mysql_res)
 	{
@@ -1315,28 +1331,6 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 	else
 		scan_var_list = pull_var_clause((Node *) foreignrel->reltarget->exprs,
 										PVC_RECURSE_PLACEHOLDERS);
-
-	/* System attributes are not allowed. */
-	foreach(lc, scan_var_list)
-	{
-		Var		   *var = lfirst(lc);
-		const FormData_pg_attribute *attr;
-
-		Assert(IsA(var, Var));
-
-		if (var->varattno >= 0)
-			continue;
-
-#if PG_VERSION_NUM >= 120000
-		attr = SystemAttributeDefinition(var->varattno);
-#else
-		attr = SystemAttributeDefinition(var->varattno, false);
-#endif
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_COLUMN_NAME_NOT_FOUND),
-				 errmsg("system attribute \"%s\" can't be fetched from remote relation",
-						attr->attname.data)));
-	}
 
 	if (IS_JOIN_REL(foreignrel))
 	{

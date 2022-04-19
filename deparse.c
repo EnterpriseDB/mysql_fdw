@@ -112,7 +112,7 @@ static void mysql_deparse_param(Param *node, deparse_expr_cxt *context);
 #if PG_VERSION_NUM < 120000
 static void mysql_deparse_array_ref(ArrayRef *node, deparse_expr_cxt *context);
 #else
-static void mysql_deparse_array_ref(SubscriptingRef *node,
+static void mysql_deparse_subscripting_ref(SubscriptingRef *node,
 									deparse_expr_cxt *context);
 #endif
 static void mysql_deparse_func_expr(FuncExpr *node, deparse_expr_cxt *context);
@@ -558,9 +558,6 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 						 PlannerInfo *root, bool qualify_col)
 {
 	RangeTblEntry *rte;
-	char	   *colname = NULL;
-	List	   *options;
-	ListCell   *lc;
 
 	/* varno must not be any of OUTER_VAR, INNER_VAR and INDEX_VAR. */
 	Assert(!IS_SPECIAL_VARNO(varno));
@@ -568,37 +565,123 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 	/* Get RangeTblEntry from array in PlannerInfo. */
 	rte = planner_rt_fetch(varno, root);
 
-	/*
-	 * If it's a column of a foreign table, and it has the column_name FDW
-	 * option, use that value.
-	 */
-	options = GetForeignColumnOptions(rte->relid, varattno);
-	foreach(lc, options)
+	/* We not support fetching any system attributes from remote side */
+	if (varattno < 0)
 	{
-		DefElem    *def = (DefElem *) lfirst(lc);
+		/*
+		 * All other system attributes are fetched as 0, except for table OID
+		 * and ctid, table OID is fetched as the local table OID, ctid is
+		 * fectch as invalid value. However, we must be careful; the table
+		 * could be beneath an outer join, in which case it must go to NULL
+		 * whenever the rest of the row does.
+		 */
+		char		fetchval[32];
 
-		if (strcmp(def->defname, "column_name") == 0)
+		if (varattno == TableOidAttributeNumber)
 		{
-			colname = defGetString(def);
-			break;
+			/*
+			 * table OID is fetched as the local table OID
+			 */
+			pg_snprintf(fetchval, sizeof(fetchval), "%u", rte->relid);
 		}
+		else if (varattno == SelfItemPointerAttributeNumber)
+		{
+			/*
+			 * ctid is fetched as '(4294967295,0)' ~ (0xFFFFFFFF, 0) (invalid
+			 * value), which is default value of tupleSlot->tts_tid after run
+			 * ExecClearTuple.
+			 */
+			pg_snprintf(fetchval, sizeof(fetchval), "'(%u,%u)'",
+						InvalidBlockNumber,
+						InvalidOffsetNumber);
+		}
+		else
+		{
+			/* other system attributes are fetched as 0 */
+			pg_snprintf(fetchval, sizeof(fetchval), "%u", 0);
+		}
+
+		appendStringInfo(buf, "%s", fetchval);
 	}
+	else if (varattno == 0)
+	{
+		/* Whole row reference */
+		Relation	rel;
+		Bitmapset  *attrs_used;
 
-	/*
-	 * If it's a column of a regular table or it doesn't have column_name
-	 * FDW option, use attribute name.
-	 */
-	if (colname == NULL)
+		/* Required only to be passed down to deparseTargetList(). */
+		List	   *retrieved_attrs;
+
+		/*
+		 * The lock on the relation will be held by upper callers, so it's
+		 * fine to open it with no lock here.
+		 */
+		rel = table_open(rte->relid, NoLock);
+
+		/*
+		 * The local name of the foreign table can not be recognized by the
+		 * foreign server and the table it references on foreign server might
+		 * have different column ordering or different columns than those
+		 * declared locally. Hence we have to deparse whole-row reference as
+		 * ROW(columns referenced locally). Construct this by deparsing a
+		 * "whole row" attribute.
+		 */
+		attrs_used = bms_add_member(NULL,
+									0 - FirstLowInvalidHeapAttributeNumber);
+
+		/*
+		 * In case the whole-row reference is under an outer join then it has
+		 * to go NULL whenever the rest of the row goes NULL. Deparsing a join
+		 * query would always involve multiple relations, thus qualify_col
+		 * would be true.
+		 */
+
+		mysql_deparse_target_list(buf, root, varno, rel, attrs_used,
+								  &retrieved_attrs);
+
+		table_close(rel, NoLock);
+		bms_free(attrs_used);
+	}
+	else
+	{
+		char	   *colname = NULL;
+		List	   *options;
+		ListCell   *lc;
+
+		/* varno must not be any of OUTER_VAR, INNER_VAR and INDEX_VAR. */
+		Assert(!IS_SPECIAL_VARNO(varno));
+
+		/*
+		 * If it's a column of a foreign table, and it has the column_name FDW
+		 * option, use that value.
+		 */
+		options = GetForeignColumnOptions(rte->relid, varattno);
+		foreach(lc, options)
+		{
+			DefElem    *def = (DefElem *) lfirst(lc);
+
+			if (strcmp(def->defname, "column_name") == 0)
+			{
+				colname = defGetString(def);
+				break;
+			}
+		}
+
+		/*
+		 * If it's a column of a regular table or it doesn't have column_name
+		 * FDW option, use attribute name.
+		 */
+		if (colname == NULL)
 #if PG_VERSION_NUM >= 110000
-		colname = get_attname(rte->relid, varattno, false);
+			colname = get_attname(rte->relid, varattno, false);
 #else
-		colname = get_relid_attribute_name(rte->relid, varattno);
+			colname = get_relid_attribute_name(rte->relid, varattno);
 #endif
+		if (qualify_col)
+			ADD_REL_QUALIFIER(buf, varno);
 
-	if (qualify_col)
-		ADD_REL_QUALIFIER(buf, varno);
-
-	appendStringInfoString(buf, mysql_quote_identifier(colname, '`'));
+		appendStringInfoString(buf, mysql_quote_identifier(colname, '`'));
+	}
 }
 
 static void
@@ -688,7 +771,7 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 			mysql_deparse_array_ref((ArrayRef *) node, context);
 #else
 		case T_SubscriptingRef:
-			mysql_deparse_array_ref((SubscriptingRef *) node, context);
+			mysql_deparse_subscripting_ref((SubscriptingRef *) node, context);
 #endif
 			break;
 		case T_FuncExpr:
@@ -1012,53 +1095,41 @@ mysql_deparse_param(Param *node, deparse_expr_cxt *context)
  */
 static void
 #if PG_VERSION_NUM < 120000
-mysql_deparse_array_ref(ArrayRef *node, deparse_expr_cxt *context)
+mysql_deparse_array_ref(ArrayRef * node, deparse_expr_cxt *context)
 #else
-mysql_deparse_array_ref(SubscriptingRef *node, deparse_expr_cxt *context)
+mysql_deparse_subscripting_ref(SubscriptingRef *node, deparse_expr_cxt *context)
 #endif
 {
-	StringInfo	buf = context->buf;
-	ListCell   *lowlist_item;
 	ListCell   *uplist_item;
+	ListCell   *lc;
+	StringInfo	buf = context->buf;
+	bool		first = true;
+	ArrayExpr  *array_expr = (ArrayExpr *) node->refexpr;
 
-	/* Always parenthesize the expression. */
-	appendStringInfoChar(buf, '(');
+	/* Not support slice function, which is excluded in pushdown checking */
+	Assert(node->reflowerindexpr == NULL);
+	Assert(node->refupperindexpr != NULL);
 
-	/*
-	 * Deparse referenced array expression first.  If that expression includes
-	 * a cast, we have to parenthesize to prevent the array subscript from
-	 * being taken as typename decoration.  We can avoid that in the typical
-	 * case of subscripting a Var, but otherwise do it.
-	 */
-	if (IsA(node->refexpr, Var))
-		deparseExpr(node->refexpr, context);
-	else
+	/* Transform array subscripting to ELT(index number, str1, str2, ...) */
+	appendStringInfoString(buf, "ELT(");
+
+	/* Append index number of ELT() expression */
+	uplist_item = list_head(node->refupperindexpr);
+	deparseExpr(lfirst(uplist_item), context);
+	appendStringInfoString(buf, ", ");
+
+	/* Deparse Array Expression in form of ELT syntax */
+	foreach(lc, array_expr->elements)
 	{
-		appendStringInfoChar(buf, '(');
-		deparseExpr(node->refexpr, context);
-		appendStringInfoChar(buf, ')');
+		if (!first)
+			appendStringInfoString(buf, ", ");
+		deparseExpr(lfirst(lc), context);
+		first = false;
 	}
 
-	/* Deparse subscript expressions. */
-	lowlist_item = list_head(node->reflowerindexpr);	/* could be NULL */
-	foreach(uplist_item, node->refupperindexpr)
-	{
-		appendStringInfoChar(buf, '[');
-		if (lowlist_item)
-		{
-			deparseExpr(lfirst(lowlist_item), context);
-			appendStringInfoChar(buf, ':');
-#if PG_VERSION_NUM < 130000
-			lowlist_item = lnext(lowlist_item);
-#else
-			lowlist_item = lnext(node->reflowerindexpr, lowlist_item);
-#endif
-		}
-		deparseExpr(lfirst(uplist_item), context);
-		appendStringInfoChar(buf, ']');
-	}
-
+	/* Enclose the ELT() expression */
 	appendStringInfoChar(buf, ')');
+
 }
 
 /*
@@ -1497,17 +1568,32 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				 * non-default collation.
 				 */
 				if (bms_is_member(var->varno, glob_cxt->relids) &&
-					var->varlevelsup == 0)
+					var->varlevelsup == 0 && var->varattno > 0)
 				{
 					/* Var belongs to foreign table */
+					/* Else check the collation */
 					collation = var->varcollid;
 					state = OidIsValid(collation) ? FDW_COLLATE_SAFE : FDW_COLLATE_NONE;
+
+					/* Mysql do not have Array data type */
+					if (type_is_array(var->vartype))
+						elog(ERROR, "mysql_fdw: Not support array data type\n");
+
 				}
 				else
 				{
 					/* Var belongs to some other table */
 					if (var->varcollid != InvalidOid &&
 						var->varcollid != DEFAULT_COLLATION_OID)
+						return false;
+
+					/*
+					 * System columns should not be sent to
+					 * the remote, since we don't make any effort to ensure
+					 * that local and remote values match (tableoid, in
+					 * particular, almost certainly doesn't match).
+					 */
+					if (var->varattno < 0)
 						return false;
 
 					/* We can consider that it doesn't set collation */
@@ -1558,6 +1644,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 			{
 				SubscriptingRef *ar = (SubscriptingRef *) node;
 #endif
+				Assert(list_length(ar->refupperindexpr) > 0);
 
 				/* Should not be in the join clauses of the Join-pushdown */
 				if (glob_cxt->is_remote_cond)
@@ -1567,25 +1654,55 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				if (ar->refassgnexpr != NULL)
 					return false;
 
+#if PG_VERSION_NUM >= 140000
+
+				/*
+				 * Recurse into the remaining subexpressions.  The container
+				 * subscripts will not affect collation of the SubscriptingRef
+				 * result, so do those first and reset inner_cxt afterwards.
+				 */
+#else
+
 				/*
 				 * Recurse to remaining subexpressions.  Since the array
 				 * subscripts must yield (noncollatable) integers, they won't
 				 * affect the inner_cxt state.
 				 */
+#endif
+				/* Allow 1-D subcription, other case does not push down */
+				if (list_length(ar->refupperindexpr) > 1)
+					return false;
+
 				if (!foreign_expr_walker((Node *) ar->refupperindexpr,
 										 glob_cxt, &inner_cxt))
 					return false;
-				if (!foreign_expr_walker((Node *) ar->reflowerindexpr,
-										 glob_cxt, &inner_cxt))
+
+				/* Disable slice by checking reflowerindexpr [:] */
+				if (ar->reflowerindexpr)
 					return false;
+
+#if PG_VERSION_NUM >= 140000
+				inner_cxt.collation = InvalidOid;
+				inner_cxt.state = FDW_COLLATE_NONE;
+#endif
+				/* Disble subcripting for Var, eg: c1[1] by checking T_Var */
 				if (!foreign_expr_walker((Node *) ar->refexpr,
 										 glob_cxt, &inner_cxt))
 					return false;
+#if PG_VERSION_NUM >= 140000
 
 				/*
-				 * Array subscripting should yield same collation as input,
-				 * but for safety use same logic as for function nodes.
+				 * Container subscripting typically yields same collation as
+				 * refexpr's, but in case it doesn't, use same logic as for
+				 * function nodes.
 				 */
+#else
+
+				/*
+				 * Container subscripting should yield same collation as
+				 * input, but for safety use same logic as for function nodes.
+				 */
+#endif
 				collation = ar->refcollid;
 				if (collation == InvalidOid)
 					state = FDW_COLLATE_NONE;
