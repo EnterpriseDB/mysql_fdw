@@ -735,6 +735,10 @@ deparse_interval(StringInfo buf, Datum datum)
 	struct pg_tm tm;
 	fsec_t		fsec;
 	bool		is_first = true;
+#if PG_VERSION_NUM >= 150000
+	struct pg_itm tt,
+			   *itm = &tt;
+#endif
 
 #define append_interval(expr, unit) \
 do { \
@@ -747,8 +751,19 @@ do { \
 	/* Check saved opname. It could be only "+" and "-" */
 	Assert(cur_opname);
 
+#if PG_VERSION_NUM >= 150000
+	interval2itm(*DatumGetIntervalP(datum), itm);
+	tm.tm_sec = itm->tm_sec;
+	tm.tm_min = itm->tm_min;
+	tm.tm_hour = itm->tm_hour;
+	tm.tm_mday = itm->tm_mday;
+	tm.tm_mon = itm->tm_mon;
+	tm.tm_year = itm->tm_year;
+	fsec = itm->tm_usec;
+#else
 	if (interval2tm(*DatumGetIntervalP(datum), &tm, &fsec) != 0)
 		elog(ERROR, "could not convert interval to tm");
+#endif
 
 	if (tm.tm_year > 0)
 		append_interval(tm.tm_year, "YEAR");
@@ -1451,7 +1466,11 @@ mysql_print_remote_placeholder(Oid paramtype, int32 paramtypmod,
 static bool
 is_builtin(Oid oid)
 {
+#if PG_VERSION_NUM >= 150000
+	return (oid < FirstGenbkiObjectId);
+#else
 	return (oid < FirstBootstrapObjectId);
+#endif
 }
 
 /*

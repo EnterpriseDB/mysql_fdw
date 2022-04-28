@@ -40,8 +40,8 @@ include $(PGXS)
 ifndef MAJORVERSION
 MAJORVERSION := $(basename $(VERSION))
 endif
-ifeq (,$(findstring $(MAJORVERSION), 10 11 12 13 14))
-$(error PostgreSQL 10, 11, 12, 13 or 14 is required to compile this extension)
+ifeq (,$(findstring $(MAJORVERSION), 10 11 12 13 14 15))
+$(error PostgreSQL 10, 11, 12, 13, 14, or 15 is required to compile this extension)
 endif
 
 else
