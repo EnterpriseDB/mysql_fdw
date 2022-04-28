@@ -104,10 +104,10 @@ SELECT t1.c1, t2.c1, t3.c1
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1 NULLS LAST;
+  ORDER BY t1.c1, t2.c1 NULLS LAST LIMIT 2 OFFSET 2;
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1 NULLS LAST;
+  ORDER BY t1.c1, t2.c1 NULLS LAST LIMIT 2 OFFSET 2;
 
 -- LEFT JOIN evaluating as INNER JOIN, having unsafe join clause.
 EXPLAIN (COSTS false, VERBOSE)
@@ -241,28 +241,28 @@ SELECT t1, t2, t1.c1
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1
   FROM fdw139_t1 t1 WHERE EXISTS (SELECT 1 FROM fdw139_t2 t2 WHERE t1.c1 = t2.c1)
-  ORDER BY t1.c1 LIMIT 10;
+  ORDER BY t1.c1;
 SELECT t1.c1
   FROM fdw139_t1 t1 WHERE EXISTS (SELECT 1 FROM fdw139_t2 t2 WHERE t1.c1 = t2.c1)
-  ORDER BY t1.c1 LIMIT 10;
+  ORDER BY t1.c1;
 
 -- ANTI JOIN, not pushed down
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1
   FROM fdw139_t1 t1 WHERE NOT EXISTS (SELECT 1 FROM fdw139_t2 t2 WHERE t1.c1 = t2.c2)
-  ORDER BY t1.c1 LIMIT 10;
+  ORDER BY t1.c1 LIMIT 2;
 SELECT t1.c1
   FROM fdw139_t1 t1 WHERE NOT EXISTS (SELECT 1 FROM fdw139_t2 t2 WHERE t1.c1 = t2.c2)
-  ORDER BY t1.c1 LIMIT 10;
+  ORDER BY t1.c1 LIMIT 2;
 
 -- CROSS JOIN can be pushed down
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 CROSS JOIN fdw139_t2 t2
-  ORDER BY t1.c1, t2.c1 LIMIT 10;
+  ORDER BY t1.c1, t2.c1 LIMIT round(5.4) OFFSET 2;
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 CROSS JOIN fdw139_t2 t2
-  ORDER BY t1.c1, t2.c1 LIMIT 10;
+  ORDER BY t1.c1, t2.c1 LIMIT round(5.4) OFFSET 2;
 
 -- CROSS JOIN combined with local table.
 CREATE TABLE local_t1(c1 int);
@@ -271,10 +271,10 @@ INSERT INTO local_t1 VALUES (1), (2);
 EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1, l1.c1
   FROM fdw139_t1 t1 CROSS JOIN fdw139_t2 t2 CROSS JOIN local_t1 l1
-  ORDER BY t1.c1, t2.c1, l1.c1 LIMIT 10;
+  ORDER BY t1.c1, t2.c1, l1.c1 LIMIT 8 OFFSET round(2.2);
 SELECT t1.c1, t2.c1, l1.c1
   FROM fdw139_t1 t1 CROSS JOIN fdw139_t2 t2 CROSS JOIN local_t1 l1
-  ORDER BY t1.c1, t2.c1, l1.c1 LIMIT 10;
+  ORDER BY t1.c1, t2.c1, l1.c1 LIMIT 8 OFFSET round(2.2);
 SELECT count(t1.c1)
   FROM fdw139_t1 t1 CROSS JOIN fdw139_t2 t2 CROSS JOIN local_t1 l1;
 
@@ -332,36 +332,36 @@ ALTER VIEW v2 OWNER TO regress_view_owner;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN v2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;  -- not pushed down, different view owners
+  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST;  -- not pushed down, different view owners
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN v2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;
+  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST;
 
 ALTER VIEW v1 OWNER TO regress_view_owner;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN v2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;  -- pushed down
+  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST;  -- pushed down
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN v2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;
+  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST;
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;  -- not pushed down, view owner not current user
+  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST;  -- not pushed down, view owner not current user
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;
+  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST;
 
 ALTER VIEW v1 OWNER TO CURRENT_USER;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;  -- pushed down
+  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST;  -- pushed down
 SELECT t1.c1, t2.c2
   FROM v1 t1 LEFT JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
-  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST LIMIT 10;
+  ORDER BY t1.c1, t2.c1, t2.c2 NULLS LAST;
 ALTER VIEW v1 OWNER TO regress_view_owner;
 
 -- Non-Var items in targetlist of the nullable rel of a join preventing
@@ -391,6 +391,43 @@ SELECT fdw139_t3.c1, q.*
     WHERE fdw139_t1.c1 = 11
   ) q(a, b, c) ON (fdw139_t3.c1 = q.b)
   WHERE fdw139_t3.c1 BETWEEN 10 AND 15;
+
+-- FDW-129: Limit and offset pushdown with join pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)
+  ORDER BY t1.c1, t2.c1 LIMIT round(2.2) OFFSET 2;
+SELECT t1.c1, t2.c1
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)
+  ORDER BY t1.c1, t2.c1 LIMIT round(2.2) OFFSET 2;
+
+-- Limit as NULL, no LIMIT/OFFSET pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)
+  ORDER BY t1.c1, t2.c1 LIMIT NULL OFFSET 1;
+SELECT t1.c1, t2.c1
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)
+  ORDER BY t1.c1, t2.c1 LIMIT NULL OFFSET 1;
+
+-- Limit as ALL, no LIMIT/OFFSET pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)
+  ORDER BY t1.c1, t2.c1 LIMIT ALL OFFSET 1;
+SELECT t1.c1, t2.c1
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)
+  ORDER BY t1.c1, t2.c1 LIMIT ALL OFFSET 1;
+
+
+-- Offset as NULL, no LIMIT/OFFSET pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)
+  ORDER BY t1.c1, t2.c1 LIMIT 3 OFFSET NULL;
+SELECT t1.c1, t2.c1
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)
+  ORDER BY t1.c1, t2.c1 LIMIT 3 OFFSET NULL;
 
 -- Delete existing data and load new data for partition-wise join test cases.
 DROP OWNED BY regress_view_owner;

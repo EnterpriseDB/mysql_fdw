@@ -159,6 +159,7 @@ static Node *mysql_deparse_sort_group_clause(Index ref, List *tlist,
 											 deparse_expr_cxt *context);
 static void mysql_append_orderby_clause(List *pathkeys, bool has_final_sort,
 										deparse_expr_cxt *context);
+static void mysql_append_limit_clause(deparse_expr_cxt *context);
 
 /*
  * Functions to construct string representation of a specific types.
@@ -257,7 +258,7 @@ extern void
 mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 								  RelOptInfo *rel, List *tlist,
 								  List *remote_conds, List *pathkeys,
-								  bool has_final_sort,
+								  bool has_final_sort, bool has_limit,
 								  List **retrieved_attrs, List **params_list)
 {
 	deparse_expr_cxt context;
@@ -314,6 +315,10 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 	/* Add ORDER BY clause if we found any useful pathkeys */
 	if (pathkeys)
 		mysql_append_orderby_clause(pathkeys, has_final_sort, &context);
+
+	/* Add LIMIT clause if necessary */
+	if (has_limit)
+		mysql_append_limit_clause(&context);
 }
 
 /*
@@ -2501,5 +2506,28 @@ mysql_append_orderby_clause(List *pathkeys, bool has_final_sort,
 			appendStringInfoString(buf, " DESC");
 
 		delim = ", ";
+	}
+}
+
+/*
+ * mysql_append_limit_clause
+ * 		Deparse LIMIT OFFSET clause.
+ */
+static void
+mysql_append_limit_clause(deparse_expr_cxt *context)
+{
+	PlannerInfo *root = context->root;
+	StringInfo	buf = context->buf;
+
+	if (root->parse->limitCount)
+	{
+		appendStringInfoString(buf, " LIMIT ");
+		deparseExpr((Expr *) root->parse->limitCount, context);
+
+		if (root->parse->limitOffset)
+		{
+			appendStringInfoString(buf, " OFFSET ");
+			deparseExpr((Expr *) root->parse->limitOffset, context);
+		}
 	}
 }

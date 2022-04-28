@@ -234,6 +234,26 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c2, least_agg(c1) FROM fdw132_t1 GROUP BY c2 ORDER BY c2;
 SELECT c2, least_agg(c1) FROM fdw132_t1 GROUP BY c2 ORDER BY c2;
 
+-- FDW-129: Limit and offset pushdown with Aggregate pushdown.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 1 OFFSET 1;
+SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 1 OFFSET 1;
+
+-- Limit 0, Offset 0 with aggregates.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 0 OFFSET 0;
+SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 0 OFFSET 0;
+
+-- Limit NULL
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT NULL OFFSET 2;
+SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT NULL OFFSET 2;
+
+-- Limit ALL
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT ALL OFFSET 2;
+SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT ALL OFFSET 2;
+
 -- Delete existing data and load new data for partition-wise aggregate test
 -- cases.
 DELETE FROM fdw132_t1;
