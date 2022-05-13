@@ -110,6 +110,22 @@ to aggregate functions min, max, sum, avg, and count, to avoid pushing
 down the functions that are not present on the MySQL server. Also,
 aggregate filters and orders are not pushed down.
 
+### ORDER BY push-down
+mysql_fdw now also supports order by push-down. If possible, push order by
+clause to the remote server so that we get the ordered result set from the
+foreign server itself. It might help us to have an efficient merge join.
+NULLs behavior is opposite on the MySQL server. Thus to get an equivalent
+result, we add the "expression IS NULL" clause at the beginning of each of
+the ORDER BY expressions.
+
+### LIMIT OFFSET push-down
+mysql_fdw now also supports limit offset push-down. Wherever possible,
+perform LIMIT and OFFSET operations on the remote server. This reduces
+network traffic between local PostgreSQL and remote MySQL servers.
+ALL/NULL options are not supported on the MySQL server, and thus they are
+not pushed down. Also, OFFSET without LIMIT is not supported on the MySQL
+server hence queries having that construct are not pushed.
+
 Usage
 -----
 
