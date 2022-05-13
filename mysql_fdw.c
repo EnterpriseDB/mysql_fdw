@@ -310,7 +310,7 @@ static void mysql_build_whole_row_constr_info(MySQLFdwExecState *festate,
 											  List *scan_tlist,
 											  List *fdw_scan_tlist);
 static HeapTuple mysql_get_tuple_with_whole_row(MySQLFdwExecState *festate,
-												Datum *values,bool *nulls);
+												Datum *values, bool *nulls);
 static HeapTuple mysql_form_whole_row(MySQLWRState *wr_state, Datum *values,
 									  bool *nulls);
 #if PG_VERSION_NUM >= 110000
@@ -1081,9 +1081,9 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 			int			num_fields;
 
 			/*
-			 * MySQL provide numbers of rows per table invole in the statement,
-			 * but we don't have problem with it because we are sending
-			 * separate query per table in FDW.
+			 * MySQL provide numbers of rows per table invole in the
+			 * statement, but we don't have problem with it because we are
+			 * sending separate query per table in FDW.
 			 */
 			row = mysql_fetch_row(result);
 			num_fields = mysql_num_fields(result);
@@ -1157,8 +1157,8 @@ mysql_is_column_unique(Oid foreigntableid)
 	initStringInfo(&sql);
 
 	/*
-	 * Construct the query by prefixing the database name so that it can lookup
-	 * in correct database.
+	 * Construct the query by prefixing the database name so that it can
+	 * lookup in correct database.
 	 */
 	appendStringInfo(&sql, "EXPLAIN %s.%s", options->svr_database,
 					 options->svr_table);
@@ -1293,8 +1293,8 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 	 * Separate the scan_clauses into those that can be executed remotely and
 	 * those that can't.  baserestrictinfo clauses that were previously
 	 * determined to be safe or unsafe are shown in fpinfo->remote_conds and
-	 * fpinfo->local_conds.  Anything else in the scan_clauses list will be
-	 * a join clause, which we have to check for remote-safety.
+	 * fpinfo->local_conds.  Anything else in the scan_clauses list will be a
+	 * join clause, which we have to check for remote-safety.
 	 *
 	 * This code must match "extract_actual_clauses(scan_clauses, false)"
 	 * except for the additional decision about remote versus local execution.
@@ -1363,11 +1363,11 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 		 * For join relations, planner needs targetlist, which represents the
 		 * output of ForeignScan node. Prepare this before we modify
 		 * scan_var_list to include Vars required by whole row references, if
-		 * any.  Note that base foreign scan constructs the whole-row reference
-		 * at the time of projection.  Joins are required to get them from the
-		 * underlying base relations.  For a pushed down join the underlying
-		 * relations do not exist, hence the whole-row references need to be
-		 * constructed separately.
+		 * any.  Note that base foreign scan constructs the whole-row
+		 * reference at the time of projection.  Joins are required to get
+		 * them from the underlying base relations.  For a pushed down join
+		 * the underlying relations do not exist, hence the whole-row
+		 * references need to be constructed separately.
 		 */
 		fdw_scan_tlist = add_to_flat_tlist(NIL, scan_var_list);
 
@@ -1377,8 +1377,8 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 		 * constructed by combining all the attributes of required base
 		 * relations into a tuple after fetching the result from the foreign
 		 * server.  So adjust the targetlist to include all attributes for
-		 * required base relations.  The function also returns list of Var node
-		 * lists required to construct the whole-row references of the
+		 * required base relations.  The function also returns list of Var
+		 * node lists required to construct the whole-row references of the
 		 * involved relations.
 		 */
 		scan_var_list = mysql_adjust_whole_row_ref(root, scan_var_list,
@@ -1476,10 +1476,10 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 		/*
 		 * To construct whole row references we need:
 		 *
-		 * 1. The lists of Var nodes required for whole-row references of
-		 *    joining relations
-		 * 2. targetlist corresponding the result expected from the foreign
-		 *    server.
+		 * 	1.	The lists of Var nodes required for whole-row references of
+		 * 		joining relations
+		 * 	2.	targetlist corresponding the result expected from the foreign
+		 * 		server.
 		 */
 		if (whole_row_lists)
 		{
@@ -1541,8 +1541,9 @@ mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func,
 
 	/*
 	 * To get the table size in ANALYZE operation, we run a SELECT query by
-	 * passing the database name and table name.  So if the remote table is not
-	 * present, then we end up getting zero rows.  Throw an error in that case.
+	 * passing the database name and table name.  So if the remote table is
+	 * not present, then we end up getting zero rows.  Throw an error in that
+	 * case.
 	 */
 	if (mysql_num_rows(result) == 0)
 		ereport(ERROR,
@@ -1893,9 +1894,9 @@ mysqlExecForeignUpdate(EState *estate,
 		Oid			type;
 
 		/*
-		 * The first attribute cannot be in the target list attribute.  Set the
-		 * found_row_id_col to true once we find it so that we can fetch the
-		 * value later.
+		 * The first attribute cannot be in the target list attribute.  Set
+		 * the found_row_id_col to true once we find it so that we can fetch
+		 * the value later.
 		 */
 		if (attnum == 1)
 		{
@@ -1940,7 +1941,7 @@ mysqlExecForeignUpdate(EState *estate,
 	if (DatumGetPointer(new_value) != NULL && DatumGetPointer(value) != NULL)
 	{
 		Datum		n_value = new_value;
-		Datum 		o_value = value;
+		Datum		o_value = value;
 
 		/* If the attribute type is varlena then need to detoast the datums. */
 		if (attr->attlen == -1)
@@ -2663,8 +2664,8 @@ getUpdateTargetAttrs(RangeTblEntry *rte)
 		/* We also disallow updates to the first column */
 		if (col == 1)
 			ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("row identifier column update is not supported")));
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("row identifier column update is not supported")));
 
 		targetAttrs = lappend_int(targetAttrs, col);
 	}
@@ -2685,8 +2686,8 @@ mysqlGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 	ForeignPath *joinpath;
 	Cost		startup_cost;
 	Cost		total_cost;
-	Path	   *epq_path = NULL; /* Path to create plan to be executed when
-								  * EvalPlanQual gets triggered. */
+	Path	   *epq_path = NULL;	/* Path to create plan to be executed when
+									 * EvalPlanQual gets triggered. */
 
 	/*
 	 * Skip if this join combination has been considered already.
@@ -2752,15 +2753,15 @@ mysqlGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 	 */
 #if PG_VERSION_NUM >= 120000
 	joinpath = create_foreign_join_path(root,
-									   joinrel,
-									   NULL,	/* default pathtarget */
-									   joinrel->rows,
-									   startup_cost,
-									   total_cost,
-									   NIL,		/* no pathkeys */
-									   joinrel->lateral_relids,
-									   epq_path,
-									   NIL);	/* no fdw_private */
+										joinrel,
+										NULL,	/* default pathtarget */
+										joinrel->rows,
+										startup_cost,
+										total_cost,
+										NIL,	/* no pathkeys */
+										joinrel->lateral_relids,
+										epq_path,
+										NIL);	/* no fdw_private */
 #else
 	joinpath = create_foreignscan_path(root,
 									   joinrel,
@@ -2768,11 +2769,11 @@ mysqlGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 									   joinrel->rows,
 									   startup_cost,
 									   total_cost,
-									   NIL, 	/* no pathkeys */
+									   NIL, /* no pathkeys */
 									   joinrel->lateral_relids,
 									   epq_path,
 									   NIL);	/* no fdw_private */
-#endif      /* PG_VERSION_NUM >= 120000 */
+#endif							/* PG_VERSION_NUM >= 120000 */
 
 	/* Add generated path into joinrel by add_path(). */
 	add_path(joinrel, (Path *) joinpath);
@@ -2804,9 +2805,9 @@ mysql_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 	List	   *joinclauses;
 
 	/*
-	 * We support pushing down INNER, LEFT and RIGHT joins.
-	 * Constructing queries representing SEMI and ANTI joins is hard, hence
-	 * not considered right now.
+	 * We support pushing down INNER, LEFT and RIGHT joins. Constructing
+	 * queries representing SEMI and ANTI joins is hard, hence not considered
+	 * right now.
 	 */
 	if (jointype != JOIN_INNER && jointype != JOIN_LEFT &&
 		jointype != JOIN_RIGHT)
@@ -2825,8 +2826,8 @@ mysql_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 
 	/*
 	 * If joining relations have local conditions, those conditions are
-	 * required to be applied before joining the relations.  Hence the join can
-	 * not be pushed down.
+	 * required to be applied before joining the relations.  Hence the join
+	 * can not be pushed down.
 	 */
 	if (fpinfo_o->local_conds || fpinfo_i->local_conds)
 		return false;
@@ -2870,8 +2871,8 @@ mysql_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 				 * remote_conds, instead keep the join clauses separate.
 				 * Currently, we are providing limited operator pushability
 				 * support for join pushdown, hence we keep those clauses
-				 * separate to avoid INNER JOIN not getting pushdown if any
-				 * of the WHERE clause is not shippable as per join pushdown
+				 * separate to avoid INNER JOIN not getting pushdown if any of
+				 * the WHERE clause is not shippable as per join pushdown
 				 * shippability.
 				 */
 				if (jointype == JOIN_INNER)
@@ -2891,9 +2892,9 @@ mysql_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 	 * upper reference to a quantity that may go to NULL as a result of an
 	 * outer join), then we can't try to push the join down because we'll fail
 	 * when we get to mysqlDeparseExplicitTargetList().  However, a
-	 * PlaceHolderVar that needs to be evaluated *at the top* of this join tree
-	 * is OK, because we can do that locally after fetching the results from
-	 * the remote side.
+	 * PlaceHolderVar that needs to be evaluated *at the top* of this join
+	 * tree is OK, because we can do that locally after fetching the results
+	 * from the remote side.
 	 */
 	foreach(lc, root->placeholder_list)
 	{
@@ -3275,7 +3276,7 @@ mysql_build_whole_row_constr_info(MySQLFdwExecState *festate,
 			Var		   *var = lfirst(lc);
 			TargetEntry *tle_sl;
 
-			Assert(IsA(var, Var) &&var->varno == cnt_rt);
+			Assert(IsA(var, Var) && var->varno == cnt_rt);
 
 			tle_sl = tlist_member((Expr *) var, scan_tlist);
 
@@ -3427,7 +3428,7 @@ mysql_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 {
 	Query	   *query = root->parse;
 #if PG_VERSION_NUM >= 110000
-	PathTarget *grouping_target =  grouped_rel->reltarget;
+	PathTarget *grouping_target = grouped_rel->reltarget;
 #elif PG_VERSION_NUM >= 100000
 	PathTarget *grouping_target = root->upper_targets[UPPERREL_GROUP_AGG];
 #endif
@@ -3560,7 +3561,8 @@ mysql_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 #elif PG_VERSION_NUM >= 100000
 	if (root->hasHavingQual && query->havingQual)
 	{
-		ListCell	*lc;
+		ListCell   *lc;
+
 		foreach(lc, (List *) query->havingQual)
 #endif
 		{
@@ -3718,10 +3720,10 @@ mysqlGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 			break;
 	}
 #elif PG_VERSION_NUM >= 110000
-			mysql_add_foreign_grouping_paths(root, input_rel, output_rel,
-											 (GroupPathExtraData *) extra);
+	mysql_add_foreign_grouping_paths(root, input_rel, output_rel,
+									 (GroupPathExtraData *) extra);
 #elif PG_VERSION_NUM >= 100000
-			mysql_add_foreign_grouping_paths(root, input_rel, output_rel);
+	mysql_add_foreign_grouping_paths(root, input_rel, output_rel);
 #endif
 }
 
@@ -4101,7 +4103,7 @@ mysql_add_paths_with_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 											  rel->lateral_relids,
 											  sorted_epq_path,
 											  NIL));
-	#else
+#else
 		add_path(rel, (Path *)
 				 create_foreignscan_path(root, rel,
 										 NULL,
@@ -4256,7 +4258,7 @@ mysql_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	/* and add it to the ordered_rel */
 	add_path(ordered_rel, (Path *) ordered_path);
 }
-#endif   /* PG_VERSION_NUM >= 120000 */
+#endif							/* PG_VERSION_NUM >= 120000 */
 
 /*
  * mysql_find_em_expr_for_input_target
@@ -4490,14 +4492,14 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	 */
 	if (parse->limitCount && nodeTag(parse->limitCount) == T_Const)
 	{
-		Const	   *c = (Const *)  parse->limitCount;
+		Const	   *c = (Const *) parse->limitCount;
 
 		if (c->constisnull)
 			return;
 	}
 	if (parse->limitOffset && nodeTag(parse->limitOffset) == T_Const)
 	{
-		Const	   *c = (Const *)  parse->limitOffset;
+		Const	   *c = (Const *) parse->limitOffset;
 
 		if (c->constisnull)
 			return;
@@ -4543,4 +4545,4 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	/* and add it to the final_rel */
 	add_path(final_rel, (Path *) final_path);
 }
-#endif		/* PG_VERSION_NUM >= 120000 */
+#endif							/* PG_VERSION_NUM >= 120000 */

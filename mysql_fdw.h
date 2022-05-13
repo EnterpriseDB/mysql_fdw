@@ -78,9 +78,9 @@
 
 /* Macro for list API backporting. */
 #if PG_VERSION_NUM < 130000
-	#define mysql_list_concat(l1, l2) list_concat(l1, list_copy(l2))
+#define mysql_list_concat(l1, l2) list_concat(l1, list_copy(l2))
 #else
-	#define mysql_list_concat(l1, l2) list_concat((l1), (l2))
+#define mysql_list_concat(l1, l2) list_concat((l1), (l2))
 #endif
 
 /*
@@ -173,7 +173,7 @@ typedef struct MySQLFdwExecState
 	mysql_table *table;
 	char	   *query;			/* Query string */
 	List	   *retrieved_attrs;	/* list of target attribute numbers */
-	bool		query_executed;	/* have we executed the query? */
+	bool		query_executed; /* have we executed the query? */
 	int			numParams;		/* number of parameters passed to query */
 	FmgrInfo   *param_flinfo;	/* output conversion functions for them */
 	List	   *param_exprs;	/* executable expressions for param values */
@@ -191,17 +191,17 @@ typedef struct MySQLFdwExecState
 	 * Members used for constructing the ForeignScan result row when whole-row
 	 * references are involved in a pushed down join.
 	 */
-	MySQLWRState **mysqlwrstates; /* whole-row construction information for
-								   * each base relation involved in the pushed
-								   * down join. */
+	MySQLWRState **mysqlwrstates;	/* whole-row construction information for
+									 * each base relation involved in the
+									 * pushed down join. */
 	int		   *wr_attrs_pos;	/* Array mapping the attributes in the
 								 * ForeignScan result to those in the rows
 								 * fetched from the foreign server.  The array
 								 * is indexed by the attribute numbers in the
 								 * ForeignScan. */
 	TupleDesc	wr_tupdesc;		/* Tuple descriptor describing the result of
-								 * ForeignScan node.  Should be same as that in
-								 * ForeignScanState::ss::ss_ScanTupleSlot */
+								 * ForeignScan node.  Should be same as that
+								 * in ForeignScanState::ss::ss_ScanTupleSlot */
 	/* Array for holding column values. */
 	Datum	   *wr_values;
 	bool	   *wr_nulls;

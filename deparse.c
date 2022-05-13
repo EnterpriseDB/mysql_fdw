@@ -61,7 +61,7 @@ typedef struct foreign_glob_cxt
 	 * of join conditions. Also true for aggregate relations to restrict
 	 * aggregates for specified list.
 	 */
-	bool		is_remote_cond;	/* true for join or aggregate relations */
+	bool		is_remote_cond; /* true for join or aggregate relations */
 	Relids		relids;			/* relids of base relations in the underlying
 								 * scan */
 } foreign_glob_cxt;
@@ -266,8 +266,8 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) rel->fdw_private;
 
 	/*
-	 * We handle relations for foreign tables and joins between those and upper
-	 * relations.
+	 * We handle relations for foreign tables and joins between those and
+	 * upper relations.
 	 */
 	Assert(IS_JOIN_REL(rel) || IS_SIMPLE_REL(rel) || IS_UPPER_REL(rel));
 
@@ -361,8 +361,8 @@ mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
 		MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) foreignrel->fdw_private;
 
 		/*
-		 * Core code already has some lock on each rel being planned, so we can
-		 * use NoLock here.
+		 * Core code already has some lock on each rel being planned, so we
+		 * can use NoLock here.
 		 */
 #if PG_VERSION_NUM < 130000
 		rel = heap_open(rte->relid, NoLock);
@@ -590,8 +590,8 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 	}
 
 	/*
-	 * If it's a column of a regular table or it doesn't have column_name
-	 * FDW option, use attribute name.
+	 * If it's a column of a regular table or it doesn't have column_name FDW
+	 * option, use attribute name.
 	 */
 	if (colname == NULL)
 #if PG_VERSION_NUM >= 110000
@@ -615,7 +615,7 @@ mysql_deparse_string(StringInfo buf, const char *val, bool isstr)
 	if (isstr)
 		appendStringInfoChar(buf, '\'');
 
-	for (valptr = val; *valptr; valptr++,i++)
+	for (valptr = val; *valptr; valptr++, i++)
 	{
 		char		ch = *valptr;
 
@@ -972,6 +972,7 @@ mysql_deparse_const(Const *node, deparse_expr_cxt *context)
 			deparse_interval(buf, node->constvalue);
 			break;
 		case BYTEAOID:
+
 			/*
 			 * The string for BYTEA always seems to be in the format "\\x##"
 			 * where # is a hex digit, Even if the value passed in is
@@ -1676,7 +1677,8 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				const char *operatorName = get_opname(oe->opno);
 
 				/*
-				 * Join-pushdown allows only a few operators to be pushed down.
+				 * Join-pushdown allows only a few operators to be pushed
+				 * down.
 				 */
 				if (glob_cxt->is_remote_cond &&
 					(!(strcmp(operatorName, "<") == 0 ||
@@ -1895,10 +1897,10 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 					return false;
 
 				if (!(strcmp(func_name, "min") == 0 ||
-					strcmp(func_name, "max") == 0 ||
-					strcmp(func_name, "sum") == 0 ||
-					strcmp(func_name, "avg") == 0 ||
-					strcmp(func_name, "count") == 0))
+					  strcmp(func_name, "max") == 0 ||
+					  strcmp(func_name, "sum") == 0 ||
+					  strcmp(func_name, "avg") == 0 ||
+					  strcmp(func_name, "count") == 0))
 					return false;
 
 				/*
@@ -2190,8 +2192,8 @@ mysql_deparse_from_expr_for_rel(StringInfo buf, PlannerInfo *root,
 		Relation	rel;
 
 		/*
-		 * Core code already has some lock on each rel being planned, so we can
-		 * use NoLock here.
+		 * Core code already has some lock on each rel being planned, so we
+		 * can use NoLock here.
 		 */
 #if PG_VERSION_NUM < 130000
 		rel = heap_open(rte->relid, NoLock);
@@ -2469,7 +2471,7 @@ mysql_append_orderby_clause(List *pathkeys, bool has_final_sort,
 	appendStringInfo(buf, " ORDER BY");
 	foreach(lcell, pathkeys)
 	{
-		PathKey	   *pathkey = lfirst(lcell);
+		PathKey    *pathkey = lfirst(lcell);
 		Expr	   *em_expr;
 
 		if (has_final_sort)

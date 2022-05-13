@@ -117,11 +117,11 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 		/* Validate fetch_size option value */
 		if (strcmp(def->defname, "fetch_size") == 0)
 		{
-			unsigned long	fetch_size;
+			unsigned long fetch_size;
 			char	   *endptr;
 			char	   *inputVal = defGetString(def);
 
-			while(inputVal && isspace((unsigned char) *inputVal))
+			while (inputVal && isspace((unsigned char) *inputVal))
 				inputVal++;
 
 			if (inputVal && *inputVal == '-')
@@ -286,8 +286,8 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 
 	/*
 	 * When we don't have a table name or database name provided in the
-	 * FOREIGN TABLE options, then use a foreign table name as the target table
-	 * name and the namespace of the foreign table as a database name.
+	 * FOREIGN TABLE options, then use a foreign table name as the target
+	 * table name and the namespace of the foreign table as a database name.
 	 */
 	if (f_table)
 	{

@@ -171,7 +171,7 @@ mysql_cleanup_connection(void)
 void
 mysql_release_connection(MYSQL *conn)
 {
-	HASH_SEQ_STATUS	scan;
+	HASH_SEQ_STATUS scan;
 	ConnCacheEntry *entry;
 
 	if (ConnectionHash == NULL)
@@ -225,17 +225,17 @@ mysql_connect(mysql_opt *opt)
 		mysql_options(conn, MYSQL_INIT_COMMAND, svr_init_command);
 
 	/*
-	 * Enable or disable automatic reconnection to the MySQL server if
-	 * the existing connection is found to have been lost.
+	 * Enable or disable automatic reconnection to the MySQL server if the
+	 * existing connection is found to have been lost.
 	 */
 	mysql_options(conn, MYSQL_OPT_RECONNECT, &opt->reconnect);
 
 	mysql_ssl_set(conn, opt->ssl_key, opt->ssl_cert, opt->ssl_ca,
-				   opt->ssl_capath, ssl_cipher);
+				  opt->ssl_capath, ssl_cipher);
 
 	if (!mysql_real_connect(conn, opt->svr_address, opt->svr_username,
-							 opt->svr_password, svr_database, opt->svr_port,
-							 NULL, 0))
+							opt->svr_password, svr_database, opt->svr_port,
+							NULL, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
 				 errmsg("failed to connect to MySQL: %s", mysql_error(conn))));
