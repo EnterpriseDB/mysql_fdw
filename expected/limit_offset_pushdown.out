@@ -220,6 +220,58 @@ SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT 5 OFFSET NULL;
  50 | IT             | PUNE
 (5 rows)
 
+-- Limit with placeholder.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT (SELECT COUNT(*) FROM f_test_tbl2);
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl2
+   Output: f_test_tbl2.c1, f_test_tbl2.c2, f_test_tbl2.c3
+   Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test_tbl2` ORDER BY `c1` IS NULL, `c1` ASC LIMIT ?
+   InitPlan 1 (returns $0)
+     ->  Foreign Scan
+           Output: (count(*))
+           Relations: Aggregate on (mysql_fdw_regress.f_test_tbl2)
+           Remote query: SELECT count(*) FROM `mysql_fdw_regress`.`test_tbl2`
+(8 rows)
+
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT (SELECT COUNT(*) FROM f_test_tbl2);
+ c1 |       c2       |    c3    
+----+----------------+----------
+ 10 | DEVELOPMENT    | PUNE
+ 20 | ADMINISTRATION | BANGLORE
+ 30 | SALES          | MUMBAI
+ 40 | HR             | NAGPUR
+ 50 | IT             | PUNE
+ 60 | DB SERVER      | PUNE
+(6 rows)
+
+-- Limit with expression, should not pushdown.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT (10 - (SELECT COUNT(*) FROM f_test_tbl2));
+                                                     QUERY PLAN                                                     
+--------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: f_test_tbl2.c1, f_test_tbl2.c2, f_test_tbl2.c3
+   InitPlan 1 (returns $0)
+     ->  Foreign Scan
+           Output: (count(*))
+           Relations: Aggregate on (mysql_fdw_regress.f_test_tbl2)
+           Remote query: SELECT count(*) FROM `mysql_fdw_regress`.`test_tbl2`
+   ->  Foreign Scan on public.f_test_tbl2
+         Output: f_test_tbl2.c1, f_test_tbl2.c2, f_test_tbl2.c3
+         Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test_tbl2` ORDER BY `c1` IS NULL, `c1` ASC
+(10 rows)
+
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT (10 - (SELECT COUNT(*) FROM f_test_tbl2));
+ c1 |       c2       |    c3    
+----+----------------+----------
+ 10 | DEVELOPMENT    | PUNE
+ 20 | ADMINISTRATION | BANGLORE
+ 30 | SALES          | MUMBAI
+ 40 | HR             | NAGPUR
+(4 rows)
+
 DELETE FROM f_test_tbl2;
 DROP FOREIGN TABLE f_test_tbl2;
 DROP USER MAPPING FOR public SERVER mysql_svr;

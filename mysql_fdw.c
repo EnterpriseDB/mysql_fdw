@@ -4487,31 +4487,30 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		return;
 
 	/*
+	 * Support only Const and Param nodes as expressions are NOT suported.
 	 * MySQL doesn't support LIMIT/OFFSET NULL/ALL syntax, so check for the
 	 * same.  If const node is null then do not pushdown limit/offset clause.
 	 */
-	if (parse->limitCount && nodeTag(parse->limitCount) == T_Const)
+	if (parse->limitCount)
 	{
-		Const	   *c = (Const *) parse->limitCount;
+		if (nodeTag(parse->limitCount) != T_Const &&
+			nodeTag(parse->limitCount) != T_Param)
+			return;
 
-		if (c->constisnull)
+		if (nodeTag(parse->limitCount) == T_Const &&
+			((Const *) parse->limitCount)->constisnull)
 			return;
 	}
-	if (parse->limitOffset && nodeTag(parse->limitOffset) == T_Const)
+	if (parse->limitOffset)
 	{
-		Const	   *c = (Const *) parse->limitOffset;
+		if (nodeTag(parse->limitOffset) != T_Const &&
+			nodeTag(parse->limitOffset) != T_Param)
+			return;
 
-		if (c->constisnull)
+		if (nodeTag(parse->limitOffset) == T_Const &&
+			((Const *) parse->limitOffset)->constisnull)
 			return;
 	}
-
-	/*
-	 * Also, the LIMIT/OFFSET cannot be pushed down, if their expressions are
-	 * not safe to remote.
-	 */
-	if (!mysql_is_foreign_expr(root, input_rel, (Expr *) parse->limitOffset, true) ||
-		!mysql_is_foreign_expr(root, input_rel, (Expr *) parse->limitCount, true))
-		return;
 
 	/* Safe to push down */
 	fpinfo->pushdown_safe = true;

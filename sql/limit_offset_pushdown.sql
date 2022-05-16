@@ -76,6 +76,16 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT 5 OFFSET NULL;
 SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT 5 OFFSET NULL;
 
+-- Limit with placeholder.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT (SELECT COUNT(*) FROM f_test_tbl2);
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT (SELECT COUNT(*) FROM f_test_tbl2);
+
+-- Limit with expression, should not pushdown.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT (10 - (SELECT COUNT(*) FROM f_test_tbl2));
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT (10 - (SELECT COUNT(*) FROM f_test_tbl2));
+
 DELETE FROM f_test_tbl2;
 DROP FOREIGN TABLE f_test_tbl2;
 DROP USER MAPPING FOR public SERVER mysql_svr;
