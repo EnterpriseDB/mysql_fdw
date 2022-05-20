@@ -1601,15 +1601,15 @@ SELECT * FROM f_test_tbl1 ORDER BY c1 DESC;
 
 -- Order by is not null
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL;
-                                                                               QUERY PLAN                                                                               
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL, c1;
+                                                                                           QUERY PLAN                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1
    Output: c1, c2, c3, c4, c5, c6, c7, c8, (c7 IS NOT NULL)
-   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY (`c7` IS NOT NULL) IS NULL, (`c7` IS NOT NULL) ASC
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY (`c7` IS NOT NULL) IS NULL, (`c7` IS NOT NULL) ASC, `c1` IS NULL, `c1` ASC
 (3 rows)
 
-SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL;
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL, c1;
   c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
 ------+-------+-----------+------+------------+------------+------+----
   100 | EMP1  | ADMIN     | 1300 | 1980-12-17 |  800.23000 |      | 20
@@ -1630,15 +1630,15 @@ SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL;
 
 -- Order by is not null desc
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL DESC;
-                                                                                 QUERY PLAN                                                                                  
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL DESC, c1;
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1
    Output: c1, c2, c3, c4, c5, c6, c7, c8, (c7 IS NOT NULL)
-   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY (`c7` IS NOT NULL) IS NOT NULL, (`c7` IS NOT NULL) DESC
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY (`c7` IS NOT NULL) IS NOT NULL, (`c7` IS NOT NULL) DESC, `c1` IS NULL, `c1` ASC
 (3 rows)
 
-SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL DESC;
+SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL DESC, c1;
   c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
 ------+-------+-----------+------+------------+------------+------+----
   200 | EMP2  | SALESMAN  |  600 | 1981-02-20 | 1600.00000 |  300 | 30
@@ -1659,15 +1659,15 @@ SELECT * FROM f_test_tbl1 ORDER BY c7 IS NOT NULL DESC;
 
 -- Order by desc nulls first
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS FIRST;
-                                                                   QUERY PLAN                                                                    
--------------------------------------------------------------------------------------------------------------------------------------------------
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS FIRST, c1;
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1
    Output: c1, c2, c3, c4, c5, c6, c7, c8
-   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c7` IS NOT NULL, `c7` DESC
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c7` IS NOT NULL, `c7` DESC, `c1` IS NULL, `c1` ASC
 (3 rows)
 
-SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS FIRST;
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS FIRST, c1;
   c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
 ------+-------+-----------+------+------------+------------+------+----
   100 | EMP1  | ADMIN     | 1300 | 1980-12-17 |  800.23000 |      | 20
@@ -1688,15 +1688,15 @@ SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS FIRST;
 
 -- Order by asc nulls last
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST;
-                                                                 QUERY PLAN                                                                  
----------------------------------------------------------------------------------------------------------------------------------------------
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST, c1;
+                                                                             QUERY PLAN                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1
    Output: c1, c2, c3, c4, c5, c6, c7, c8
-   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c7` IS NULL, `c7` DESC
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c7` IS NULL, `c7` DESC, `c1` IS NULL, `c1` ASC
 (3 rows)
 
-SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST;
+SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST, c1;
   c1  |  c2   |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
 ------+-------+-----------+------+------------+------------+------+----
   500 | EMP5  | SALESMAN  |  600 | 1981-09-28 | 1250.00000 | 1400 | 30
