@@ -233,22 +233,34 @@ HINT:  Try the COPY (SELECT ...) TO variant.
 COPY (SELECT * FROM f_mysql_test) TO stdout;
 1	1
 COPY (SELECT a FROM f_mysql_test) TO '/tmp/copy_test.txt' delimiter ',';
--- Should give error message as copy from with foreign table not supported
+-- Copy from with foreign table are supported
 DO
 $$
 BEGIN
   COPY f_mysql_test(a) FROM '/tmp/copy_test.txt' delimiter ',';
   EXCEPTION WHEN others THEN
-	IF SQLERRM = 'COPY and foreign partition routing not supported in mysql_fdw' OR
-	   SQLERRM = 'cannot copy to foreign table "f_mysql_test"' THEN
-	   RAISE NOTICE 'ERROR:  COPY and foreign partition routing not supported in mysql_fdw';
-        ELSE
-	   RAISE NOTICE '%', SQLERRM;
-	END IF;
+	  RAISE NOTICE '%', SQLERRM;
 END;
 $$
 LANGUAGE plpgsql;
-NOTICE:  ERROR:  COPY and foreign partition routing not supported in mysql_fdw
+NOTICE:  failed to execute the MySQL query: 
+Column 'b' cannot be null
+COPY (SELECT a + 1, b + 1 FROM f_mysql_test) TO '/tmp/copy_test.txt' delimiter ',';
+COPY (SELECT * FROM f_mysql_test) TO stdout;
+1	1
+DO
+$$
+BEGIN
+  COPY f_mysql_test(a, b) FROM '/tmp/copy_test.txt' delimiter ',';
+  EXCEPTION WHEN others THEN
+	  RAISE NOTICE '%', SQLERRM;
+END;
+$$
+LANGUAGE plpgsql;
+COPY (SELECT * FROM f_mysql_test) TO stdout;
+1	1
+2	2
+DELETE FROM f_mysql_test WHERE a = 2;
 -- Cleanup
 DELETE FROM fdw126_ft1;
 DELETE FROM f_empdata;

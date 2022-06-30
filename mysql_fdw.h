@@ -172,6 +172,7 @@ typedef struct MySQLFdwExecState
 	MYSQL_STMT *stmt;			/* MySQL prepared stament handle */
 	mysql_table *table;
 	char	   *query;			/* Query string */
+	Relation	rel;			/* relcache entry for the foreign table */
 	List	   *retrieved_attrs;	/* list of target attribute numbers */
 	bool		query_executed; /* have we executed the query? */
 	int			numParams;		/* number of parameters passed to query */
@@ -205,6 +206,10 @@ typedef struct MySQLFdwExecState
 	/* Array for holding column values. */
 	Datum	   *wr_values;
 	bool	   *wr_nulls;
+
+	/* for update row movement if subplan result rel */
+	struct MySQLFdwExecState *aux_fmstate;	/* foreign-insert state, if
+											 * created */
 } MySQLFdwExecState;
 
 typedef struct MySQLFdwRelationInfo
@@ -304,7 +309,7 @@ extern bool mysql_is_valid_option(const char *option, Oid context);
 extern mysql_opt *mysql_get_options(Oid foreigntableid, bool is_foreigntable);
 
 /* depare.c headers */
-extern void mysql_deparse_insert(StringInfo buf, PlannerInfo *root,
+extern void mysql_deparse_insert(StringInfo buf, RangeTblEntry *rte,
 								 Index rtindex, Relation rel,
 								 List *targetAttrs);
 extern void mysql_deparse_update(StringInfo buf, PlannerInfo *root,

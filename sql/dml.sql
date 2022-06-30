@@ -201,21 +201,31 @@ COPY f_mysql_test (a) TO stdout;
 COPY (SELECT * FROM f_mysql_test) TO stdout;
 COPY (SELECT a FROM f_mysql_test) TO '/tmp/copy_test.txt' delimiter ',';
 
--- Should give error message as copy from with foreign table not supported
+-- Copy from with foreign table are supported
 DO
 $$
 BEGIN
   COPY f_mysql_test(a) FROM '/tmp/copy_test.txt' delimiter ',';
   EXCEPTION WHEN others THEN
-	IF SQLERRM = 'COPY and foreign partition routing not supported in mysql_fdw' OR
-	   SQLERRM = 'cannot copy to foreign table "f_mysql_test"' THEN
-	   RAISE NOTICE 'ERROR:  COPY and foreign partition routing not supported in mysql_fdw';
-        ELSE
-	   RAISE NOTICE '%', SQLERRM;
-	END IF;
+	  RAISE NOTICE '%', SQLERRM;
 END;
 $$
 LANGUAGE plpgsql;
+
+COPY (SELECT a + 1, b + 1 FROM f_mysql_test) TO '/tmp/copy_test.txt' delimiter ',';
+COPY (SELECT * FROM f_mysql_test) TO stdout;
+DO
+$$
+BEGIN
+  COPY f_mysql_test(a, b) FROM '/tmp/copy_test.txt' delimiter ',';
+  EXCEPTION WHEN others THEN
+	  RAISE NOTICE '%', SQLERRM;
+END;
+$$
+LANGUAGE plpgsql;
+
+COPY (SELECT * FROM f_mysql_test) TO stdout;
+DELETE FROM f_mysql_test WHERE a = 2;
 
 -- Cleanup
 DELETE FROM fdw126_ft1;

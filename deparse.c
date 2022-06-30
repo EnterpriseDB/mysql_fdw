@@ -135,12 +135,12 @@ static void mysql_print_remote_param(int paramindex, Oid paramtype,
 static void mysql_print_remote_placeholder(Oid paramtype, int32 paramtypmod,
 										   deparse_expr_cxt *context);
 static void mysql_deparse_relation(StringInfo buf, Relation rel);
-static void mysql_deparse_target_list(StringInfo buf, PlannerInfo *root,
+static void mysql_deparse_target_list(StringInfo buf, RangeTblEntry *rte,
 									  Index rtindex, Relation rel,
 									  Bitmapset *attrs_used,
 									  List **retrieved_attrs);
 static void mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
-									 PlannerInfo *root, bool qualify_col);
+									 RangeTblEntry *rte, bool qualify_col);
 static void mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
 									 deparse_expr_cxt *context);
 static void mysql_append_conditions(List *exprs, deparse_expr_cxt *context);
@@ -370,7 +370,7 @@ mysql_deparse_select_sql(List *tlist, List **retrieved_attrs,
 		rel = table_open(rte->relid, NoLock);
 #endif
 
-		mysql_deparse_target_list(buf, root, foreignrel->relid, rel,
+		mysql_deparse_target_list(buf, rte, foreignrel->relid, rel,
 								  fpinfo->attrs_used, retrieved_attrs);
 
 #if PG_VERSION_NUM < 130000
@@ -449,9 +449,10 @@ mysql_deparse_from_expr(List *quals, deparse_expr_cxt *context)
  * The statement text is appended to buf, and we also create an integer List
  * of the columns being retrieved by RETURNING (if any), which is returned
  * to *retrieved_attrs.
+ * rte = planner_rt_fetch(rtindex, root)
  */
 void
-mysql_deparse_insert(StringInfo buf, PlannerInfo *root, Index rtindex,
+mysql_deparse_insert(StringInfo buf, RangeTblEntry *rte, Index rtindex,
 					 Relation rel, List *targetAttrs)
 {
 	ListCell   *lc;
@@ -475,7 +476,7 @@ mysql_deparse_insert(StringInfo buf, PlannerInfo *root, Index rtindex,
 				appendStringInfoString(buf, ", ");
 			first = false;
 
-			mysql_deparse_column_ref(buf, rtindex, attnum, root, false);
+			mysql_deparse_column_ref(buf, rtindex, attnum, rte, false);
 		}
 
 		appendStringInfoString(buf, ") VALUES (");
@@ -513,7 +514,7 @@ mysql_deparse_analyze(StringInfo sql, char *dbname, char *relname)
  * This is used for both SELECT and RETURNING targetlists.
  */
 static void
-mysql_deparse_target_list(StringInfo buf, PlannerInfo *root, Index rtindex,
+mysql_deparse_target_list(StringInfo buf, RangeTblEntry *rte, Index rtindex,
 						  Relation rel, Bitmapset *attrs_used,
 						  List **retrieved_attrs)
 {
@@ -544,7 +545,7 @@ mysql_deparse_target_list(StringInfo buf, PlannerInfo *root, Index rtindex,
 				appendStringInfoString(buf, ", ");
 			first = false;
 
-			mysql_deparse_column_ref(buf, rtindex, i, root, false);
+			mysql_deparse_column_ref(buf, rtindex, i, rte, false);
 			*retrieved_attrs = lappend_int(*retrieved_attrs, i);
 		}
 	}
@@ -560,18 +561,14 @@ mysql_deparse_target_list(StringInfo buf, PlannerInfo *root, Index rtindex,
  */
 static void
 mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
-						 PlannerInfo *root, bool qualify_col)
+						 RangeTblEntry *rte, bool qualify_col)
 {
-	RangeTblEntry *rte;
 	char	   *colname = NULL;
 	List	   *options;
 	ListCell   *lc;
 
 	/* varno must not be any of OUTER_VAR, INNER_VAR and INDEX_VAR. */
 	Assert(!IS_SPECIAL_VARNO(varno));
-
-	/* Get RangeTblEntry from array in PlannerInfo. */
-	rte = planner_rt_fetch(varno, root);
 
 	/*
 	 * If it's a column of a foreign table, and it has the column_name FDW
@@ -832,7 +829,7 @@ mysql_deparse_update(StringInfo buf, PlannerInfo *root, Index rtindex,
 			appendStringInfoString(buf, ", ");
 		first = false;
 
-		mysql_deparse_column_ref(buf, rtindex, attnum, root, false);
+		mysql_deparse_column_ref(buf, rtindex, attnum, planner_rt_fetch(rtindex, root), false);
 		appendStringInfo(buf, " = ?");
 		pindex++;
 	}
@@ -876,7 +873,7 @@ mysql_deparse_var(Var *node, deparse_expr_cxt *context)
 	{
 		/* Var belongs to foreign table */
 		mysql_deparse_column_ref(context->buf, node->varno, node->varattno,
-								 context->root, qualify_col);
+								 planner_rt_fetch(node->varno, context->root), qualify_col);
 	}
 	else
 	{
