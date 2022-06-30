@@ -1654,7 +1654,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	switch (operation)
 	{
 		case CMD_INSERT:
-			mysql_deparse_insert(&sql, root, resultRelation, rel, targetAttrs);
+			mysql_deparse_insert(&sql, rte, resultRelation, rel, targetAttrs);
 			break;
 		case CMD_UPDATE:
 			mysql_deparse_update(&sql, root, resultRelation, rel, targetAttrs,
@@ -1797,6 +1797,9 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	if (mysql_stmt_prepare(fmstate->stmt, fmstate->query,
 						   strlen(fmstate->query)) != 0)
 		mysql_stmt_error_print(fmstate, "failed to prepare the MySQL query");
+
+	/* Initialize auxiliary state */
+	fmstate->aux_fmstate = NULL;
 
 	resultRelInfo->ri_FdwState = fmstate;
 }
@@ -2373,31 +2376,207 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
  * mysqlBeginForeignInsert
  * 		Prepare for an insert operation triggered by partition routing
  * 		or COPY FROM.
- *
- * This is not yet supported, so raise an error.
  */
 static void
 mysqlBeginForeignInsert(ModifyTableState *mtstate,
 						ResultRelInfo *resultRelInfo)
 {
-	ereport(ERROR,
-			(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-			 errmsg("COPY and foreign partition routing not supported in mysql_fdw")));
+	MySQLFdwExecState *fmstate;
+	ModifyTable *plan = castNode(ModifyTable, mtstate->ps.plan);
+	EState	   *estate = mtstate->ps.state;
+	Index		resultRelation;
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+	RangeTblEntry *rte;
+	TupleDesc	tupdesc = RelationGetDescr(rel);
+	int			attnum;
+	StringInfoData sql;
+	List	   *targetAttrs = NIL;
+	AttrNumber	n_params;
+	Oid			typefnoid = InvalidOid;
+	bool		isvarlena = false;
+	ListCell   *lc;
+	Oid			foreignTableId = InvalidOid;
+	Oid			userid;
+	ForeignServer *server;
+	UserMapping *user;
+	ForeignTable *table;
+
+	/*
+	 * If the foreign table we are about to insert routed rows into is also an
+	 * UPDATE subplan result rel that will be updated later, proceeding with
+	 * the INSERT will result in the later UPDATE incorrectly modifying those
+	 * routed rows, so prevent the INSERT --- it would be nice if we could
+	 * handle this case; but for now, throw an error for safety.
+	 */
+	if (plan && plan->operation == CMD_UPDATE &&
+		(resultRelInfo->ri_usesFdwDirectModify ||
+		 resultRelInfo->ri_FdwState)
+#if PG_VERSION_NUM < 140000
+		&& resultRelInfo > mtstate->resultRelInfo + mtstate->mt_whichplan
+#endif
+		)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot route tuples into foreign table to be updated \"%s\"",
+						RelationGetRelationName(rel))));
+
+	initStringInfo(&sql);
+
+	/* We transmit all columns that are defined in the foreign table. */
+	for (attnum = 1; attnum <= tupdesc->natts; attnum++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+
+		if (!attr->attisdropped)
+			targetAttrs = lappend_int(targetAttrs, attnum);
+#if PG_VERSION_NUM >= 140000
+		/* Ignore generated columns; they are set to DEFAULT */
+		if (attr->attgenerated)
+			continue;
+#endif
+	}
+
+	/* Check if we add the ON CONFLICT clause to the remote query. */
+	if (plan)
+	{
+		OnConflictAction onConflictAction = plan->onConflictAction;
+
+		/* We only support DO NOTHING without an inference specification. */
+		if (onConflictAction != ONCONFLICT_NONE)
+			elog(ERROR, "unexpected ON CONFLICT specification: %d",
+				 (int) onConflictAction);
+	}
+
+	/*
+	 * If the foreign table is a partition that doesn't have a corresponding
+	 * RTE entry, we need to create a new RTE describing the foreign table for
+	 * use by deparseInsertSql and create_foreign_modify() below, after first
+	 * copying the parent's RTE and modifying some fields to describe the
+	 * foreign partition to work on. However, if this is invoked by UPDATE,
+	 * the existing RTE may already correspond to this partition if it is one
+	 * of the UPDATE subplan target rels; in that case, we can just use the
+	 * existing RTE as-is.
+	 */
+	if (resultRelInfo->ri_RangeTableIndex == 0)
+	{
+		ResultRelInfo *rootResultRelInfo = resultRelInfo->ri_RootResultRelInfo;
+
+		rte = exec_rt_fetch(rootResultRelInfo->ri_RangeTableIndex, estate);
+		rte = copyObject(rte);
+		rte->relid = RelationGetRelid(rel);
+		rte->relkind = RELKIND_FOREIGN_TABLE;
+
+		/*
+		 * For UPDATE, we must use the RT index of the first subplan target
+		 * rel's RTE, because the core code would have built expressions for
+		 * the partition, such as RETURNING, using that RT index as varno of
+		 * Vars contained in those expressions.
+		 */
+		if (plan && plan->operation == CMD_UPDATE &&
+			rootResultRelInfo->ri_RangeTableIndex == plan->rootRelation)
+			resultRelation = mtstate->resultRelInfo[0].ri_RangeTableIndex;
+		else
+			resultRelation = rootResultRelInfo->ri_RangeTableIndex;
+	}
+	else
+	{
+		resultRelation = resultRelInfo->ri_RangeTableIndex;
+		rte = exec_rt_fetch(resultRelation, estate);
+	}
+
+	/* Construct the SQL command string. */
+	mysql_deparse_insert(&sql, rte, resultRelation, rel, targetAttrs);
+
+	/* Begin constructing MySQLFdwExecState. */
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+	foreignTableId = RelationGetRelid(rel);
+	table = GetForeignTable(foreignTableId);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
+
+	fmstate = (MySQLFdwExecState *) palloc0(sizeof(MySQLFdwExecState));
+
+	fmstate->rel = rel;
+	fmstate->mysqlFdwOptions = mysql_get_options(foreignTableId, true);
+	fmstate->conn = mysql_get_connection(server, user,
+										 fmstate->mysqlFdwOptions);
+	fmstate->query = sql.data;
+	fmstate->retrieved_attrs = targetAttrs;
+	n_params = list_length(fmstate->retrieved_attrs);
+	fmstate->p_flinfo = (FmgrInfo *) palloc0(sizeof(FmgrInfo) * n_params);
+	fmstate->p_nums = 0;
+	fmstate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
+											  "mysql_fdw temporary data",
+											  ALLOCSET_DEFAULT_SIZES);
+	/* Initialize auxiliary state */
+	fmstate->aux_fmstate = NULL;
+
+	/* Set up for remaining transmittable parameters */
+	foreach(lc, fmstate->retrieved_attrs)
+	{
+		int			attnum = lfirst_int(lc);
+		Form_pg_attribute attr = TupleDescAttr(RelationGetDescr(rel),
+											   attnum - 1);
+
+		Assert(!attr->attisdropped);
+
+		getTypeOutputInfo(attr->atttypid, &typefnoid, &isvarlena);
+		fmgr_info(typefnoid, &fmstate->p_flinfo[fmstate->p_nums]);
+		fmstate->p_nums++;
+	}
+	Assert(fmstate->p_nums <= n_params);
+
+	/* Initialize mysql statment */
+	fmstate->stmt = mysql_stmt_init(fmstate->conn);
+	if (!fmstate->stmt)
+		ereport(ERROR,
+				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+				 errmsg("failed to initialize the MySQL query: \n%s",
+						mysql_error(fmstate->conn))));
+
+	/* Prepare mysql statment */
+	if (mysql_stmt_prepare(fmstate->stmt, fmstate->query,
+						   strlen(fmstate->query)) != 0)
+		mysql_stmt_error_print(fmstate, "failed to prepare the MySQL query");
+
+	/*
+	 * If the given resultRelInfo already has PgFdwModifyState set, it means
+	 * the foreign table is an UPDATE subplan result rel; in which case, store
+	 * the resulting state into the aux_fmstate of the PgFdwModifyState.
+	 */
+	if (resultRelInfo->ri_FdwState)
+	{
+		Assert(plan && plan->operation == CMD_UPDATE);
+		Assert(resultRelInfo->ri_usesFdwDirectModify == false);
+		((MySQLFdwExecState *) resultRelInfo->ri_FdwState)->aux_fmstate = fmstate;
+	}
+	else
+		resultRelInfo->ri_FdwState = fmstate;
 }
 
 /*
  * mysqlEndForeignInsert
- * 		BeginForeignInsert() is not yet implemented, hence we do not
- * 		have anything to cleanup as of now. We throw an error here just
- * 		to make sure when we do that we do not forget to cleanup
- * 		resources.
+ * 		Clean up resource in func BeginForeignInsert()
  */
 static void
 mysqlEndForeignInsert(EState *estate, ResultRelInfo *resultRelInfo)
 {
-	ereport(ERROR,
-			(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-			 errmsg("COPY and foreign partition routing not supported in mysql_fdw")));
+	MySQLFdwExecState *fmstate = (MySQLFdwExecState *) resultRelInfo->ri_FdwState;
+
+	Assert(fmstate != NULL);
+
+	/*
+	 * If the fmstate has aux_fmstate set, get the aux_fmstate (see
+	 * mysqlBeginForeignInsert())
+	 */
+	if (fmstate->aux_fmstate)
+		fmstate = fmstate->aux_fmstate;
+
+	if (fmstate && fmstate->stmt)
+	{
+		mysql_stmt_close(fmstate->stmt);
+		fmstate->stmt = NULL;
+	}
 }
 #endif
 
