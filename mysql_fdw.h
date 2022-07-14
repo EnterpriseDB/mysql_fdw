@@ -306,7 +306,7 @@ extern mysql_opt *mysql_get_options(Oid foreigntableid, bool is_foreigntable);
 /* depare.c headers */
 extern void mysql_deparse_insert(StringInfo buf, PlannerInfo *root,
 								 Index rtindex, Relation rel,
-								 List *targetAttrs);
+								 List *targetAttrs, bool doNothing);
 extern void mysql_deparse_update(StringInfo buf, PlannerInfo *root,
 								 Index rtindex, Relation rel,
 								 List *targetAttrs, char *attname);

@@ -447,18 +447,14 @@ mysql_deparse_from_expr(List *quals, deparse_expr_cxt *context)
 
 /*
  * Deparse remote INSERT statement
- *
- * The statement text is appended to buf, and we also create an integer List
- * of the columns being retrieved by RETURNING (if any), which is returned
- * to *retrieved_attrs.
  */
 void
 mysql_deparse_insert(StringInfo buf, PlannerInfo *root, Index rtindex,
-					 Relation rel, List *targetAttrs)
+					 Relation rel, List *targetAttrs, bool doNothing)
 {
 	ListCell   *lc;
 
-	appendStringInfoString(buf, "INSERT INTO ");
+	appendStringInfo(buf, "INSERT %sINTO ", doNothing ? "IGNORE ": "");
 	mysql_deparse_relation(buf, rel);
 
 	if (targetAttrs)

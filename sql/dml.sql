@@ -217,6 +217,19 @@ END;
 $$
 LANGUAGE plpgsql;
 
+-- FDW-518: Should honor ON CONFLICT DO NOTHING clause.
+
+SELECT * FROM f_mysql_test ORDER BY 1;
+-- Should not throw an error while inserting duplicate value as we are using
+-- ON CONFLICT DO NOTHING clause.
+INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT DO NOTHING;
+SELECT * FROM f_mysql_test ORDER BY 1;
+
+-- Should throw an error
+INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT (a, b) DO NOTHING;
+INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT DO UPDATE SET b = 10;
+INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT (a) DO UPDATE SET b = 10;
+
 -- Cleanup
 DELETE FROM fdw126_ft1;
 DELETE FROM f_empdata;

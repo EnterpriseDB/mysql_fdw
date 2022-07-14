@@ -249,6 +249,32 @@ END;
 $$
 LANGUAGE plpgsql;
 NOTICE:  ERROR:  COPY and foreign partition routing not supported in mysql_fdw
+-- FDW-518: Should honor ON CONFLICT DO NOTHING clause.
+SELECT * FROM f_mysql_test ORDER BY 1;
+ a | b 
+---+---
+ 1 | 1
+(1 row)
+
+-- Should not throw an error while inserting duplicate value as we are using
+-- ON CONFLICT DO NOTHING clause.
+INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT DO NOTHING;
+SELECT * FROM f_mysql_test ORDER BY 1;
+ a | b 
+---+---
+ 1 | 1
+(1 row)
+
+-- Should throw an error
+INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT (a, b) DO NOTHING;
+ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT specification
+INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT DO UPDATE SET b = 10;
+ERROR:  ON CONFLICT DO UPDATE requires inference specification or constraint name
+LINE 1: INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT DO UPDATE S...
+                                             ^
+HINT:  For example, ON CONFLICT (column_name).
+INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT (a) DO UPDATE SET b = 10;
+ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT specification
 -- Cleanup
 DELETE FROM fdw126_ft1;
 DELETE FROM f_empdata;

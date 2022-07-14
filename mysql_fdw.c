@@ -1579,6 +1579,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	StringInfoData sql;
 	char	   *attname;
 	Oid			foreignTableId;
+	bool		doNothing = false;
 
 	initStringInfo(&sql);
 
@@ -1598,6 +1599,18 @@ mysqlPlanForeignModify(PlannerInfo *root,
 		ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 				 errmsg("first column of remote table must be unique for INSERT/UPDATE/DELETE operation")));
+
+	/*
+	 * ON CONFLICT DO UPDATE and DO NOTHING case with inference specification
+	 * should have already been rejected in the optimizer, as presently there
+	 * is no way to recognize an arbiter index on a foreign table.  Only DO
+	 * NOTHING is supported without an inference specification.
+	 */
+	if (plan->onConflictAction == ONCONFLICT_NOTHING)
+		doNothing = true;
+	else if (plan->onConflictAction != ONCONFLICT_NONE)
+		elog(ERROR, "unexpected ON CONFLICT specification: %d",
+			 (int) plan->onConflictAction);
 
 	/*
 	 * In an INSERT, we transmit all columns that are defined in the foreign
@@ -1654,7 +1667,8 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	switch (operation)
 	{
 		case CMD_INSERT:
-			mysql_deparse_insert(&sql, root, resultRelation, rel, targetAttrs);
+			mysql_deparse_insert(&sql, root, resultRelation, rel, targetAttrs,
+								 doNothing);
 			break;
 		case CMD_UPDATE:
 			mysql_deparse_update(&sql, root, resultRelation, rel, targetAttrs,
