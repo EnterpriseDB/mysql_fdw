@@ -259,11 +259,278 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
  700 | EMP7 | 2450.45000 | 10
 (3 rows)
 
+-- FDW-516: IS [NOT] DISTINCT FROM clause should deparse correctly.
+CREATE FOREIGN TABLE f_distinct_test (id int, c1 int, c2 int, c3 text, c4 text)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'distinct_test');
+INSERT INTO f_distinct_test VALUES
+  (1, 1, 1, 'abc', 'abc'),
+  (2, 2, NULL, 'abc', 'NULL'),
+  (3, NULL, NULL, 'NULL', 'NULL'),
+  (4, 3, 4, 'abc', 'pqr'),
+  (5, 4, 5, 'abc', 'abc'),
+  (6, 5, 5, 'abc', 'pqr');
+SELECT * FROM f_distinct_test ORDER BY id;
+ id | c1 | c2 |  c3  |  c4  
+----+----+----+------+------
+  1 |  1 |  1 | abc  | abc
+  2 |  2 |    | abc  | NULL
+  3 |    |    | NULL | NULL
+  4 |  3 |  4 | abc  | pqr
+  5 |  4 |  5 | abc  | abc
+  6 |  5 |  5 | abc  | pqr
+(6 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test WHERE (c1) IS DISTINCT FROM (c2)
+  ORDER BY id;
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE ((NOT (`c1` <=> `c2`))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test WHERE (c1) IS DISTINCT FROM (c2)
+  ORDER BY id;
+ id | c1 | c2 | c3  |  c4  
+----+----+----+-----+------
+  2 |  2 |    | abc | NULL
+  4 |  3 |  4 | abc | pqr
+  5 |  4 |  5 | abc | abc
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test WHERE (c1) IS NOT DISTINCT FROM (c2)
+  ORDER BY id;
+                                                                       QUERY PLAN                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE (((`c1` <=> `c2`))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test WHERE (c1) IS NOT DISTINCT FROM (c2)
+  ORDER BY id;
+ id | c1 | c2 |  c3  |  c4  
+----+----+----+------+------
+  1 |  1 |  1 | abc  | abc
+  3 |    |    | NULL | NULL
+  6 |  5 |  5 | abc  | pqr
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test WHERE (c3) IS DISTINCT FROM (c4)
+  ORDER BY id;
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE ((NOT (`c3` <=> `c4`))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test WHERE (c3) IS DISTINCT FROM (c4)
+  ORDER BY id;
+ id | c1 | c2 | c3  |  c4  
+----+----+----+-----+------
+  2 |  2 |    | abc | NULL
+  4 |  3 |  4 | abc | pqr
+  6 |  5 |  5 | abc | pqr
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test WHERE (c3) IS NOT DISTINCT FROM (c4)
+  ORDER BY id;
+                                                                       QUERY PLAN                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE (((`c3` <=> `c4`))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test WHERE (c3) IS NOT DISTINCT FROM (c4)
+  ORDER BY id;
+ id | c1 | c2 |  c3  |  c4  
+----+----+----+------+------
+  1 |  1 |  1 | abc  | abc
+  3 |    |    | NULL | NULL
+  5 |  4 |  5 | abc  | abc
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE (c1) IS DISTINCT FROM (c2) and (c3) IS NOT DISTINCT FROM (c4)
+  ORDER BY id;
+                                                                                     QUERY PLAN                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE ((NOT (`c1` <=> `c2`))) AND (((`c3` <=> `c4`))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test
+  WHERE (c1) IS DISTINCT FROM (c2) and (c3) IS NOT DISTINCT FROM (c4)
+  ORDER BY id;
+ id | c1 | c2 | c3  | c4  
+----+----+----+-----+-----
+  5 |  4 |  5 | abc | abc
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE (c1) IS NOT DISTINCT FROM (c2) or (c3) IS DISTINCT FROM (c4)
+  ORDER BY id;
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE ((((`c1` <=> `c2`)) OR (NOT (`c3` <=> `c4`)))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test
+  WHERE (c1) IS NOT DISTINCT FROM (c2) or (c3) IS DISTINCT FROM (c4)
+  ORDER BY id;
+ id | c1 | c2 |  c3  |  c4  
+----+----+----+------+------
+  1 |  1 |  1 | abc  | abc
+  2 |  2 |    | abc  | NULL
+  3 |    |    | NULL | NULL
+  4 |  3 |  4 | abc  | pqr
+  6 |  5 |  5 | abc  | pqr
+(5 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE ((NOT (((`c1` <=> `c2`)) <=> ((`c3` <=> `c4`))))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+ id | c1 | c2 | c3  | c4  
+----+----+----+-----+-----
+  5 |  4 |  5 | abc | abc
+  6 |  5 |  5 | abc | pqr
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+                                                                                        QUERY PLAN                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE ((((NOT (`c1` <=> `c2`)) <=> (NOT (`c3` <=> `c4`))))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+ id | c1 | c2 |  c3  |  c4  
+----+----+----+------+------
+  1 |  1 |  1 | abc  | abc
+  2 |  2 |    | abc  | NULL
+  3 |    |    | NULL | NULL
+  4 |  3 |  4 | abc  | pqr
+(4 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+                                                                                        QUERY PLAN                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE ((NOT (((`c1` <=> `c2`)) <=> (NOT (`c3` <=> `c4`))))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+ id | c1 | c2 |  c3  |  c4  
+----+----+----+------+------
+  1 |  1 |  1 | abc  | abc
+  2 |  2 |    | abc  | NULL
+  3 |    |    | NULL | NULL
+  4 |  3 |  4 | abc  | pqr
+(4 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE ((((NOT (`c1` <=> `c2`)) <=> ((`c3` <=> `c4`))))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+ id | c1 | c2 | c3  | c4  
+----+----+----+-----+-----
+  5 |  4 |  5 | abc | abc
+  6 |  5 |  5 | abc | pqr
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+                                                                                        QUERY PLAN                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE ((NOT ((NOT (`c1` <=> `c2`)) <=> ((`c3` <=> `c4`))))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+ id | c1 | c2 |  c3  |  c4  
+----+----+----+------+------
+  1 |  1 |  1 | abc  | abc
+  2 |  2 |    | abc  | NULL
+  3 |    |    | NULL | NULL
+  4 |  3 |  4 | abc  | pqr
+(4 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_distinct_test
+   Output: id, c1, c2, c3, c4
+   Remote query: SELECT `id`, `c1`, `c2`, `c3`, `c4` FROM `mysql_fdw_regress`.`distinct_test` WHERE (((((`c1` <=> `c2`)) <=> (NOT (`c3` <=> `c4`))))) ORDER BY `id` IS NULL, `id` ASC
+(3 rows)
+
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+ id | c1 | c2 | c3  | c4  
+----+----+----+-----+-----
+  5 |  4 |  5 | abc | abc
+  6 |  5 |  5 | abc | pqr
+(2 rows)
+
 -- Cleanup
 DELETE FROM f_test_tbl1;
 DELETE FROM f_test_tbl2;
+DELETE FROM f_distinct_test;
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
+DROP FOREIGN TABLE f_distinct_test;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;
 DROP EXTENSION mysql_fdw;

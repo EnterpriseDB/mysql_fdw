@@ -95,6 +95,7 @@ typedef struct deparse_expr_cxt
 								 * a base relation. */
 	StringInfo	buf;			/* output buffer to append to */
 	List	  **params_list;	/* exprs that will become remote Params */
+	bool		is_not_distinct_op;	/* True in case of IS NOT DISTINCT clause */
 } deparse_expr_cxt;
 
 #define REL_ALIAS_PREFIX	"r"
@@ -277,6 +278,7 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 	context.foreignrel = rel;
 	context.params_list = params_list;
 	context.scanrel = IS_UPPER_REL(rel) ? fpinfo->outerrel : rel;
+	context.is_not_distinct_op = false;
 
 	/* Construct SELECT clause */
 	mysql_deparse_select_sql(tlist, retrieved_attrs, &context);
@@ -1242,20 +1244,33 @@ mysql_deparse_operator_name(StringInfo buf, Form_pg_operator opform)
 }
 
 /*
- * Deparse IS DISTINCT FROM.
+ * Deparse IS [NOT] DISTINCT FROM into MySQL equivalent form.
  */
 static void
 mysql_deparse_distinct_expr(DistinctExpr *node, deparse_expr_cxt *context)
 {
 	StringInfo	buf = context->buf;
+	bool		is_not_distinct_op = context->is_not_distinct_op;
 
 	Assert(list_length(node->args) == 2);
 
+	/*
+	 * In MySQL, <=> operator is equal to IS NOT DISTINCT FROM clause, so for
+	 * IS DISTINCT FROM clause, we add NOT before <=> operator.
+	 */
+	if (!is_not_distinct_op)
+		appendStringInfoString(buf, "(NOT ");
+
+	/* Reset the value of is_not_distinct_op for recursive calls. */
+	context->is_not_distinct_op = false;
 	appendStringInfoChar(buf, '(');
 	deparseExpr(linitial(node->args), context);
-	appendStringInfoString(buf, " IS DISTINCT FROM ");
+	appendStringInfoString(buf, " <=> ");
 	deparseExpr(lsecond(node->args), context);
 	appendStringInfoChar(buf, ')');
+
+	if (!is_not_distinct_op)
+		appendStringInfoString(buf, ")");
 }
 
 /*
@@ -1358,6 +1373,7 @@ mysql_deparse_bool_expr(BoolExpr *node, deparse_expr_cxt *context)
 	const char *op = NULL;		/* keep compiler quiet */
 	bool		first;
 	ListCell   *lc;
+	Expr	   *arg;
 
 	switch (node->boolop)
 	{
@@ -1368,11 +1384,23 @@ mysql_deparse_bool_expr(BoolExpr *node, deparse_expr_cxt *context)
 			op = "OR";
 			break;
 		case NOT_EXPR:
-			appendStringInfoChar(buf, '(');
-			appendStringInfoString(buf, "NOT ");
-			deparseExpr(linitial(node->args), context);
-			appendStringInfoChar(buf, ')');
-			return;
+			/*
+			 * Per transformAExprDistinct(), in the case of IS NOT DISTINCT
+			 * clause, it adds NOT on top of DistinctExpr.  However, in MySQL,
+			 * <=> is equivalent to IS NOT DISTINCT FROM clause, so do not
+			 * append NOT here if it is a DistinctExpr.
+			 */
+			arg = (Expr *) lfirst(list_head(node->args));
+			if (!IsA(arg, DistinctExpr))
+			{
+				appendStringInfoString(buf, "(NOT ");
+				deparseExpr(arg, context);
+				appendStringInfoChar(buf, ')');
+				return;
+			}
+
+			/* Mark that we are deparsing a IS NOT DISTINCT FROM clause. */
+			context->is_not_distinct_op = true;
 	}
 
 	appendStringInfoChar(buf, '(');
@@ -2175,6 +2203,7 @@ mysql_deparse_from_expr_for_rel(StringInfo buf, PlannerInfo *root,
 			context.scanrel = foreignrel;
 			context.root = root;
 			context.params_list = params_list;
+			context.is_not_distinct_op = false;
 
 			appendStringInfo(buf, "(");
 			mysql_append_conditions(fpinfo->joinclauses, &context);

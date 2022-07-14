@@ -124,11 +124,115 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c3 LIKE 'MANA%'
   ORDER BY c1;
 
+
+-- FDW-516: IS [NOT] DISTINCT FROM clause should deparse correctly.
+
+CREATE FOREIGN TABLE f_distinct_test (id int, c1 int, c2 int, c3 text, c4 text)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'distinct_test');
+INSERT INTO f_distinct_test VALUES
+  (1, 1, 1, 'abc', 'abc'),
+  (2, 2, NULL, 'abc', 'NULL'),
+  (3, NULL, NULL, 'NULL', 'NULL'),
+  (4, 3, 4, 'abc', 'pqr'),
+  (5, 4, 5, 'abc', 'abc'),
+  (6, 5, 5, 'abc', 'pqr');
+SELECT * FROM f_distinct_test ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test WHERE (c1) IS DISTINCT FROM (c2)
+  ORDER BY id;
+SELECT * FROM f_distinct_test WHERE (c1) IS DISTINCT FROM (c2)
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test WHERE (c1) IS NOT DISTINCT FROM (c2)
+  ORDER BY id;
+SELECT * FROM f_distinct_test WHERE (c1) IS NOT DISTINCT FROM (c2)
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test WHERE (c3) IS DISTINCT FROM (c4)
+  ORDER BY id;
+SELECT * FROM f_distinct_test WHERE (c3) IS DISTINCT FROM (c4)
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test WHERE (c3) IS NOT DISTINCT FROM (c4)
+  ORDER BY id;
+SELECT * FROM f_distinct_test WHERE (c3) IS NOT DISTINCT FROM (c4)
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE (c1) IS DISTINCT FROM (c2) and (c3) IS NOT DISTINCT FROM (c4)
+  ORDER BY id;
+SELECT * FROM f_distinct_test
+  WHERE (c1) IS DISTINCT FROM (c2) and (c3) IS NOT DISTINCT FROM (c4)
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE (c1) IS NOT DISTINCT FROM (c2) or (c3) IS DISTINCT FROM (c4)
+  ORDER BY id;
+SELECT * FROM f_distinct_test
+  WHERE (c1) IS NOT DISTINCT FROM (c2) or (c3) IS DISTINCT FROM (c4)
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS DISTINCT FROM (c2)) IS DISTINCT FROM ((c3) IS NOT DISTINCT FROM (c4))
+  ORDER BY id;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+SELECT * FROM f_distinct_test
+  WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
+  ORDER BY id;
+
 -- Cleanup
 DELETE FROM f_test_tbl1;
 DELETE FROM f_test_tbl2;
+DELETE FROM f_distinct_test;
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
+DROP FOREIGN TABLE f_distinct_test;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;
 DROP EXTENSION mysql_fdw;
