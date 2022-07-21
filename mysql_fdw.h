@@ -331,6 +331,9 @@ extern Expr *mysql_find_em_expr_for_rel(EquivalenceClass *ec, RelOptInfo *rel);
 extern Expr *mysql_find_em_expr_for_input_target(PlannerInfo *root,
 												 EquivalenceClass *ec,
 												 PathTarget *target);
+#if PG_VERSION_NUM >= 140000
+extern void mysql_deparse_truncate_sql(StringInfo buf, Relation rel);
+#endif
 
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user,

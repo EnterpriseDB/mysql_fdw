@@ -267,6 +267,11 @@ static void mysqlBeginForeignInsert(ModifyTableState *mtstate,
 static void mysqlEndForeignInsert(EState *estate,
 								  ResultRelInfo *resultRelInfo);
 #endif
+#if PG_VERSION_NUM >= 140000
+static void mysqlExecForeignTruncate(List *rels,
+									 DropBehavior behavior,
+									 bool restart_seqs);
+#endif
 
 /*
  * Helper functions
@@ -565,6 +570,12 @@ mysql_fdw_handler(PG_FUNCTION_ARGS)
 
 	/* Support functions for upper relation push-down */
 	fdwroutine->GetForeignUpperPaths = mysqlGetForeignUpperPaths;
+
+#if PG_VERSION_NUM >= 140000
+	/* Support function for TRUNCATE */
+	fdwroutine->ExecForeignTruncate = mysqlExecForeignTruncate;
+#endif
+
 
 	PG_RETURN_POINTER(fdwroutine);
 }
@@ -4559,3 +4570,116 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	add_path(final_rel, (Path *) final_path);
 }
 #endif							/* PG_VERSION_NUM >= 120000 */
+
+#if PG_VERSION_NUM >= 140000
+/*
+ * mysqlExecForeignTruncate
+ *		Truncate one or more foreign tables.
+ */
+static void
+mysqlExecForeignTruncate(List *rels,
+						 DropBehavior behavior,
+						 bool restart_seqs)
+{
+	Oid			serverid = InvalidOid;
+	ForeignServer *server = NULL;
+	UserMapping *user = NULL;
+	MYSQL	   *conn = NULL;
+	StringInfoData sql;
+	ListCell   *lc;
+	bool		server_truncatable = true;
+	mysql_opt  *options;
+
+	/* CASCADE option is not supported as we don't have such option in MySQL */
+	if (behavior == DROP_CASCADE)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("CASCADE option in TRUNCATE is not supported by this FDW")));
+
+	/*
+	 * By default, all mysql_fdw foreign tables are assumed truncatable. This
+	 * can be overridden by a per-server setting, which in turn can be
+	 * overridden by a per-table setting.
+	 */
+	foreach(lc, rels)
+	{
+		Relation	rel = lfirst(lc);
+		ForeignTable *table = GetForeignTable(RelationGetRelid(rel));
+		ListCell   *cell;
+		bool		truncatable;
+
+		/*
+		 * First time through, determine whether the foreign server allows
+		 * truncates. Since all specified foreign tables are assumed to belong
+		 * to the same foreign server, this result can be used for other
+		 * foreign tables.
+		 */
+		if (!OidIsValid(serverid))
+		{
+			serverid = table->serverid;
+			server = GetForeignServer(serverid);
+
+			foreach(cell, server->options)
+			{
+				DefElem    *defel = (DefElem *) lfirst(cell);
+
+				if (strcmp(defel->defname, "truncatable") == 0)
+				{
+					server_truncatable = defGetBoolean(defel);
+					break;
+				}
+			}
+		}
+
+		/*
+		 * Confirm that all specified foreign tables belong to the same
+		 * foreign server.
+		 */
+		Assert(table->serverid == serverid);
+
+		/* Determine whether this foreign table allows truncations */
+		truncatable = server_truncatable;
+		foreach(cell, table->options)
+		{
+			DefElem    *defel = (DefElem *) lfirst(cell);
+
+			if (strcmp(defel->defname, "truncatable") == 0)
+			{
+				truncatable = defGetBoolean(defel);
+				break;
+			}
+		}
+
+		if (!truncatable)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("foreign table \"%s\" does not allow truncates",
+							RelationGetRelationName(rel))));
+	}
+	Assert(OidIsValid(serverid));
+
+	/*
+	 * Get connection to the foreign server.  Connection manager will
+	 * establish new connection if necessary.
+	 */
+	user = GetUserMapping(GetUserId(), serverid);
+	options = mysql_get_options(serverid, false);
+	conn = mysql_get_connection(server, user, options);
+
+	/* Construct the TRUNCATE command string */
+	foreach(lc, rels)
+	{
+		Relation	rel = lfirst(lc);
+
+		initStringInfo(&sql);
+
+		mysql_deparse_truncate_sql(&sql, rel);
+
+		/* Issue the TRUNCATE command to remote server */
+		if (mysql_query(conn, sql.data) != 0)
+			mysql_error_print(conn);
+
+		pfree(sql.data);
+	}
+}
+#endif

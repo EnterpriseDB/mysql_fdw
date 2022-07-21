@@ -54,6 +54,11 @@ static struct MySQLFdwOption valid_options[] =
 	{"fetch_size", ForeignTableRelationId},
 	{"reconnect", ForeignServerRelationId},
 	{"character_set", ForeignServerRelationId},
+#if PG_VERSION_NUM >= 140000
+	/* truncatable is available on both server and table */
+	{"truncatable", ForeignServerRelationId},
+	{"truncatable", ForeignTableRelationId},
+#endif
 	{"sql_mode", ForeignServerRelationId},
 	{"ssl_key", ForeignServerRelationId},
 	{"ssl_cert", ForeignServerRelationId},
@@ -146,6 +151,13 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 			/* accept only boolean values */
 			(void) defGetBoolean(def);
 		}
+#if PG_VERSION_NUM >= 140000
+		else if (strcmp(def->defname, "truncatable") == 0)
+		{
+			/* accept only boolean values */
+			(void) defGetBoolean(def);
+		}
+#endif
 	}
 
 	PG_RETURN_VOID();

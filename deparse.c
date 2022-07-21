@@ -2558,3 +2558,17 @@ mysql_append_limit_clause(deparse_expr_cxt *context)
 		}
 	}
 }
+
+#if PG_VERSION_NUM >= 140000
+/*
+ * mysql_deparse_truncate_sql
+ * 		Construct a simple "TRUNCATE <relname>" statement.
+ */
+void
+mysql_deparse_truncate_sql(StringInfo buf, Relation rel)
+{
+	appendStringInfoString(buf, "TRUNCATE ");
+
+	mysql_deparse_relation(buf, rel);
+}
+#endif
