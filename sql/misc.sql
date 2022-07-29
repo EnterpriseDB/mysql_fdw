@@ -115,15 +115,50 @@ CREATE FOREIGN TABLE fdw519_ft5(dept_id int, stu_id varchar(10))
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress1', table_name 'dept');
 TRUNCATE fdw519_ft4;
 
+-- FDW-520: Support generated columns in IMPORT FOREIGN SCHEMA command.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (fdw520)
+  FROM SERVER mysql_svr INTO public OPTIONS (import_generated 'true');
+\d fdw520
+
+-- Generated column refers to another generated column, should throw an error:
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (fdw520_1)
+  FROM SERVER mysql_svr INTO public OPTIONS (import_generated 'true');
+
+-- import_generated as false.
+DROP FOREIGN TABLE fdw520;
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (fdw520)
+  FROM SERVER mysql_svr INTO public OPTIONS (import_generated 'false');
+\d fdw520
+
+-- Without import_generated option, default is true.
+DROP FOREIGN TABLE fdw520;
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (fdw520)
+  FROM SERVER mysql_svr INTO public;
+\d fdw520
+
+-- FDW-521: Insert and update operations on table having generated columns.
+INSERT INTO fdw520(c1, "c `"""" 2") VALUES(1, 2);
+INSERT INTO fdw520(c1, "c `"""" 2", c3, c4) VALUES(2, 4, DEFAULT, DEFAULT);
+-- Should fail.
+INSERT INTO fdw520 VALUES(1, 2, 3, 4);
+SELECT * FROM fdw520 ORDER BY 1;
+UPDATE fdw520 SET "c `"""" 2" = 20 WHERE c1 = 2;
+SELECT * FROM fdw520 ORDER BY 1;
+-- Should fail.
+UPDATE fdw520 SET c4 = 20 WHERE c1 = 2;
+UPDATE fdw520 SET c3 = 20 WHERE c1 = 2;
+
 -- Cleanup
 DELETE FROM fdw519_ft1;
 DELETE FROM fdw519_ft2;
 DELETE FROM fdw519_ft3;
+DELETE FROM fdw520;
 DROP FOREIGN TABLE fdw519_ft1;
 DROP FOREIGN TABLE fdw519_ft2;
 DROP FOREIGN TABLE fdw519_ft3;
 DROP FOREIGN TABLE fdw519_ft4;
 DROP FOREIGN TABLE fdw519_ft5;
+DROP FOREIGN TABLE fdw520;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;
 DROP USER MAPPING FOR public SERVER mysql_svr1;

@@ -188,6 +188,11 @@ The following parameters can be set on IMPORT FOREIGN SCHEMA command:
   * `import_enum_as_text`: This option can be used to map MySQL ENUM type
   to TEXT type in the definitions of foreign tables, otherwise emit a
   warning for type to be created. The default is `false`.
+  * `import_generated`: This option controls whether GENERATED column
+  expressions are included in the definitions of foreign tables imported from
+  a foreign server or not. The default is `true`. The IMPORT will fail
+  altogether if an imported generated expression uses a function or operator
+  that does not exist on PostgreSQL.
 
 Examples
 --------

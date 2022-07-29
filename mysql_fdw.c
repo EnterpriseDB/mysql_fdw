@@ -359,6 +359,9 @@ static void mysql_error_print(MYSQL *conn);
 static void mysql_stmt_error_print(MySQLFdwExecState *festate,
 								   const char *msg);
 static List *getUpdateTargetAttrs(RangeTblEntry *rte);
+#if PG_VERSION_NUM >= 140000
+static char *mysql_remove_quotes(char *s1);
+#endif
 
 /*
  * mysql_load_library function dynamically load the mysql's library
@@ -1906,6 +1909,9 @@ mysqlExecForeignUpdate(EState *estate,
 	HeapTuple	tuple;
 	Form_pg_attribute attr;
 	bool		found_row_id_col = false;
+#if PG_VERSION_NUM >= 140000
+	TupleDesc	tupdesc = RelationGetDescr(rel);
+#endif
 
 	n_params = list_length(fmstate->retrieved_attrs);
 
@@ -1928,6 +1934,12 @@ mysqlExecForeignUpdate(EState *estate,
 			found_row_id_col = true;
 			continue;
 		}
+
+#if PG_VERSION_NUM >= 140000
+		/* Ignore generated columns; they are set to DEFAULT. */
+		if (TupleDescAttr(tupdesc, attnum - 1)->attgenerated)
+			continue;
+#endif
 
 		type = TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1)->atttypid;
 		value = slot_getattr(slot, attnum, (bool *) (&isnull[bindnum]));
@@ -2147,6 +2159,9 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	MYSQL_RES  *volatile res = NULL;
 	MYSQL_ROW	row;
 	ListCell   *lc;
+#if PG_VERSION_NUM >= 140000
+	bool		import_generated = true;
+#endif
 
 	/* Parse statement options */
 	foreach(lc, stmt->options)
@@ -2159,6 +2174,10 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			import_not_null = defGetBoolean(def);
 		else if (strcmp(def->defname, "import_enum_as_text") == 0)
 			import_enum_as_text = defGetBoolean(def);
+#if PG_VERSION_NUM >= 140000
+		else if (strcmp(def->defname, "import_generated") == 0)
+			import_generated = defGetBoolean(def);
+#endif
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
@@ -2228,7 +2247,13 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 					 "  END,"
 					 "  c.COLUMN_TYPE,"
 					 "  IF(c.IS_NULLABLE = 'NO', 't', 'f'),"
+#if PG_VERSION_NUM >= 140000
+					 "  c.COLUMN_DEFAULT,"
+					 "  c.EXTRA,"
+					 "  c.GENERATION_EXPRESSION"
+#else
 					 "  c.COLUMN_DEFAULT"
+#endif
 					 " FROM"
 					 "  information_schema.TABLES AS t"
 					 " JOIN"
@@ -2292,6 +2317,9 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			char	   *typedfn;
 			char	   *attnotnull;
 			char	   *attdefault;
+#if PG_VERSION_NUM >= 140000
+			char	   *attgenerated;
+#endif
 
 			/*
 			 * If the table has no columns, we'll see nulls here. Also, if we
@@ -2354,6 +2382,28 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			/* Add DEFAULT if needed */
 			if (import_default && attdefault != NULL)
 				appendStringInfo(&buf, " DEFAULT %s", attdefault);
+
+#if PG_VERSION_NUM >= 140000
+			/*
+			 * Add GENERATED if needed.  Map VIRTUAL GENERATED to STORED in
+			 * Postgres.
+			 */
+			attgenerated = (row[6] == NULL ? (char *) NULL : row[6]);
+			if (import_generated && attgenerated != NULL &&
+				(strcmp(attgenerated, "STORED GENERATED") == 0 ||
+				 strcmp(attgenerated, "VIRTUAL GENERATED") == 0))
+			{
+				char	   *generated_expr;
+
+				generated_expr = mysql_remove_quotes(row[7]);
+				if (generated_expr == NULL)
+					elog(ERROR, "unsupported expression found for GENERATED column");
+
+				appendStringInfo(&buf, " GENERATED ALWAYS AS %s STORED",
+								 generated_expr);
+				pfree(generated_expr);
+			}
+#endif
 
 			/* Add NOT NULL if needed */
 			if (import_not_null && attnotnull[0] == 't')
@@ -4681,5 +4731,51 @@ mysqlExecForeignTruncate(List *rels,
 
 		pfree(sql.data);
 	}
+}
+#endif
+
+#if PG_VERSION_NUM >= 140000
+/*
+ * mysql_remove_quotes
+ *
+ * Return the string by replacing back-tick (`) characters with double quotes
+ * (").  If there are two consecutive back-ticks, the first is the escape
+ * character which is removed.  Caller should free the allocated memory.
+ */
+static char *
+mysql_remove_quotes(char *s1)
+{
+	int			i,
+				j;
+	char	   *s2;
+
+	if (s1 == NULL)
+		return NULL;
+
+	s2 = palloc0(strlen(s1) * 2);
+
+	for (i = 0, j = 0; s1[i] != '\0'; i++, j++)
+	{
+		if (s1[i] == '`' && s1[i+1] == '`')
+		{
+			s2[j] = '`';
+			i++;
+		}
+		else if (s1[i] == '`')
+			s2[j] = '"';
+		else if (s1[i] == '"')
+		{
+			/* Double the inner double quotes for PG compatibility. */
+			s2[j] = '"';
+			s2[j+1] = '"';
+			j++;
+		}
+		else
+			s2[j] = s1[i];
+	}
+
+	s2[j] = '\0';
+
+	return s2;
 }
 #endif
