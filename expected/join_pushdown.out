@@ -1028,15 +1028,13 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)
   ORDER BY t1.c1, t2.c1 LIMIT 3 OFFSET NULL;
-                                                                                                 QUERY PLAN                                                                                                  
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit
+                                                                                                  QUERY PLAN                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c1
-         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-         Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) ORDER BY r1.`c1` IS NULL, r1.`c1` ASC, r2.`c1` IS NULL, r2.`c1` ASC
-(6 rows)
+   Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+   Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) ORDER BY r1.`c1` IS NULL, r1.`c1` ASC, r2.`c1` IS NULL, r2.`c1` ASC LIMIT 3
+(4 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (TRUE)

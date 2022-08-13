@@ -2569,13 +2569,15 @@ mysql_append_limit_clause(deparse_expr_cxt *context)
 
 	if (root->parse->limitCount)
 	{
+		Const      *c = (Const *)  root->parse->limitOffset;
+
 		appendStringInfoString(buf, " LIMIT ");
 		deparseExpr((Expr *) root->parse->limitCount, context);
 
-		if (root->parse->limitOffset)
+		if (c && !c->constisnull)
 		{
 			appendStringInfoString(buf, " OFFSET ");
-			deparseExpr((Expr *) root->parse->limitOffset, context);
+			deparseExpr((Expr *) c, context);
 		}
 	}
 }

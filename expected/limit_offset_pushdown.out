@@ -200,25 +200,21 @@ SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT 0 OFFSET 0;
 
 -- Offset NULL.
 EXPLAIN (VERBOSE, COSTS FALSE)
-SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT 5 OFFSET NULL;
-                                                     QUERY PLAN                                                     
---------------------------------------------------------------------------------------------------------------------
- Limit
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT 3 OFFSET NULL;
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl2
    Output: c1, c2, c3
-   ->  Foreign Scan on public.f_test_tbl2
-         Output: c1, c2, c3
-         Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test_tbl2` ORDER BY `c1` IS NULL, `c1` ASC
-(5 rows)
+   Remote query: SELECT `c1`, `c2`, `c3` FROM `mysql_fdw_regress`.`test_tbl2` ORDER BY `c1` IS NULL, `c1` ASC LIMIT 3
+(3 rows)
 
-SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT 5 OFFSET NULL;
+SELECT * FROM f_test_tbl2 ORDER BY 1 LIMIT 3 OFFSET NULL;
  c1 |       c2       |    c3    
 ----+----------------+----------
  10 | DEVELOPMENT    | PUNE
  20 | ADMINISTRATION | BANGLORE
  30 | SALES          | MUMBAI
- 40 | HR             | NAGPUR
- 50 | IT             | PUNE
-(5 rows)
+(3 rows)
 
 -- Limit with placeholder.
 EXPLAIN (VERBOSE, COSTS FALSE)

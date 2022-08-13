@@ -4564,7 +4564,9 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	/*
 	 * Support only Const and Param nodes as expressions are NOT suported.
 	 * MySQL doesn't support LIMIT/OFFSET NULL/ALL syntax, so check for the
-	 * same.  If const node is null then do not pushdown limit/offset clause.
+	 * same.  If limitCount const node is null then do not pushdown
+	 * limit/offset clause and if limitOffset const node is null and limitCount
+	 * const node is not null then pushdown only limit clause.
 	 */
 	if (parse->limitCount)
 	{
@@ -4580,10 +4582,6 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	{
 		if (nodeTag(parse->limitOffset) != T_Const &&
 			nodeTag(parse->limitOffset) != T_Param)
-			return;
-
-		if (nodeTag(parse->limitOffset) == T_Const &&
-			((Const *) parse->limitOffset)->constisnull)
 			return;
 	}
 
