@@ -4265,8 +4265,8 @@ mysql_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	{
 		Assert(root->query_pathkeys == root->sort_pathkeys);
 
-		/* Safe to push down  */
-		fpinfo->pushdown_safe = true;
+		/* Safe to push down if the query_pathkeys is safe to push down */
+		fpinfo->pushdown_safe = ifpinfo->qp_is_pushdown_safe;
 
 		return;
 	}

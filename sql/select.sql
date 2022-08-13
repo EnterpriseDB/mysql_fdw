@@ -515,6 +515,11 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST, c1;
 SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST, c1;
 
+-- Test LIMIT where ORDER BY is not pushed down due to unsafe pathkeys.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 t1 ORDER BY t1 LIMIT 5;
+SELECT * FROM f_test_tbl1 t1 ORDER BY t1 LIMIT 5;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

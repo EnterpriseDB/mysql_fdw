@@ -1715,6 +1715,31 @@ SELECT * FROM f_test_tbl1 ORDER BY c7 DESC NULLS LAST, c1;
  1400 | EMP14 | ADMIN     |  700 | 1982-01-23 | 1300.00000 |      | 10
 (14 rows)
 
+-- Test LIMIT where ORDER BY is not pushed down due to unsafe pathkeys.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 t1 ORDER BY t1 LIMIT 5;
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: c1, c2, c3, c4, c5, c6, c7, c8, t1.*
+   ->  Sort
+         Output: c1, c2, c3, c4, c5, c6, c7, c8, t1.*
+         Sort Key: t1.*
+         ->  Foreign Scan on public.f_test_tbl1 t1
+               Output: c1, c2, c3, c4, c5, c6, c7, c8, t1.*
+               Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1`
+(8 rows)
+
+SELECT * FROM f_test_tbl1 t1 ORDER BY t1 LIMIT 5;
+ c1  |  c2  |    c3     |  c4  |     c5     |     c6     |  c7  | c8 
+-----+------+-----------+------+------------+------------+------+----
+ 100 | EMP1 | ADMIN     | 1300 | 1980-12-17 |  800.23000 |      | 20
+ 200 | EMP2 | SALESMAN  |  600 | 1981-02-20 | 1600.00000 |  300 | 30
+ 300 | EMP3 | SALESMAN  |  600 | 1981-02-22 | 1250.00000 |  500 | 30
+ 400 | EMP4 | MANAGER   |  900 | 1981-04-02 | 2975.12000 |      | 20
+ 500 | EMP5 | SALESMAN  |  600 | 1981-09-28 | 1250.00000 | 1400 | 30
+(5 rows)
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
