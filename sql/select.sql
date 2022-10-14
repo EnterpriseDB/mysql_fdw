@@ -520,6 +520,9 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM f_test_tbl1 t1 ORDER BY t1 LIMIT 5;
 SELECT * FROM f_test_tbl1 t1 ORDER BY t1 LIMIT 5;
 
+-- FDW-322: Test mysql_fdw_display_pushdown_list() function.
+SELECT count(*) FROM mysql_fdw_display_pushdown_list();
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

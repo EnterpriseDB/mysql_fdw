@@ -1740,6 +1740,13 @@ SELECT * FROM f_test_tbl1 t1 ORDER BY t1 LIMIT 5;
  500 | EMP5 | SALESMAN  |  600 | 1981-09-28 | 1250.00000 | 1400 | 30
 (5 rows)
 
+-- FDW-322: Test mysql_fdw_display_pushdown_list() function.
+SELECT count(*) FROM mysql_fdw_display_pushdown_list();
+ count 
+-------
+   122
+(1 row)
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

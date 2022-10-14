@@ -38,6 +38,7 @@
 #include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
+#include "mysql_pushability.h"
 #include "mysql_query.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -62,6 +63,7 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/regproc.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
 
@@ -181,6 +183,7 @@ extern Datum mysql_fdw_handler(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(mysql_fdw_handler);
 PG_FUNCTION_INFO_V1(mysql_fdw_version);
+PG_FUNCTION_INFO_V1(mysql_display_pushdown_list);
 
 /*
  * FDW callback routines
@@ -4777,3 +4780,90 @@ mysql_remove_quotes(char *s1)
 	return s2;
 }
 #endif
+
+/*
+ * mysql_display_pushdown_list
+ * 		Displays all records from the config file. Each record will return as a
+ * 		single row.
+ *
+ * If it gets the argument as true, then it will rebuild the hash table and
+ * then display it.  Also, if this function is executing for the first time in
+ * a session before any other mysql_fdw statement, then we by default build the
+ * hash and display it.
+ */
+Datum
+mysql_display_pushdown_list(PG_FUNCTION_ARGS)
+{
+#define	DISPLAY_PUSHDOWN_LIST_COLS	2
+	FuncCallContext *funcctx;
+	List	   *objectList;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		bool		reload = PG_GETARG_BOOL(0);
+		TupleDesc	tupdesc;
+		MemoryContext oldcontext;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/* Switch context when allocating stuff to be used in later calls */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/* Fetch the object list */
+		objectList = mysql_get_configured_pushdown_objects(reload);
+
+		/* Total number of tuples to be returned */
+		funcctx->max_calls = list_length(objectList);
+		funcctx->user_fctx = (void *) objectList;
+
+		/* Build a tuple descriptor for our result type */
+		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+			elog(ERROR, "return type must be a row type");
+		if (tupdesc->natts != DISPLAY_PUSHDOWN_LIST_COLS)
+			elog(ERROR, "incorrect number of output arguments");
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		/* Return to original context when allocating transient memory */
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+
+	/* Get the saved state */
+	objectList = (List *) funcctx->user_fctx;
+
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		HeapTuple	tuple;
+		Datum	  	values[DISPLAY_PUSHDOWN_LIST_COLS];
+		bool	  	nulls[DISPLAY_PUSHDOWN_LIST_COLS] = {false};
+		FDWPushdownObject *object;
+
+		object = lfirst(list_nth_cell(objectList, funcctx->call_cntr));
+
+		if (object->objectType == OBJECT_FUNCTION)
+		{
+			char   *name = format_procedure_qualified(object->objectId);
+
+			values[0] = PointerGetDatum(cstring_to_text("ROUTINE"));
+			values[1] = PointerGetDatum(cstring_to_text(name));
+		}
+		else if (object->objectType == OBJECT_OPERATOR)
+		{
+			char   *name = format_operator_qualified(object->objectId);
+
+			values[0] = PointerGetDatum(cstring_to_text("OPERATOR"));
+			values[1] = PointerGetDatum(cstring_to_text(name));
+		}
+		else
+			elog(ERROR, "invalid object type in pushdown config file");
+
+		/* Build and return the next result tuple. */
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+
+	/* Done */
+	SRF_RETURN_DONE(funcctx);
+}

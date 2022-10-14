@@ -5,10 +5,10 @@
 #
 
 MODULE_big = mysql_fdw
-OBJS = connection.o option.o deparse.o mysql_query.o mysql_fdw.o
+OBJS = connection.o option.o deparse.o mysql_query.o mysql_fdw.o mysql_pushability.o
 
 EXTENSION = mysql_fdw
-DATA = mysql_fdw--1.0.sql mysql_fdw--1.1.sql mysql_fdw--1.0--1.1.sql
+DATA = mysql_fdw--1.0.sql mysql_fdw--1.1.sql mysql_fdw--1.0--1.1.sql mysql_fdw--1.2.sql mysql_fdw--1.1--1.2.sql mysql_fdw_pushdown.config
 
 REGRESS = server_options connection_validation dml select pushdown join_pushdown aggregate_pushdown limit_offset_pushdown misc
 

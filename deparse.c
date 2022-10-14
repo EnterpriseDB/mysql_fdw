@@ -26,6 +26,7 @@
 #include "commands/defrem.h"
 #include "datatype/timestamp.h"
 #include "mysql_fdw.h"
+#include "mysql_pushability.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/plannodes.h"
 #include "optimizer/clauses.h"
@@ -1670,18 +1671,8 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 			{
 				FuncExpr   *fe = (FuncExpr *) node;
 
-				/* Should not be in the join clauses of the Join-pushdown */
-				if (glob_cxt->is_remote_cond)
+				if (!mysql_check_remote_pushability(fe->funcid))
 					return false;
-
-				/*
-				 * If function used by the expression is not built-in, it
-				 * can't be sent to remote because it might have incompatible
-				 * semantics on remote side.
-				 */
-				if (!is_builtin(fe->funcid))
-					return false;
-
 				/*
 				 * Recurse to input subexpressions.
 				 */
@@ -1719,32 +1710,8 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 		case T_DistinctExpr:	/* struct-equivalent to OpExpr */
 			{
 				OpExpr	   *oe = (OpExpr *) node;
-				const char *operatorName = get_opname(oe->opno);
 
-				/*
-				 * Join-pushdown allows only a few operators to be pushed
-				 * down.
-				 */
-				if (glob_cxt->is_remote_cond &&
-					(!(strcmp(operatorName, "<") == 0 ||
-					   strcmp(operatorName, ">") == 0 ||
-					   strcmp(operatorName, "<=") == 0 ||
-					   strcmp(operatorName, ">=") == 0 ||
-					   strcmp(operatorName, "<>") == 0 ||
-					   strcmp(operatorName, "=") == 0 ||
-					   strcmp(operatorName, "+") == 0 ||
-					   strcmp(operatorName, "-") == 0 ||
-					   strcmp(operatorName, "*") == 0 ||
-					   strcmp(operatorName, "%") == 0 ||
-					   strcmp(operatorName, "/") == 0)))
-					return false;
-
-				/*
-				 * Similarly, only built-in operators can be sent to remote.
-				 * (If the operator is, surely its underlying function is
-				 * too.)
-				 */
-				if (!is_builtin(oe->opno))
+				if (!mysql_check_remote_pushability(oe->opno))
 					return false;
 
 				/*
@@ -1779,14 +1746,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 			{
 				ScalarArrayOpExpr *oe = (ScalarArrayOpExpr *) node;
 
-				/* Should not be in the join clauses of the Join-pushdown */
-				if (glob_cxt->is_remote_cond)
-					return false;
-
-				/*
-				 * Again, only built-in operators can be sent to remote.
-				 */
-				if (!is_builtin(oe->opno))
+				if (!mysql_check_remote_pushability(oe->opno))
 					return false;
 
 				/*
@@ -1927,7 +1887,6 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 			{
 				Aggref	   *agg = (Aggref *) node;
 				ListCell   *lc;
-				const char *func_name = get_func_name(agg->aggfnoid);
 
 				/* Not safe to pushdown when not in grouping context */
 				if (!IS_UPPER_REL(glob_cxt->foreignrel))
@@ -1937,15 +1896,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				if (agg->aggsplit != AGGSPLIT_SIMPLE)
 					return false;
 
-				/* As usual, it must be shippable. */
-				if (!is_builtin(agg->aggfnoid))
-					return false;
-
-				if (!(strcmp(func_name, "min") == 0 ||
-					  strcmp(func_name, "max") == 0 ||
-					  strcmp(func_name, "sum") == 0 ||
-					  strcmp(func_name, "avg") == 0 ||
-					  strcmp(func_name, "count") == 0))
+				if (!mysql_check_remote_pushability(agg->aggfnoid))
 					return false;
 
 				/*

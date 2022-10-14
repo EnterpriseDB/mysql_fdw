@@ -632,7 +632,7 @@ SELECT q.b, count(fdw132_t1.c1), sum(q.a) FROM fdw132_t1 left join (SELECT min(1
                Hash Cond: ((fdw132_t1.c1)::numeric = q.b)
                ->  Foreign Scan on public.fdw132_t1
                      Output: fdw132_t1.c1, fdw132_t1.c2, fdw132_t1.c3, fdw132_t1.c4
-                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` WHERE ((`c1` >= 10)) AND ((`c1` <= 15))
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` WHERE ((`c1` >= 10)) AND ((`c1` <= 15)) ORDER BY `c1` IS NULL, `c1` ASC
                ->  Hash
                      Output: q.b, q.a
                      ->  Subquery Scan on q
