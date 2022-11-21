@@ -446,12 +446,47 @@ mysql_deparse_from_expr(List *quals, deparse_expr_cxt *context)
 	}
 }
 
+/**
+ * convertReturningList()
+ *
+ * Generate RETURNING clause of a INSERT/UPDATE/DELETE ... RETURNING
+ * statement.
+ */
+static void
+convertReturningList(StringInfo buf, PlannerInfo *root, Index rtindex,
+                     Relation rel, bool doNothing, List *returningList)
+{
+    bool first;
+    ListCell   *lc;
+
+    elog(ERROR, "entering function %s", __func__);
+
+    /* Insert column names into the local query's RETURNING list */
+    if (returningList) {
+        elog(ERROR, "entering function %s with returningList", __func__);
+        appendStringInfoString(buf, " RETURNING ");
+        first = true;
+        elog(ERROR, "query: %s", (char*)buf);
+        foreach(lc, returningList)
+        {
+            int attnum = lfirst_int(lc);
+
+            if (!first)
+                appendStringInfoString(buf, ", ");
+            first = false;
+
+            elog(ERROR, "query: %s", (char*)buf);
+            mysql_deparse_column_ref(buf, rtindex, attnum, root, true);
+        }
+    }
+}
+
 /*
  * Deparse remote INSERT statement
  */
 void
 mysql_deparse_insert(StringInfo buf, PlannerInfo *root, Index rtindex,
-					 Relation rel, List *targetAttrs, bool doNothing)
+					 Relation rel, List *targetAttrs, bool doNothing, List *returningList)
 {
 	ListCell   *lc;
 #if PG_VERSION_NUM >= 140000
@@ -505,6 +540,10 @@ mysql_deparse_insert(StringInfo buf, PlannerInfo *root, Index rtindex,
 	}
 	else
 		appendStringInfoString(buf, " DEFAULT VALUES");
+    convertReturningList(buf, root, rtindex, rel,
+                         doNothing, returningList);
+    elog(ERROR, "query: %s", (char*)buf);
+
 }
 
 void
