@@ -179,17 +179,14 @@ EXPLAIN (COSTS false, VERBOSE)
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 LEFT JOIN fdw139_t2 t2 ON (abs(t1.c1) = t2.c1)
   WHERE t2.c1 > 1 ORDER BY t1.c1, t2.c1;
-                                                                          QUERY PLAN                                                                           
----------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
+                                                                                                         QUERY PLAN                                                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
    Output: t1.c1, t2.c1
-   Sort Key: t1.c1, t2.c1
-   ->  Foreign Scan
-         Output: t1.c1, t2.c1
-         Filter: (abs(t1.c1) = t2.c1)
-         Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
-         Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) WHERE ((r2.`c1` > 1))
-(8 rows)
+   Filter: (abs(t1.c1) = t2.c1)
+   Relations: (mysql_fdw_regress.fdw139_t1 t1) INNER JOIN (mysql_fdw_regress.fdw139_t2 t2)
+   Remote query: SELECT r1.`c1`, r2.`c1` FROM (`mysql_fdw_regress`.`test1` r1 INNER JOIN `mysql_fdw_regress`.`test2` r2 ON (TRUE)) WHERE ((r2.`c1` > 1)) ORDER BY r1.`c1` IS NULL, r1.`c1` ASC, r2.`c1` IS NULL, r2.`c1` ASC
+(5 rows)
 
 SELECT t1.c1, t2.c1
   FROM fdw139_t1 t1 LEFT JOIN fdw139_t2 t2 ON (abs(t1.c1) = t2.c1)

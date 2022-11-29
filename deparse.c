@@ -162,6 +162,9 @@ static Node *mysql_deparse_sort_group_clause(Index ref, List *tlist,
 static void mysql_append_orderby_clause(List *pathkeys, bool has_final_sort,
 										deparse_expr_cxt *context);
 static void mysql_append_limit_clause(deparse_expr_cxt *context);
+static void mysql_append_orderby_suffix(Expr *em_expr, const char *sortby_dir,
+										Oid sortcoltype, bool nulls_first,
+										deparse_expr_cxt *context);
 
 /*
  * Functions to construct string representation of a specific types.
@@ -1515,8 +1518,8 @@ mysql_print_remote_placeholder(Oid paramtype, int32 paramtypmod,
  * be known to the remote server, if it's of an older version.  But keeping
  * track of that would be a huge exercise.
  */
-static bool
-is_builtin(Oid oid)
+bool
+mysql_is_builtin(Oid oid)
 {
 #if PG_VERSION_NUM >= 150000
 	return (oid < FirstGenbkiObjectId);
@@ -1973,7 +1976,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 	 * If result type of given expression is not built-in, it can't be sent to
 	 * remote because it might have incompatible semantics on remote side.
 	 */
-	if (check_type && !is_builtin(exprType(node)))
+	if (check_type && !mysql_is_builtin(exprType(node)))
 		return false;
 
 	/*
@@ -2452,9 +2455,13 @@ mysql_is_foreign_param(PlannerInfo *root,
 
 /*
  * mysql_append_orderby_clause
- * 		Deparse ORDER BY clause according to the given pathkeys for given
- * 		base relation. From given pathkeys expressions belonging entirely
- * 		to the given base relation are obtained and deparsed.
+ *		Deparse ORDER BY clause defined by the given pathkeys.
+ *
+ * The clause should use Vars from context->scanrel if !has_final_sort, or from
+ * context->foreignrel's targetlist if has_final_sort.
+ *
+ * We find a suitable pathkey expression (some earlier step should have
+ * verified that there is one) and deparse it.
  */
 void
 mysql_append_orderby_clause(List *pathkeys, bool has_final_sort,
@@ -2462,14 +2469,15 @@ mysql_append_orderby_clause(List *pathkeys, bool has_final_sort,
 {
 	ListCell   *lcell;
 	char	   *delim = " ";
-	RelOptInfo *baserel = context->scanrel;
 	StringInfo	buf = context->buf;
 
 	appendStringInfo(buf, " ORDER BY");
 	foreach(lcell, pathkeys)
 	{
 		PathKey    *pathkey = lfirst(lcell);
+		EquivalenceMember *em;
 		Expr	   *em_expr;
+		char	   *sortby_dir = NULL;
 
 		if (has_final_sort)
 		{
@@ -2477,32 +2485,32 @@ mysql_append_orderby_clause(List *pathkeys, bool has_final_sort,
 			 * By construction, context->foreignrel is the input relation to
 			 * the final sort.
 			 */
-			em_expr = mysql_find_em_expr_for_input_target(context->root,
-														  pathkey->pk_eclass,
-														  context->foreignrel->reltarget);
+			em = mysql_find_em_for_rel_target(context->root,
+											  pathkey->pk_eclass,
+											  context->foreignrel);
 		}
 		else
-			em_expr = mysql_find_em_expr_for_rel(pathkey->pk_eclass, baserel);
+			em = mysql_find_em_for_rel(context->root,
+									   pathkey->pk_eclass,
+									   context->scanrel);
 
-		Assert(em_expr != NULL);
+		/*
+		 * We don't expect any error here; it would mean that shippability
+		 * wasn't verified earlier.  For the same reason, we don't recheck
+		 * shippability of the sort operator.
+		 */
+		if (em == NULL)
+			elog(ERROR, "could not find pathkey item to sort");
+
+		em_expr = em->em_expr;
+
+		sortby_dir = mysql_get_sortby_direction_string(em, pathkey);
 
 		appendStringInfoString(buf, delim);
-		deparseExpr(em_expr, context);
 
-		if (pathkey->pk_nulls_first)\
-			appendStringInfoString(buf, " IS NOT NULL");
-		else
-			appendStringInfoString(buf, " IS NULL");
-
-		/* Add delimiter */
-		appendStringInfoString(buf, ", ");
-
-		deparseExpr(em_expr, context);
-
-		if (pathkey->pk_strategy == BTLessStrategyNumber)
-			appendStringInfoString(buf, " ASC");
-		else
-			appendStringInfoString(buf, " DESC");
+		mysql_append_orderby_suffix(em_expr, sortby_dir,
+									exprType((Node *) em_expr),
+									pathkey->pk_nulls_first, context);
 
 		delim = ", ";
 	}
@@ -2546,3 +2554,64 @@ mysql_deparse_truncate_sql(StringInfo buf, Relation rel)
 	mysql_deparse_relation(buf, rel);
 }
 #endif
+
+/*
+ * mysql_append_orderby_suffix
+ * 		Append the ASC/DESC and NULLS FIRST/LAST parts of an ORDER BY clause.
+ */
+static void
+mysql_append_orderby_suffix(Expr *em_expr, const char *sortby_dir,
+							Oid sortcoltype, bool nulls_first,
+							deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+
+	Assert(sortby_dir != NULL);
+
+	deparseExpr(em_expr, context);
+
+	/*
+	 * Since MySQL doesn't have NULLS FIRST/LAST clause, we use IS NOT NULL or
+	 * IS NULL instead.
+	 */
+	if (nulls_first)
+		appendStringInfoString(buf, " IS NOT NULL");
+	else
+		appendStringInfoString(buf, " IS NULL");
+
+	/* Add delimiter */
+	appendStringInfoString(buf, ", ");
+
+	deparseExpr(em_expr, context);
+
+	/* Add the ASC/DESC */
+	appendStringInfo(buf, " %s", sortby_dir);
+}
+
+/*
+ * mysql_is_foreign_pathkey
+ *		Returns true if it's safe to push down the sort expression described by
+ *		'pathkey' to the foreign server.
+ */
+bool
+mysql_is_foreign_pathkey(PlannerInfo *root, RelOptInfo *baserel,
+						 PathKey *pathkey)
+{
+	EquivalenceMember *em = NULL;
+	EquivalenceClass *pathkey_ec = pathkey->pk_eclass;
+
+	/*
+	 * mysql_is_foreign_expr would detect volatile expressions as well,
+	 * but checking ec_has_volatile here saves some cycles.
+	 */
+	if (pathkey_ec->ec_has_volatile)
+		return false;
+
+	/* can push if a suitable EC member exists */
+	em = mysql_find_em_for_rel(root, pathkey_ec, baserel);
+
+	if (mysql_get_sortby_direction_string(em, pathkey) == NULL)
+		return false;
+
+	return true;
+}

@@ -327,10 +327,17 @@ extern void mysql_deparse_select_stmt_for_rel(StringInfo buf,
 extern const char *mysql_get_jointype_name(JoinType jointype);
 extern bool mysql_is_foreign_param(PlannerInfo *root, RelOptInfo *baserel,
 								   Expr *expr);
-extern Expr *mysql_find_em_expr_for_rel(EquivalenceClass *ec, RelOptInfo *rel);
-extern Expr *mysql_find_em_expr_for_input_target(PlannerInfo *root,
-												 EquivalenceClass *ec,
-												 PathTarget *target);
+extern bool mysql_is_foreign_pathkey(PlannerInfo *root, RelOptInfo *baserel,
+									 PathKey *pathkey);
+extern char *mysql_get_sortby_direction_string(EquivalenceMember *em,
+											   PathKey *pathkey);
+extern EquivalenceMember *mysql_find_em_for_rel(PlannerInfo *root,
+												EquivalenceClass *ec,
+												RelOptInfo *rel);
+extern EquivalenceMember *mysql_find_em_for_rel_target(PlannerInfo *root,
+													   EquivalenceClass *ec,
+													   RelOptInfo *rel);
+extern bool mysql_is_builtin(Oid objectId);
 #if PG_VERSION_NUM >= 140000
 extern void mysql_deparse_truncate_sql(StringInfo buf, Relation rel);
 #endif

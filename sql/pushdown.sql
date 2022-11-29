@@ -226,10 +226,57 @@ SELECT * FROM f_distinct_test
   WHERE ((c1) IS NOT DISTINCT FROM (c2)) IS NOT DISTINCT FROM ((c3) IS DISTINCT FROM (c4))
   ORDER BY id;
 
+
+-- FDW-562: Test ORDER BY with user defined operators.
+
+-- Create the operator family required for the test.
+CREATE OPERATOR PUBLIC.<^ (
+  LEFTARG = INT4,
+  RIGHTARG = INT4,
+  PROCEDURE = INT4EQ
+);
+
+CREATE OPERATOR PUBLIC.=^ (
+  LEFTARG = INT4,
+  RIGHTARG = INT4,
+  PROCEDURE = INT4LT
+);
+
+CREATE OPERATOR PUBLIC.>^ (
+  LEFTARG = INT4,
+  RIGHTARG = INT4,
+  PROCEDURE = INT4GT
+);
+
+CREATE OPERATOR FAMILY my_op_family USING btree;
+
+CREATE FUNCTION MY_OP_CMP(A INT, B INT) RETURNS INT AS
+  $$ BEGIN RETURN BTINT4CMP(A, B); END $$ LANGUAGE PLPGSQL;
+
+CREATE OPERATOR CLASS my_op_class FOR TYPE INT USING btree FAMILY my_op_family AS
+  OPERATOR 1 PUBLIC.<^,
+  OPERATOR 3 PUBLIC.=^,
+  OPERATOR 5 PUBLIC.>^,
+  FUNCTION 1 my_op_cmp(INT, INT);
+
+-- FDW-562: Test ORDER BY with user defined operators.
+-- User defined operators are not pushed down.
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT * FROM f_test_tbl1 ORDER BY c1 USING OPERATOR(public.<^);
+
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT MIN(c1) FROM f_test_tbl1 ORDER BY 1 USING OPERATOR(public.<^);
+
 -- Cleanup
 DELETE FROM f_test_tbl1;
 DELETE FROM f_test_tbl2;
 DELETE FROM f_distinct_test;
+DROP OPERATOR CLASS my_op_class USING btree;
+DROP FUNCTION my_op_cmp(a INT, b INT);
+DROP OPERATOR FAMILY my_op_family USING btree;
+DROP OPERATOR public.>^(INT, INT);
+DROP OPERATOR public.=^(INT, INT);
+DROP OPERATOR public.<^(INT, INT);
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
 DROP FOREIGN TABLE f_distinct_test;
