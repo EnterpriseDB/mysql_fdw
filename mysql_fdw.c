@@ -2388,6 +2388,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 				appendStringInfo(&buf, " DEFAULT %s", attdefault);
 
 #if PG_VERSION_NUM >= 140000
+
 			/*
 			 * Add GENERATED if needed.  Map VIRTUAL GENERATED to STORED in
 			 * Postgres.
@@ -3376,7 +3377,7 @@ mysql_build_whole_row_constr_info(MySQLFdwExecState *festate,
 
 	/*
 	 * Construct the array mapping columns in the ForeignScan node output to
-	 * their positions in the result fetched from the foreign server.  Positive
+	 * their positions in the result fetched from the foreign server. Positive
 	 * values indicate the locations in the result and negative values
 	 * indicate the range table indexes of the base table whose whole-row
 	 * reference values are requested in that place.
@@ -4589,8 +4590,8 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	 * Support only Const and Param nodes as expressions are NOT suported.
 	 * MySQL doesn't support LIMIT/OFFSET NULL/ALL syntax, so check for the
 	 * same.  If limitCount const node is null then do not pushdown
-	 * limit/offset clause and if limitOffset const node is null and limitCount
-	 * const node is not null then pushdown only limit clause.
+	 * limit/offset clause and if limitOffset const node is null and
+	 * limitCount const node is not null then pushdown only limit clause.
 	 */
 	if (parse->limitCount)
 	{
@@ -4778,7 +4779,7 @@ mysql_remove_quotes(char *s1)
 
 	for (i = 0, j = 0; s1[i] != '\0'; i++, j++)
 	{
-		if (s1[i] == '`' && s1[i+1] == '`')
+		if (s1[i] == '`' && s1[i + 1] == '`')
 		{
 			s2[j] = '`';
 			i++;
@@ -4789,7 +4790,7 @@ mysql_remove_quotes(char *s1)
 		{
 			/* Double the inner double quotes for PG compatibility. */
 			s2[j] = '"';
-			s2[j+1] = '"';
+			s2[j + 1] = '"';
 			j++;
 		}
 		else
@@ -4856,22 +4857,22 @@ mysql_display_pushdown_list(PG_FUNCTION_ARGS)
 	if (funcctx->call_cntr < funcctx->max_calls)
 	{
 		HeapTuple	tuple;
-		Datum	  	values[DISPLAY_PUSHDOWN_LIST_COLS];
-		bool	  	nulls[DISPLAY_PUSHDOWN_LIST_COLS] = {false};
+		Datum		values[DISPLAY_PUSHDOWN_LIST_COLS];
+		bool		nulls[DISPLAY_PUSHDOWN_LIST_COLS] = {false};
 		FDWPushdownObject *object;
 
 		object = lfirst(list_nth_cell(objectList, funcctx->call_cntr));
 
 		if (object->objectType == OBJECT_FUNCTION)
 		{
-			char   *name = format_procedure_qualified(object->objectId);
+			char	   *name = format_procedure_qualified(object->objectId);
 
 			values[0] = PointerGetDatum(cstring_to_text("ROUTINE"));
 			values[1] = PointerGetDatum(cstring_to_text(name));
 		}
 		else if (object->objectType == OBJECT_OPERATOR)
 		{
-			char   *name = format_operator_qualified(object->objectId);
+			char	   *name = format_operator_qualified(object->objectId);
 
 			values[0] = PointerGetDatum(cstring_to_text("OPERATOR"));
 			values[1] = PointerGetDatum(cstring_to_text(name));
@@ -4925,7 +4926,7 @@ mysql_get_sortby_direction_string(EquivalenceMember *em, PathKey *pathkey)
 	 * Here we need to use the expression's actual type to discover whether
 	 * the desired operator will be the default or not.
 	 */
-	typentry = lookup_type_cache(exprType((Node *)em->em_expr),
+	typentry = lookup_type_cache(exprType((Node *) em->em_expr),
 								 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
 
 	if (oprid == typentry->lt_opr)

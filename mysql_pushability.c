@@ -94,9 +94,9 @@ populate_pushability_hash(void)
 	Assert(pushabilityHash == NULL);
 
 	/*
-	 * Create a memory context to hold hash table.  This makes it easy to clean
-	 * up in the case of error, we don't make the context long-lived until we
-	 * parse the complete config file without an error.
+	 * Create a memory context to hold hash table.  This makes it easy to
+	 * clean up in the case of error, we don't make the context long-lived
+	 * until we parse the complete config file without an error.
 	 */
 	htab_ctx = AllocSetContextCreate(CurrentMemoryContext,
 									 "mysql pushability_hash",
@@ -137,7 +137,7 @@ populate_pushability_hash(void)
 		Oid			objectId;
 		ObjectType	objectType;
 		bool		found;
-		char 	   *str;
+		char	   *str;
 
 		line_no++;
 
@@ -152,12 +152,12 @@ populate_pushability_hash(void)
 		/* Strip trailing newline, including \r in case we're on Windows */
 		while (linebuf.len > 0 && (linebuf.data[linebuf.len - 1] == '\n' ||
 								   linebuf.data[linebuf.len - 1] == '\r'))
-			linebuf.data[--linebuf.len ] = '\0';
+			linebuf.data[--linebuf.len] = '\0';
 
 		/* Strip leading whitespaces. */
 		str = linebuf.data;
 		while (isspace(*str))
-				str++;
+			str++;
 
 		if (pg_strncasecmp(str, "ROUTINE", 7) == 0)
 		{

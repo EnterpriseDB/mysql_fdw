@@ -32,4 +32,4 @@ typedef struct FDWPushdownObject
 extern bool mysql_check_remote_pushability(Oid objectOid);
 extern List *mysql_get_configured_pushdown_objects(bool reload);
 
-#endif			/* MYSQL_PUSHABILITY_H */
+#endif							/* MYSQL_PUSHABILITY_H */

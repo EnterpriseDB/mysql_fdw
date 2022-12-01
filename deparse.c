@@ -96,7 +96,7 @@ typedef struct deparse_expr_cxt
 								 * a base relation. */
 	StringInfo	buf;			/* output buffer to append to */
 	List	  **params_list;	/* exprs that will become remote Params */
-	bool		is_not_distinct_op;	/* True in case of IS NOT DISTINCT clause */
+	bool		is_not_distinct_op; /* True in case of IS NOT DISTINCT clause */
 } deparse_expr_cxt;
 
 #define REL_ALIAS_PREFIX	"r"
@@ -461,7 +461,7 @@ mysql_deparse_insert(StringInfo buf, PlannerInfo *root, Index rtindex,
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 #endif
 
-	appendStringInfo(buf, "INSERT %sINTO ", doNothing ? "IGNORE ": "");
+	appendStringInfo(buf, "INSERT %sINTO ", doNothing ? "IGNORE " : "");
 	mysql_deparse_relation(buf, rel);
 
 	if (targetAttrs)
@@ -1676,6 +1676,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 
 				if (!mysql_check_remote_pushability(fe->funcid))
 					return false;
+
 				/*
 				 * Recurse to input subexpressions.
 				 */
@@ -2528,7 +2529,7 @@ mysql_append_limit_clause(deparse_expr_cxt *context)
 
 	if (root->parse->limitCount)
 	{
-		Const      *c = (Const *)  root->parse->limitOffset;
+		Const	   *c = (Const *) root->parse->limitOffset;
 
 		appendStringInfoString(buf, " LIMIT ");
 		deparseExpr((Expr *) root->parse->limitCount, context);
@@ -2601,8 +2602,8 @@ mysql_is_foreign_pathkey(PlannerInfo *root, RelOptInfo *baserel,
 	EquivalenceClass *pathkey_ec = pathkey->pk_eclass;
 
 	/*
-	 * mysql_is_foreign_expr would detect volatile expressions as well,
-	 * but checking ec_has_volatile here saves some cycles.
+	 * mysql_is_foreign_expr would detect volatile expressions as well, but
+	 * checking ec_has_volatile here saves some cycles.
 	 */
 	if (pathkey_ec->ec_has_volatile)
 		return false;
