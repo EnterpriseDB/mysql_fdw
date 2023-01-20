@@ -435,11 +435,11 @@ Examples
 
 ```sql
 -- load extension first time after install
-CREATE EXTENSION `mysql_fdw`;
+CREATE EXTENSION mysql_fdw;
 
 -- create server object
 CREATE SERVER mysql_server
-	FOREIGN DATA WRAPPER `mysql_fdw`
+	FOREIGN DATA WRAPPER mysql_fdw
 	OPTIONS (host '127.0.0.1', port '3306');
 
 -- create user mapping
