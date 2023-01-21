@@ -20,8 +20,9 @@ Contents
 9. [Examples](#examples)
 10. [Limitations](#limitations)
 11. [Contributing](#contributing)
-12. [Useful links](#useful-links)
-13. [License](#license)
+12. [Support](#support)
+13. [Useful links](#useful-links)
+14. [License](#license)
 
 Features
 --------
