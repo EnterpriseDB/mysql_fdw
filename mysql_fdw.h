@@ -345,7 +345,7 @@ extern void mysql_deparse_truncate_sql(StringInfo buf, Relation rel);
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user,
 							mysql_opt *opt);
-MYSQL *mysql_connect(mysql_opt *opt);
+MYSQL *mysql_fdw_connect(mysql_opt *opt);
 void mysql_cleanup_connection(void);
 void mysql_release_connection(MYSQL *conn);
 

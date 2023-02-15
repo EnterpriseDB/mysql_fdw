@@ -119,7 +119,7 @@ mysql_get_connection(ForeignServer *server, UserMapping *user, mysql_opt *opt)
 
 	if (entry->conn == NULL)
 	{
-		entry->conn = mysql_connect(opt);
+		entry->conn = mysql_fdw_connect(opt);
 		elog(DEBUG3, "new mysql_fdw connection %p for server \"%s\"",
 			 entry->conn, server->servername);
 
@@ -195,7 +195,7 @@ mysql_release_connection(MYSQL *conn)
 }
 
 MYSQL *
-mysql_connect(mysql_opt *opt)
+mysql_fdw_connect(mysql_opt *opt)
 {
 	MYSQL	   *conn;
 	char	   *svr_database = opt->svr_database;
