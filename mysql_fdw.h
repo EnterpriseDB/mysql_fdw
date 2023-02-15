@@ -306,7 +306,7 @@ extern mysql_opt *mysql_get_options(Oid foreigntableid, bool is_foreigntable);
 /* depare.c headers */
 extern void mysql_deparse_insert(StringInfo buf, PlannerInfo *root,
 								 Index rtindex, Relation rel,
-								 List *targetAttrs, bool doNothing);
+								 List *targetAttrs, bool doNothing, List *returningList);
 extern void mysql_deparse_update(StringInfo buf, PlannerInfo *root,
 								 Index rtindex, Relation rel,
 								 List *targetAttrs, char *attname);
@@ -324,6 +324,8 @@ extern void mysql_deparse_select_stmt_for_rel(StringInfo buf,
 											  bool has_limit,
 											  List **retrieved_attrs,
 											  List **params_list);
+//extern static void convertReturningList(StringInfo buf, PlannerInfo *root, Index rtindex,
+//                                        Relation rel, bool doNothing, List *returningList);
 extern const char *mysql_get_jointype_name(JoinType jointype);
 extern bool mysql_is_foreign_param(PlannerInfo *root, RelOptInfo *baserel,
 								   Expr *expr);

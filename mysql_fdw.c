@@ -1594,6 +1594,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	RangeTblEntry *rte = planner_rt_fetch(resultRelation, root);
 	Relation	rel;
 	List	   *targetAttrs = NIL;
+	List	   *returningList = NIL;
 	StringInfoData sql;
 	char	   *attname;
 	Oid			foreignTableId;
@@ -1678,6 +1679,10 @@ mysqlPlanForeignModify(PlannerInfo *root,
 #else
 	attname = get_relid_attribute_name(foreignTableId, 1);
 #endif
+	
+	/* Extract the relevant RETURNING list, if any */
+	if (plan->returningLists)
+		returningList = (List *) list_nth(plan->returningLists, subplan_index);
 
 	/*
 	 * Construct the SQL command string.
@@ -1686,7 +1691,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	{
 		case CMD_INSERT:
 			mysql_deparse_insert(&sql, root, resultRelation, rel, targetAttrs,
-								 doNothing);
+								 doNothing, returningList);
 			break;
 		case CMD_UPDATE:
 			mysql_deparse_update(&sql, root, resultRelation, rel, targetAttrs,
@@ -1699,11 +1704,6 @@ mysqlPlanForeignModify(PlannerInfo *root,
 			elog(ERROR, "unexpected operation: %d", (int) operation);
 			break;
 	}
-
-	if (plan->returningLists)
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("RETURNING is not supported by this FDW")));
 
 #if PG_VERSION_NUM < 130000
 	heap_close(rel, NoLock);

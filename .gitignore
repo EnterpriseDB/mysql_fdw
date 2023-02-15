@@ -2,3 +2,5 @@
 /results/
 *.o
 *.so
+.idea
+*.bc
