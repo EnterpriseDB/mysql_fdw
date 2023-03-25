@@ -604,11 +604,7 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 	 * option, use attribute name.
 	 */
 	if (colname == NULL)
-#if PG_VERSION_NUM >= 110000
 		colname = get_attname(rte->relid, varattno, false);
-#else
-		colname = get_relid_attribute_name(rte->relid, varattno);
-#endif
 
 	if (qualify_col)
 		ADD_REL_QUALIFIER(buf, varno);

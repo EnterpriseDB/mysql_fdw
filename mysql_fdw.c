@@ -250,27 +250,18 @@ static void mysqlGetForeignJoinPaths(PlannerInfo *root,
 static bool mysqlRecheckForeignScan(ForeignScanState *node,
 									TupleTableSlot *slot);
 
-#if PG_VERSION_NUM >= 110000
 static void mysqlGetForeignUpperPaths(PlannerInfo *root,
 									  UpperRelationKind stage,
 									  RelOptInfo *input_rel,
 									  RelOptInfo *output_rel,
 									  void *extra);
-#elif PG_VERSION_NUM >= 100000
-static void mysqlGetForeignUpperPaths(PlannerInfo *root,
-									  UpperRelationKind stage,
-									  RelOptInfo *input_rel,
-									  RelOptInfo *output_rel);
-#endif
 static List *mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt,
 									  Oid serverOid);
 
-#if PG_VERSION_NUM >= 110000
 static void mysqlBeginForeignInsert(ModifyTableState *mtstate,
 									ResultRelInfo *resultRelInfo);
 static void mysqlEndForeignInsert(EState *estate,
 								  ResultRelInfo *resultRelInfo);
-#endif
 #if PG_VERSION_NUM >= 140000
 static void mysqlExecForeignTruncate(List *rels,
 									 DropBehavior behavior,
@@ -322,7 +313,6 @@ static HeapTuple mysql_get_tuple_with_whole_row(MySQLFdwExecState *festate,
 												Datum *values, bool *nulls);
 static HeapTuple mysql_form_whole_row(MySQLWRState *wr_state, Datum *values,
 									  bool *nulls);
-#if PG_VERSION_NUM >= 110000
 static bool mysql_foreign_grouping_ok(PlannerInfo *root,
 									  RelOptInfo *grouped_rel,
 									  Node *havingQual);
@@ -330,13 +320,6 @@ static void mysql_add_foreign_grouping_paths(PlannerInfo *root,
 											 RelOptInfo *input_rel,
 											 RelOptInfo *grouped_rel,
 											 GroupPathExtraData *extra);
-#elif PG_VERSION_NUM >= 100000
-static bool mysql_foreign_grouping_ok(PlannerInfo *root,
-									  RelOptInfo *grouped_rel);
-static void mysql_add_foreign_grouping_paths(PlannerInfo *root,
-											 RelOptInfo *input_rel,
-											 RelOptInfo *grouped_rel);
-#endif
 static List *mysql_get_useful_ecs_for_relation(PlannerInfo *root,
 											   RelOptInfo *rel);
 static List *mysql_get_useful_pathkeys_for_relation(PlannerInfo *root,
@@ -566,11 +549,9 @@ mysql_fdw_handler(PG_FUNCTION_ARGS)
 	/* Support functions for IMPORT FOREIGN SCHEMA */
 	fdwroutine->ImportForeignSchema = mysqlImportForeignSchema;
 
-#if PG_VERSION_NUM >= 110000
 	/* Partition routing and/or COPY from */
 	fdwroutine->BeginForeignInsert = mysqlBeginForeignInsert;
 	fdwroutine->EndForeignInsert = mysqlEndForeignInsert;
-#endif
 
 	/* Support functions for join push-down */
 	fdwroutine->GetForeignJoinPaths = mysqlGetForeignJoinPaths;
@@ -683,17 +664,9 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	festate->has_var_size_col = false;
 	festate->attinmeta = TupleDescGetAttInMetadata(tupleDescriptor);
 
-#if PG_VERSION_NUM >= 110000
 	festate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
 											  "mysql_fdw temporary data",
 											  ALLOCSET_DEFAULT_SIZES);
-#else
-	festate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
-											  "mysql_fdw temporary data",
-											  ALLOCSET_SMALL_MINSIZE,
-											  ALLOCSET_SMALL_INITSIZE,
-											  ALLOCSET_SMALL_MAXSIZE);
-#endif
 
 	if (wait_timeout > 0)
 	{
@@ -949,17 +922,9 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 
 		if (strcmp(options->svr_address, "127.0.0.1") == 0 ||
 			strcmp(options->svr_address, "localhost") == 0)
-#if PG_VERSION_NUM >= 110000
 			ExplainPropertyInteger("Local server startup cost", NULL, 10, es);
-#else
-			ExplainPropertyLong("Local server startup cost", 10, es);
-#endif
 		else
-#if PG_VERSION_NUM >= 110000
 			ExplainPropertyInteger("Remote server startup cost", NULL, 25, es);
-#else
-			ExplainPropertyLong("Remote server startup cost", 25, es);
-#endif
 	}
 
 	/* Show the remote query in verbose mode */
@@ -1673,11 +1638,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	else
 		targetAttrs = lcons_int(1, targetAttrs);
 
-#if PG_VERSION_NUM >= 110000
 	attname = get_attname(foreignTableId, 1, false);
-#else
-	attname = get_relid_attribute_name(foreignTableId, 1);
-#endif
 
 	/*
 	 * Construct the SQL command string.
@@ -1768,17 +1729,9 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	n_params = list_length(fmstate->retrieved_attrs) + 1;
 	fmstate->p_flinfo = (FmgrInfo *) palloc0(sizeof(FmgrInfo) * n_params);
 	fmstate->p_nums = 0;
-#if PG_VERSION_NUM >= 110000
 	fmstate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
 											  "mysql_fdw temporary data",
 											  ALLOCSET_DEFAULT_SIZES);
-#else
-	fmstate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
-											  "mysql_fdw temporary data",
-											  ALLOCSET_SMALL_MINSIZE,
-											  ALLOCSET_SMALL_INITSIZE,
-											  ALLOCSET_SMALL_MAXSIZE);
-#endif
 
 	if (mtstate->operation == CMD_UPDATE)
 	{
@@ -2448,7 +2401,6 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	return commands;
 }
 
-#if PG_VERSION_NUM >= 110000
 /*
  * mysqlBeginForeignInsert
  * 		Prepare for an insert operation triggered by partition routing
@@ -2479,7 +2431,6 @@ mysqlEndForeignInsert(EState *estate, ResultRelInfo *resultRelInfo)
 			(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 			 errmsg("COPY and foreign partition routing not supported in mysql_fdw")));
 }
-#endif
 
 /*
  * Prepare for processing of parameters used in remote query.
@@ -3497,21 +3448,12 @@ mysql_form_whole_row(MySQLWRState *wr_state, Datum *values, bool *nulls)
  * 		information we obtain in this function to MySQLFdwRelationInfo of
  * 		the input relation.
  */
-#if PG_VERSION_NUM >= 110000
 static bool
 mysql_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 						  Node *havingQual)
-#elif PG_VERSION_NUM >= 100000
-static bool
-mysql_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
-#endif
 {
 	Query	   *query = root->parse;
-#if PG_VERSION_NUM >= 110000
 	PathTarget *grouping_target = grouped_rel->reltarget;
-#elif PG_VERSION_NUM >= 100000
-	PathTarget *grouping_target = root->upper_targets[UPPERREL_GROUP_AGG];
-#endif
 	MySQLFdwRelationInfo *fpinfo = (MySQLFdwRelationInfo *) grouped_rel->fdw_private;
 	MySQLFdwRelationInfo *ofpinfo;
 	ListCell   *lc;
@@ -3632,19 +3574,11 @@ mysql_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 	 * Classify the pushable and non-pushable having clauses and save them in
 	 * remote_conds and local_conds of the grouped rel's fpinfo.
 	 */
-#if PG_VERSION_NUM >= 110000
 	if (havingQual)
 	{
 		ListCell   *lc;
 
 		foreach(lc, (List *) havingQual)
-#elif PG_VERSION_NUM >= 100000
-	if (root->hasHavingQual && query->havingQual)
-	{
-		ListCell   *lc;
-
-		foreach(lc, (List *) query->havingQual)
-#endif
 		{
 			Expr	   *expr = (Expr *) lfirst(lc);
 			RestrictInfo *rinfo;
@@ -3745,16 +3679,10 @@ mysql_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
  *
  * Right now, we only support aggregate, grouping and having clause pushdown.
  */
-#if PG_VERSION_NUM >= 110000
 static void
 mysqlGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 						  RelOptInfo *input_rel, RelOptInfo *output_rel,
 						  void *extra)
-#elif PG_VERSION_NUM >= 100000
-static void
-mysqlGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
-						  RelOptInfo *input_rel, RelOptInfo *output_rel)
-#endif
 {
 	MySQLFdwRelationInfo *fpinfo;
 
@@ -3799,11 +3727,9 @@ mysqlGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 			elog(ERROR, "unexpected upper relation: %d", (int) stage);
 			break;
 	}
-#elif PG_VERSION_NUM >= 110000
+#else
 	mysql_add_foreign_grouping_paths(root, input_rel, output_rel,
 									 (GroupPathExtraData *) extra);
-#elif PG_VERSION_NUM >= 100000
-	mysql_add_foreign_grouping_paths(root, input_rel, output_rel);
 #endif
 }
 
@@ -3814,16 +3740,10 @@ mysqlGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
  * Given input_rel represents the underlying scan.  The paths are added to the
  * given grouped_rel.
  */
-#if PG_VERSION_NUM >= 110000
 static void
 mysql_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 								 RelOptInfo *grouped_rel,
 								 GroupPathExtraData *extra)
-#elif PG_VERSION_NUM >= 100000
-static void
-mysql_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
-								 RelOptInfo *grouped_rel)
-#endif
 {
 	Query	   *parse = root->parse;
 	MySQLFdwRelationInfo *fpinfo = grouped_rel->fdw_private;
@@ -3841,11 +3761,7 @@ mysql_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	fpinfo->outerrel = input_rel;
 
 	/* Assess if it is safe to push down aggregation and grouping. */
-#if PG_VERSION_NUM >= 110000
 	if (!mysql_foreign_grouping_ok(root, grouped_rel, extra->havingQual))
-#elif PG_VERSION_NUM >= 100000
-	if (!mysql_foreign_grouping_ok(root, grouped_rel))
-#endif
 		return;
 
 	/*
@@ -3881,21 +3797,10 @@ mysql_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 										  NIL,	/* no pathkeys */
 										  NULL,
 										  NIL); /* no fdw_private */
-#elif PG_VERSION_NUM >= 110000
-	grouppath = create_foreignscan_path(root,
-										grouped_rel,
-										grouped_rel->reltarget,
-										num_groups,
-										startup_cost,
-										total_cost,
-										NIL,	/* no pathkeys */
-										grouped_rel->lateral_relids,
-										NULL,
-										NIL);	/* no fdw_private */
 #else
 	grouppath = create_foreignscan_path(root,
 										grouped_rel,
-										root->upper_targets[UPPERREL_GROUP_AGG],
+										grouped_rel->reltarget,
 										num_groups,
 										startup_cost,
 										total_cost,

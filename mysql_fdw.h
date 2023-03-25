@@ -349,8 +349,4 @@ MYSQL *mysql_fdw_connect(mysql_opt *opt);
 void mysql_cleanup_connection(void);
 void mysql_release_connection(MYSQL *conn);
 
-#if PG_VERSION_NUM < 110000		/* TupleDescAttr is defined from PG version 11 */
-#define TupleDescAttr(tupdesc, i) ((tupdesc)->attrs[(i)])
-#endif
-
 #endif							/* MYSQL_FDW_H */
