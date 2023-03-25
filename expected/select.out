@@ -1747,6 +1747,25 @@ SELECT count(*) FROM mysql_fdw_display_pushdown_list();
    127
 (1 row)
 
+-- FDW:554 - Array expression should not get pushdown to remote MySQL server as
+-- syntax is not supported.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 t1 WHERE c1 = ANY(ARRAY[100, 200, c1 + 10000]);
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 t1
+   Output: c1, c2, c3, c4, c5, c6, c7, c8
+   Filter: (t1.c1 = ANY (ARRAY[100, 200, (t1.c1 + 10000)]))
+   Remote query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `mysql_fdw_regress`.`test_tbl1`
+(4 rows)
+
+SELECT * FROM f_test_tbl1 t1 WHERE c1 = ANY(ARRAY[100, 200, c1 + 10000]);
+ c1  |  c2  |    c3     |  c4  |     c5     |     c6     | c7  | c8 
+-----+------+-----------+------+------------+------------+-----+----
+ 100 | EMP1 | ADMIN     | 1300 | 1980-12-17 |  800.23000 |     | 20
+ 200 | EMP2 | SALESMAN  |  600 | 1981-02-20 | 1600.00000 | 300 | 30
+(2 rows)
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

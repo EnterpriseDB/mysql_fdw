@@ -523,6 +523,12 @@ SELECT * FROM f_test_tbl1 t1 ORDER BY t1 LIMIT 5;
 -- FDW-322: Test mysql_fdw_display_pushdown_list() function.
 SELECT count(*) FROM mysql_fdw_display_pushdown_list();
 
+-- FDW:554 - Array expression should not get pushdown to remote MySQL server as
+-- syntax is not supported.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM f_test_tbl1 t1 WHERE c1 = ANY(ARRAY[100, 200, c1 + 10000]);
+SELECT * FROM f_test_tbl1 t1 WHERE c1 = ANY(ARRAY[100, 200, c1 + 10000]);
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
