@@ -3,7 +3,7 @@
  * mysql_pushability.h
  *		prototypes for mysql_pushability.c
  *
- * Portions Copyright (c) 2022, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2022-2023, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
  *		mysql_pushability.h

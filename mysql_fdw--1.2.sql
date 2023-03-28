@@ -3,7 +3,7 @@
  * mysql_fdw--1.2.sql
  * 			Foreign-data wrapper for remote MySQL servers
  *
- * Portions Copyright (c) 2022, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2022-2023, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
  * 			mysql_fdw--1.2.sql
