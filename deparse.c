@@ -46,8 +46,6 @@
 #include "utils/typcache.h"
 
 
-static char *mysql_quote_identifier(const char *str, char quotechar);
-
 /*
  * Global context for foreign_expr_walker's search of an expression tree.
  */
@@ -216,7 +214,7 @@ mysql_deparse_relation(StringInfo buf, Relation rel)
 					 mysql_quote_identifier(relname, '`'));
 }
 
-static char *
+char *
 mysql_quote_identifier(const char *str, char quotechar)
 {
 	char	   *result = palloc(strlen(str) * 2 + 3);

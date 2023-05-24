@@ -1143,8 +1143,9 @@ mysql_is_column_unique(Oid foreigntableid)
 	 * Construct the query by prefixing the database name so that it can
 	 * lookup in correct database.
 	 */
-	appendStringInfo(&sql, "EXPLAIN %s.%s", options->svr_database,
-					 options->svr_table);
+	appendStringInfo(&sql, "EXPLAIN %s.%s",
+					 mysql_quote_identifier(options->svr_database, '`'),
+					 mysql_quote_identifier(options->svr_table, '`'));
 	if (mysql_query(conn, sql.data) != 0)
 		mysql_error_print(conn);
 
