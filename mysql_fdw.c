@@ -1663,7 +1663,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	}
 
 	if (plan->returningLists)
-		ereport(ERROR,
+		ereport(WARNING,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 				 errmsg("RETURNING is not supported by this FDW")));
 
