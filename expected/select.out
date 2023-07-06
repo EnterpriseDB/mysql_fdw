@@ -1744,7 +1744,7 @@ SELECT * FROM f_test_tbl1 t1 ORDER BY t1 LIMIT 5;
 SELECT count(*) FROM mysql_fdw_display_pushdown_list();
  count 
 -------
-   127
+   250
 (1 row)
 
 -- FDW:554 - Array expression should not get pushdown to remote MySQL server as
