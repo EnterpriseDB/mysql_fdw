@@ -57,6 +57,9 @@
 #include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
 #include "parser/parsetree.h"
+#if PG_VERSION_NUM >= 160000
+#include "parser/parse_relation.h"
+#endif
 #include "storage/ipc.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -338,6 +341,10 @@ static void mysql_add_foreign_final_paths(PlannerInfo *root,
 										  RelOptInfo *final_rel,
 										  FinalPathExtraData *extra);
 #endif
+#if PG_VERSION_NUM >= 160000
+static TargetEntry *mysql_tlist_member_match_var(Var *var, List *targetlist);
+static List *mysql_varlist_append_unique_var(List *varlist, Var *var);
+#endif
 
 void *mysql_dll_handle = NULL;
 static int wait_timeout = WAIT_TIMEOUT;
@@ -345,7 +352,7 @@ static int interactive_timeout = INTERACTIVE_TIMEOUT;
 static void mysql_error_print(MYSQL *conn);
 static void mysql_stmt_error_print(MySQLFdwExecState *festate,
 								   const char *msg);
-static List *getUpdateTargetAttrs(RangeTblEntry *rte);
+static List *getUpdateTargetAttrs(PlannerInfo *root, RangeTblEntry *rte);
 #if PG_VERSION_NUM >= 140000
 static char *mysql_remove_quotes(char *s1);
 #endif
@@ -618,11 +625,19 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 		TupleDesc	scan_tupdesc = ExecTypeFromTL(scan_tlist, false);
 #endif
 
+#if PG_VERSION_NUM >= 160000
+		mysql_build_whole_row_constr_info(festate, tupleDescriptor,
+										  fsplan->fs_base_relids,
+										  list_length(node->ss.ps.state->es_range_table),
+										  whole_row_lists, scan_tlist,
+										  fsplan->fdw_scan_tlist);
+#else
 		mysql_build_whole_row_constr_info(festate, tupleDescriptor,
 										  fsplan->fs_relids,
 										  list_length(node->ss.ps.state->es_range_table),
 										  whole_row_lists, scan_tlist,
 										  fsplan->fdw_scan_tlist);
+#endif
 
 		/* Change tuple descriptor to match the result from foreign server. */
 		tupleDescriptor = scan_tupdesc;
@@ -636,9 +651,19 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	if (fsplan->scan.scanrelid > 0)
 		rtindex = fsplan->scan.scanrelid;
 	else
+#if PG_VERSION_NUM >= 160000
+		rtindex = bms_next_member(fsplan->fs_base_relids, -1);
+#else
 		rtindex = bms_next_member(fsplan->fs_relids, -1);
+#endif
+
+#if PG_VERSION_NUM >= 160000
+	rte = exec_rt_fetch(rtindex, estate);
+	userid = fsplan->checkAsUser ? fsplan->checkAsUser : GetUserId();
+#else
 	rte = rt_fetch(rtindex, estate->es_range_table);
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+#endif
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(rte->relid);
@@ -904,7 +929,12 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	if (fsplan->scan.scanrelid > 0)
 		rtindex = fsplan->scan.scanrelid;
 	else
+#if PG_VERSION_NUM >= 160000
+		rtindex = bms_next_member(fsplan->fs_base_relids, -1);
+#else
 		rtindex = bms_next_member(fsplan->fs_relids, -1);
+#endif
+
 	rte = rt_fetch(rtindex, estate->es_range_table);
 
 	if (list_length(fdw_private) > mysqlFdwScanPrivateRelations)
@@ -1620,7 +1650,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 		 * target attribute list by calling getUpdateTargetAttrs().
 		 */
 		if (operation == CMD_UPDATE)
-			getUpdateTargetAttrs(rte);
+			getUpdateTargetAttrs(root, rte);
 
 		for (attnum = 1; attnum <= tupdesc->natts; attnum++)
 		{
@@ -1632,7 +1662,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	}
 	else if (operation == CMD_UPDATE)
 	{
-		targetAttrs = getUpdateTargetAttrs(rte);
+		targetAttrs = getUpdateTargetAttrs(root, rte);
 		/* We also want the rowid column to be available for the update */
 		targetAttrs = lcons_int(1, targetAttrs);
 	}
@@ -1695,14 +1725,22 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	bool		isvarlena = false;
 	ListCell   *lc;
 	Oid			foreignTableId = InvalidOid;
-	RangeTblEntry *rte;
 	Oid			userid;
 	ForeignServer *server;
 	UserMapping *user;
 	ForeignTable *table;
+#if PG_VERSION_NUM >= 160000
+	ForeignScan *fsplan = (ForeignScan *) mtstate->ps.plan;
+#else
+	RangeTblEntry *rte;
+#endif
 
+#if PG_VERSION_NUM >= 160000
+	userid = fsplan->checkAsUser ? fsplan->checkAsUser : GetUserId();
+#else
 	rte = rt_fetch(resultRelInfo->ri_RangeTableIndex, estate->es_range_table);
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+#endif
 
 	foreignTableId = RelationGetRelid(rel);
 
@@ -2680,16 +2718,32 @@ mysql_stmt_error_print(MySQLFdwExecState *festate, const char *msg)
  * 		Returns the list of attribute numbers of the columns being updated.
  */
 static List *
-getUpdateTargetAttrs(RangeTblEntry *rte)
+getUpdateTargetAttrs(PlannerInfo *root, RangeTblEntry *rte)
 {
 	List	   *targetAttrs = NIL;
-
-	Bitmapset  *tmpset = bms_copy(rte->updatedCols);
+	Bitmapset  *tmpset;
 	AttrNumber	col;
+#if PG_VERSION_NUM >= 160000
+	RTEPermissionInfo *perminfo;
+	int			attidx = -1;
 
+	perminfo = getRTEPermissionInfo(root->parse->rteperminfos, rte);
+	tmpset = bms_copy(perminfo->updatedCols);
+#else
+	tmpset = bms_copy(rte->updatedCols);
+#endif
+
+#if PG_VERSION_NUM >= 160000
+	while ((attidx = bms_next_member(tmpset, attidx)) >= 0)
+#else
 	while ((col = bms_first_member(tmpset)) >= 0)
+#endif
 	{
+#if PG_VERSION_NUM >= 160000
+		col = attidx + FirstLowInvalidHeapAttributeNumber;
+#else
 		col += FirstLowInvalidHeapAttributeNumber;
+#endif
 		if (col <= InvalidAttrNumber)	/* shouldn't happen */
 			elog(ERROR, "system-column update is not supported");
 
@@ -3077,6 +3131,9 @@ mysql_adjust_whole_row_ref(PlannerInfo *root, List *scan_var_list,
 	List	  **wr_list_array = NULL;
 	int			cnt_rt;
 	List	   *wr_scan_var_list = NIL;
+#if PG_VERSION_NUM >= 160000
+	ListCell   *cell;
+#endif
 
 	*whole_row_lists = NIL;
 
@@ -3142,13 +3199,29 @@ mysql_adjust_whole_row_ref(PlannerInfo *root, List *scan_var_list,
 												  attrs_used,
 												  &retrieved_attrs);
 			wr_list_array[var->varno - 1] = wr_var_list;
+#if PG_VERSION_NUM >= 160000
+			foreach(cell, wr_var_list)
+			{
+				Var		   *tlvar = (Var *) lfirst(cell);
+
+				wr_scan_var_list = mysql_varlist_append_unique_var(wr_scan_var_list,
+																   tlvar);
+			}
+#else
 			wr_scan_var_list = list_concat_unique(wr_scan_var_list,
 												  wr_var_list);
+#endif
+
 			bms_free(attrs_used);
 			list_free(retrieved_attrs);
 		}
 		else
+#if PG_VERSION_NUM >= 160000
+			wr_scan_var_list = mysql_varlist_append_unique_var(wr_scan_var_list,
+															   var);
+#else
 			wr_scan_var_list = list_append_unique(wr_scan_var_list, var);
+#endif
 	}
 
 	/*
@@ -3310,7 +3383,11 @@ mysql_build_whole_row_constr_info(MySQLFdwExecState *festate,
 
 			Assert(IsA(var, Var) && var->varno == cnt_rt);
 
+#if PG_VERSION_NUM >= 160000
+			tle_sl = mysql_tlist_member_match_var(var, scan_tlist);
+#else
 			tle_sl = tlist_member((Expr *) var, scan_tlist);
+#endif
 
 			Assert(tle_sl);
 
@@ -3347,7 +3424,11 @@ mysql_build_whole_row_constr_info(MySQLFdwExecState *festate,
 			fs_attr_pos[cnt_attr] = -var->varno;
 		else
 		{
+#if PG_VERSION_NUM >= 160000
+			TargetEntry *tle_sl = mysql_tlist_member_match_var(var, scan_tlist);
+#else
 			TargetEntry *tle_sl = tlist_member((Expr *) var, scan_tlist);
+#endif
 
 			Assert(tle_sl);
 			fs_attr_pos[cnt_attr] = tle_sl->resno - 1;
@@ -3589,7 +3670,18 @@ mysql_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 			 * RestrictInfos, so we must make our own.
 			 */
 			Assert(!IsA(expr, RestrictInfo));
-#if PG_VERSION_NUM >= 140000
+#if PG_VERSION_NUM >= 160000
+			rinfo = make_restrictinfo(root,
+									  expr,
+									  true,
+									  false,
+									  false,
+									  false,
+									  root->qual_security_level,
+									  grouped_rel->relids,
+									  NULL,
+									  NULL);
+#elif PG_VERSION_NUM >= 140000
 			rinfo = make_restrictinfo(root,
 									  expr,
 									  true,
@@ -4842,3 +4934,57 @@ mysql_get_sortby_direction_string(EquivalenceMember *em, PathKey *pathkey)
 
 	return NULL;
 }
+
+#if PG_VERSION_NUM >= 160000
+/*
+ * mysql_tlist_member_match_var
+ *	  Finds the (first) member of the given tlist whose Var is same as the
+ *	  given Var.  Result is NULL if no such member.
+ */
+static TargetEntry *
+mysql_tlist_member_match_var(Var *var, List *targetlist)
+{
+	ListCell   *temp;
+
+	foreach(temp, targetlist)
+	{
+		TargetEntry *tlentry = (TargetEntry *) lfirst(temp);
+		Var		   *tlvar = (Var *) tlentry->expr;
+
+		if (!tlvar || !IsA(tlvar, Var))
+			continue;
+		if (var->varno == tlvar->varno &&
+			var->varattno == tlvar->varattno &&
+			var->varlevelsup == tlvar->varlevelsup &&
+			var->vartype == tlvar->vartype)
+			return tlentry;
+	}
+
+	return NULL;
+}
+
+/*
+ * mysql_varlist_append_unique_var
+ * 		Append var to var list, but only if it isn't already in the list.
+ *
+ * Whether a var is already a member of list is determined using varno and
+ * varattno.
+ */
+static List *
+mysql_varlist_append_unique_var(List *varlist, Var *var)
+{
+	ListCell   *lc;
+
+	foreach(lc, varlist)
+	{
+		Var		   *tlvar = (Var *) lfirst(lc);
+
+		if (IsA(tlvar, Var) &&
+			tlvar->varno == var->varno &&
+			tlvar->varattno == var->varattno)
+			return varlist;
+	}
+
+	return lappend(varlist, var);
+}
+#endif
