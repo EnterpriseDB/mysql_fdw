@@ -15,7 +15,7 @@ CREATE USER MAPPING FOR PUBLIC SERVER mysql_svr
 SELECT mysql_fdw_version();
  mysql_fdw_version 
 -------------------
-             20900
+             20901
 (1 row)
 
 -- Create foreign tables
