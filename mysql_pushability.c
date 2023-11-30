@@ -3,7 +3,7 @@
  * mysql_pushability.c
  *		routines for FDW pushability
  *
- * Portions Copyright (c) 2022, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2022-2023, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
  *		mysql_pushability.c

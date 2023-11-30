@@ -4,7 +4,7 @@
  * 		Query deparser for mysql_fdw
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
- * Portions Copyright (c) 2004-2022, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2004-2023, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
  * 		deparse.c
@@ -45,8 +45,6 @@
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 
-
-static char *mysql_quote_identifier(const char *str, char quotechar);
 
 /*
  * Global context for foreign_expr_walker's search of an expression tree.
@@ -129,8 +127,6 @@ static void mysql_deparse_relabel_type(RelabelType *node,
 									   deparse_expr_cxt *context);
 static void mysql_deparse_bool_expr(BoolExpr *node, deparse_expr_cxt *context);
 static void mysql_deparse_null_test(NullTest *node, deparse_expr_cxt *context);
-static void mysql_deparse_array_expr(ArrayExpr *node,
-									 deparse_expr_cxt *context);
 static void mysql_print_remote_param(int paramindex, Oid paramtype,
 									 int32 paramtypmod,
 									 deparse_expr_cxt *context);
@@ -218,7 +214,7 @@ mysql_deparse_relation(StringInfo buf, Relation rel)
 					 mysql_quote_identifier(relname, '`'));
 }
 
-static char *
+char *
 mysql_quote_identifier(const char *str, char quotechar)
 {
 	char	   *result = palloc(strlen(str) * 2 + 3);
@@ -606,11 +602,7 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 	 * option, use attribute name.
 	 */
 	if (colname == NULL)
-#if PG_VERSION_NUM >= 110000
 		colname = get_attname(rte->relid, varattno, false);
-#else
-		colname = get_relid_attribute_name(rte->relid, varattno);
-#endif
 
 	if (qualify_col)
 		ADD_REL_QUALIFIER(buf, varno);
@@ -729,9 +721,6 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 			break;
 		case T_NullTest:
 			mysql_deparse_null_test((NullTest *) node, context);
-			break;
-		case T_ArrayExpr:
-			mysql_deparse_array_expr((ArrayExpr *) node, context);
 			break;
 		case T_Aggref:
 			mysql_deparse_aggref((Aggref *) node, context);
@@ -1454,27 +1443,6 @@ mysql_deparse_null_test(NullTest *node, deparse_expr_cxt *context)
 }
 
 /*
- * Deparse ARRAY[...] construct.
- */
-static void
-mysql_deparse_array_expr(ArrayExpr *node, deparse_expr_cxt *context)
-{
-	StringInfo	buf = context->buf;
-	bool		first = true;
-	ListCell   *lc;
-
-	appendStringInfoString(buf, "ARRAY[");
-	foreach(lc, node->elements)
-	{
-		if (!first)
-			appendStringInfoString(buf, ", ");
-		deparseExpr(lfirst(lc), context);
-		first = false;
-	}
-	appendStringInfoChar(buf, ']');
-}
-
-/*
  * Print the representation of a parameter to be sent to the remote side.
  *
  * Note: we always label the Param's type explicitly rather than relying on
@@ -1830,35 +1798,6 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				/* Output is always boolean and so noncollatable. */
 				collation = InvalidOid;
 				state = FDW_COLLATE_NONE;
-			}
-			break;
-		case T_ArrayExpr:
-			{
-				ArrayExpr  *a = (ArrayExpr *) node;
-
-				/* Should not be in the join clauses of the Join-pushdown */
-				if (glob_cxt->is_remote_cond)
-					return false;
-
-				/*
-				 * Recurse to input subexpressions.
-				 */
-				if (!foreign_expr_walker((Node *) a->elements,
-										 glob_cxt, &inner_cxt))
-					return false;
-
-				/*
-				 * ArrayExpr must not introduce a collation not derived from
-				 * an input foreign Var.
-				 */
-				collation = a->array_collid;
-				if (collation == InvalidOid)
-					state = FDW_COLLATE_NONE;
-				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
-						 collation == inner_cxt.collation)
-					state = FDW_COLLATE_SAFE;
-				else
-					state = FDW_COLLATE_UNSAFE;
 			}
 			break;
 		case T_List:

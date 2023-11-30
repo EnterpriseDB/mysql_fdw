@@ -1,7 +1,7 @@
 # mysql_fdw/Makefile
 #
 # Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
-# Portions Copyright (c) 2004-2022, EnterpriseDB Corporation.
+# Portions Copyright (c) 2004-2023, EnterpriseDB Corporation.
 #
 
 MODULE_big = mysql_fdw
@@ -40,8 +40,8 @@ include $(PGXS)
 ifndef MAJORVERSION
 MAJORVERSION := $(basename $(VERSION))
 endif
-ifeq (,$(findstring $(MAJORVERSION), 10 11 12 13 14 15))
-$(error PostgreSQL 10, 11, 12, 13, 14, or 15 is required to compile this extension)
+ifeq (,$(findstring $(MAJORVERSION), 11 12 13 14 15 16))
+$(error PostgreSQL 11, 12, 13, 14, 15, or 16 is required to compile this extension)
 endif
 
 else

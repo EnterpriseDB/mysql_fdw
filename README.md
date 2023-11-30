@@ -105,8 +105,9 @@ Supported platforms
 `mysql_fdw` was developed on Linux, and should run on any
 reasonably POSIX-compliant system.
 
-`mysql_fdw` is designed to be compatible with PostgreSQL 10 ~ 15.
-
+`mysql_fdw` is designed to be compatible with PostgreSQL 10 ~ 15. 
+Please note that this version of mysql_fdw works with PostgreSQL and EDB
+Postgres Advanced Server 11, 12, 13, 14, 15, and 16.
 
 Installation
 ------------
@@ -530,7 +531,7 @@ Useful links
  
 License
 -------
-Copyright (c) 2011-2022, EnterpriseDB Corporation.
+Copyright (c) 2011-2023, EnterpriseDB Corporation.
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written

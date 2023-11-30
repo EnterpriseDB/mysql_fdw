@@ -28,7 +28,7 @@ CREATE FOREIGN TABLE fdw126_ft4(a int, b varchar(255))
 CREATE FOREIGN TABLE fdw126_ft5(a int, b varchar(255))
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress2', table_name 'numbers');
 CREATE FOREIGN TABLE fdw126_ft6(stu_id int, stu_name varchar(255))
-  SERVER mysql_svr OPTIONS (table_name 'mysql_fdw_regress1.student');
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress1', table_name 'mysql_fdw_regress1.student');
 CREATE FOREIGN TABLE f_empdata(emp_id int, emp_dat bytea)
   SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'empdata');
 CREATE FOREIGN TABLE fdw193_ft1(stu_id varchar(10), stu_name varchar(255), stu_dept int)
@@ -88,22 +88,8 @@ UPDATE fdw126_ft3 SET b = 'one' WHERE a = 1;
 DELETE FROM fdw126_ft3 WHERE a = 1;
 
 -- Check when table_name is given in database.table form in foreign table
--- should error out as syntax error. The error contains server name like
--- MySQL or MariaDB, so give the generic message by removing the server name, so
--- that it should pass on both the servers.
-DO
-$$
-BEGIN
-  INSERT INTO fdw126_ft6 VALUES(1, 'One');
-  EXCEPTION WHEN others THEN
-	IF SQLERRM LIKE '%You have an error in your SQL syntax; check the manual % for the right syntax to use near ''.student'' at line 1' THEN
-	  RAISE NOTICE E'failed to execute the MySQL query: \nYou have an error in your SQL syntax; check the manual that corresponds to your server version for the right syntax to use near ''.student'' at line 1';
-    ELSE
-	  RAISE NOTICE '%', SQLERRM;
-	END IF;
-END;
-$$
-LANGUAGE plpgsql;
+-- should error out as table does not exists.
+INSERT INTO fdw126_ft6 VALUES(1, 'One');
 
 -- Perform the ANALYZE on the foreign table which is not present on the remote
 -- side.  Should not crash.
@@ -230,6 +216,16 @@ INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT (a, b) DO NOTHING;
 INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT DO UPDATE SET b = 10;
 INSERT INTO f_mysql_test VALUES(1,1) ON CONFLICT (a) DO UPDATE SET b = 10;
 
+-- FDW-601: database and table name should be quoted correctly in case of
+-- INSERT/UPDATE/DELETE.
+CREATE FOREIGN TABLE fdw601(a int, b int)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'fdw-601');
+INSERT INTO fdw601 VALUES(1,1), (2,2);
+UPDATE fdw601 SET b = 3 WHERE b = 2;
+DELETE FROM fdw601 WHERE b = 1;
+SELECT * FROM fdw601 ORDER BY 1;
+DELETE FROM fdw601;
+
 -- Cleanup
 DELETE FROM fdw126_ft1;
 DELETE FROM f_empdata;
@@ -243,6 +239,7 @@ DROP FOREIGN TABLE fdw126_ft5;
 DROP FOREIGN TABLE fdw126_ft6;
 DROP FOREIGN TABLE f_empdata;
 DROP FOREIGN TABLE fdw193_ft1;
+DROP FOREIGN TABLE fdw601;
 DROP FUNCTION before_row_update_func();
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;

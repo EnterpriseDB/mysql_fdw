@@ -212,17 +212,16 @@ SELECT c2, sum(c1) FROM fdw132_t2 GROUP BY c2 HAVING avg(c1) < 500 and sum(c1) <
 
 -- Using expressions in HAVING clause
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING sqrt(max(c1)) = sqrt(2) ORDER BY 1, 2;
-                                                                              QUERY PLAN                                                                               
------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING exp(max(c1)) = exp(2) ORDER BY 1, 2;
+                                                                                               QUERY PLAN                                                                                                
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan
    Output: c3, (count(c1))
-   Filter: (sqrt(((max(fdw132_t1.c1)))::double precision) = '1.4142135623730951'::double precision)
    Relations: Aggregate on (mysql_fdw_regress.fdw132_t1)
-   Remote query: SELECT `c3`, count(`c1`), max(`c1`) FROM `mysql_fdw_regress`.`test1` GROUP BY 1 ORDER BY `c3` IS NULL, `c3` ASC, count(`c1`) IS NULL, count(`c1`) ASC
-(5 rows)
+   Remote query: SELECT `c3`, count(`c1`) FROM `mysql_fdw_regress`.`test1` GROUP BY 1 HAVING ((exp(max(`c1`)) = 7.38905609893065)) ORDER BY `c3` IS NULL, `c3` ASC, count(`c1`) IS NULL, count(`c1`) ASC
+(4 rows)
 
-SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING sqrt(max(c1)) = sqrt(2) ORDER BY 1, 2;
+SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING exp(max(c1)) = exp(2) ORDER BY 1, 2;
   c3  | count 
 ------+-------
  AAA2 |     1

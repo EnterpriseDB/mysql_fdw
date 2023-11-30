@@ -86,8 +86,8 @@ SELECT c2, sum(c1) FROM fdw132_t2 GROUP BY c2 HAVING avg(c1) < 500 and sum(c1) <
 
 -- Using expressions in HAVING clause
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING sqrt(max(c1)) = sqrt(2) ORDER BY 1, 2;
-SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING sqrt(max(c1)) = sqrt(2) ORDER BY 1, 2;
+SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING exp(max(c1)) = exp(2) ORDER BY 1, 2;
+SELECT c3, count(c1) FROM fdw132_t1 GROUP BY c3 HAVING exp(max(c1)) = exp(2) ORDER BY 1, 2;
 
 SET enable_sort TO off;
 -- Unshippable HAVING clause will be evaluated locally, and other qual in HAVING clause is pushed down
