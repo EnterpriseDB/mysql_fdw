@@ -4,6 +4,9 @@ MySQL Foreign Data Wrapper for PostgreSQL
 This is a foreign data wrapper (FDW) to connect [PostgreSQL](https://www.postgresql.org/)
 to [MySQL][1] and some versions of [MariaDB](https://mariadb.org/).
 
+<img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" align="center" height="100" alt="PostgreSQL"/>	+	<img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/MariaDB_colour_logo.svg" align="center" height="100" alt="MariaDB"/></br></br>
+<img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" align="center" height="100" alt="PostgreSQL"/>	+	<img src="https://upload.wikimedia.org/wikipedia/ru/d/d3/Mysql.png" align="center" height="100" alt="MySQL"/>
+
 Supports PostgreSQL and EDB Postgres Advanced Server 10, 11, 12, 13, 14 and 15.
 
 Contents
