@@ -168,70 +168,68 @@ Usage
 
 `mysql_fdw` accepts the following options via the `CREATE SERVER` command:
 
-- **host** as *string*, optional
+- **host** as *string*, optional, default `127.0.0.1`
 
-  Address or hostname of the MySQL server. Defaults to `127.0.0.1`.
+  Address or hostname of the MySQL server.
   
-- **port** as *integer*, optional
+- **port** as *integer*, optional, default `3306`
 
-  Port number of the MySQL server. Defaults to `3306`.
+  Port number of the MySQL server.
 
-- **secure_auth** as *boolean*, optional
+- **secure_auth** as *boolean*, optional, default `true`
 
-  Enable or disable secure authentication. Default is `true`.
+  Enable or disable secure authentication.
 
-- **init_command** as *string*, optional
+- **init_command** as *string*, optional, no default
 
   SQL statement to execute when connecting to the
     MySQL server.
 
-- **use_remote_estimate** as *boolean*, optional
+- **use_remote_estimate** as *boolean*, optional, default `false`
 
   Controls whether `mysql_fdw` issues remote
-    `EXPLAIN` commands to obtain cost estimates. Default is `false`.
+    `EXPLAIN` commands to obtain cost estimates.
     
-- **reconnect** as *boolean*, optional
+- **reconnect** as *boolean*, optional, default `false`
 
   Enable or disable automatic reconnection to the
     MySQL server if the existing connection is found to have been lost.
-    Default is `false`.
 
-- **sql_mode** as *string*, optional
+- **sql_mode** as *string*, optional, default `ANSI_QUOTES`
 
-  Set MySQL sql_mode for established connection. Default
-    is `ANSI_QUOTES`.
+  Set MySQL sql_mode for established connection.
 
-- **ssl_key** as *string*, optional
+- **ssl_key** as *string*, optional, no default
 
   The path name of the client private key file.
 
-- **ssl_cert** as *string*, optional
+- **ssl_cert** as *string*, optional, no default
 
   The path name of the client public key certificate file.
 
-- **ssl_ca** as *string*, optional
+- **ssl_ca** as *string*, optional, no default
 
   The path name of the Certificate Authority (CA) certificate
     file. This option, if used, must specify the same certificate used
     by the server.
 
-- **ssl_capath** as *string*, optional
+- **ssl_capath** as *string*, optional, no default
 
   The path name of the directory that contains trusted
     SSL CA certificate files.
 
-- **ssl_cipher** as *string*, optional
+- **ssl_cipher** as *string*, optional, no default
 
   The list of permissible ciphers for SSL encryption.
 
-- **fetch_size** as *integer*, optional
+- **fetch_size** as *integer*, optional, default `100`
 
   This option specifies the number of rows `mysql_fdw` should
     get in each fetch operation. It can be specified for a foreign table or
     a foreign server. The option specified on a table overrides an option
-    specified for the server. The default is `100`.
+    specified for the server.
 
-- **character_set** as *string*, optional
+- **character_set** as *string*, optional, default `auto`
 
   The character set to use for MySQL connection. Default
     is `auto` which means autodetect based on the operating system setting.
@@ -246,11 +244,11 @@ Usage
 `mysql_fdw` accepts the following options via the `CREATE USER MAPPING`
 command:
 
-- **username** as *string*
+- **username** as *string*, no default
 
   Username to use when connecting to MySQL.
 
-- **password** as *string*
+- **password** as *string*, no default
 
   Password to authenticate to the MySQL server with.
 
@@ -265,9 +263,9 @@ command:
   Name of the MySQL database to query. This is a mandatory
     option.
     
-- **table_name** as *string*, optional
+- **table_name** as *string*, optional, default name of foreign table
 
-  Name of the MySQL table, default is the same as foreign table.
+  Name of the MySQL table.
 
 - **fetch_size** as *integer*, optional
 
@@ -286,31 +284,31 @@ command:
 `mysql_fdw` supports [IMPORT FOREIGN SCHEMA](https://www.postgresql.org/docs/current/sql-importforeignschema.html) and 
  accepts the following custom options:
  
-- **import_default** as *boolean*, optional
+- **import_default** as *boolean*, optional, default `false`
 
   This option controls whether column DEFAULT
   expressions are included in the definitions of foreign tables imported
-  from a foreign server. The default is `false`.
+  from a foreign server.
   
-- **import_not_null** as *boolean*, optional
+- **import_not_null** as *boolean*, optional, default `true`
 
   This option controls whether column NOT NULL
   constraints are included in the definitions of foreign tables imported
-  from a foreign server. The default is `true`.
+  from a foreign server.
   
-- **import_enum_as_text** as *boolean*, optional
+- **import_enum_as_text** as *boolean*, optional, default `false`
 
   This option can be used to map MySQL ENUM type
   to TEXT type in the definitions of foreign tables, otherwise emit a
-  warning for type to be created. The default is `false`.
+  warning for type to be created.
   
-- **import_generated** as *boolean*, optional
+- **import_generated** as *boolean*, optional, default `true`
 
   This option controls whether GENERATED column
   expressions are included in the definitions of foreign tables imported from
-  a foreign server or not. The default is `true`. The IMPORT will fail
-  altogether if an imported generated expression uses a function or operator
-  that does not exist on PostgreSQL.
+  a foreign server or not. The IMPORT will fail altogether if an
+  imported generated expression uses a function or operator that
+  does not exist on PostgreSQL.
 
 ## TRUNCATE support
 
@@ -506,6 +504,25 @@ If you experience any bug and have a fix for that, or have a new idea,
 create a ticket on github page. Before creating a pull request please
 read the [contributing guidelines][3].
 
+Preferred code style see in PostgreSQL source codes. For example
+
+```C
+type
+funct_name (type arg ...)
+{
+	t1 var1 = value1;
+	t2 var2 = value2;
+
+	for (;;)
+	{
+		int var ...
+	}
+	if ()
+	{
+		bool var1 ...
+	}
+}
+```
 Support
 -------
 This project will be modified to maintain compatibility with new
@@ -517,6 +534,11 @@ also support `mysql_fdw`.
 
 Useful links
 ------------
+
+### Source code
+
+Reference FDW implementation, `postgres_fdw`
+ - https://git.postgresql.org/gitweb/?p=postgresql.git;a=tree;f=contrib/postgres_fdw;hb=HEAD
 
 ### General FDW Documentation
 
