@@ -530,7 +530,7 @@ Limit  (cost=10.00..11.00 rows=1 width=36)
 		Remote query: SELECT `warehouse_id`, `warehouse_name` FROM `db`.`warehouse` WHERE ((`warehouse_name` LIKE BINARY 'TV'))
 ```
 
-### Import a SQLite database as schema to PostgreSQL:
+### Import a MySQL/MariaDB database as schema to PostgreSQL:
 
 ```sql
 	IMPORT FOREIGN SCHEMA someschema
