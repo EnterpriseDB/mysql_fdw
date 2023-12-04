@@ -4,8 +4,8 @@ MySQL Foreign Data Wrapper for PostgreSQL
 This is a foreign data wrapper (FDW) to connect [PostgreSQL](https://www.postgresql.org/)
 to [MySQL][1] and some versions of [MariaDB](https://mariadb.org/).
 
-<img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" align="center" height="100" alt="PostgreSQL"/>	+	<img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/MariaDB_colour_logo.svg" align="center" height="100" alt="MariaDB"/></br></br>
-<img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" align="center" height="100" alt="PostgreSQL"/>	+	<img src="https://upload.wikimedia.org/wikipedia/ru/d/d3/Mysql.png" align="center" height="100" alt="MySQL"/>
+<img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" align="center" height="100" alt="PostgreSQL"/>	+	<img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/MariaDB_colour_logo.svg" align="center" height="70" alt="MariaDB"/></br></br>
+<img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" align="center" height="100" alt="PostgreSQL"/>	+	<img src="https://upload.wikimedia.org/wikipedia/ru/d/d3/Mysql.png" align="center" height="80" alt="MySQL"/>
 
 Supports PostgreSQL and EDB Postgres Advanced Server 10, 11, 12, 13, 14 and 15.
 
@@ -436,30 +436,67 @@ Encodings mapping between PostgeeSQL and MySQL/MariaDB **yet not described**.
 Examples
 --------
 
-```sql
--- load extension first time after install
-CREATE EXTENSION mysql_fdw;
+### Install the extension:
 
--- create server object
-CREATE SERVER mysql_server
+Once for a database you need, as PostgreSQL superuser.
+
+```sql
+	-- load extension first time after install
+	CREATE EXTENSION mysql_fdw;
+```
+
+### Create a foreign server with appropriate configuration:
+
+Once for a foreign datasource you need, as PostgreSQL superuser.
+
+```sql
+	-- create server object
+	CREATE SERVER mysql_server
 	FOREIGN DATA WRAPPER mysql_fdw
 	OPTIONS (host '127.0.0.1', port '3306');
+```
 
--- create user mapping
-CREATE USER MAPPING FOR postgres
+### Grant usage on foreign server to normal user in PostgreSQL:
+
+Once for a normal user (non-superuser) in PostgreSQL, as PostgreSQL superuser. It is a good idea to use a superuser only where really necessary, so let's allow a normal user to use the foreign server (this is not required for the example to work, but it's secirity recomedation).
+
+```sql
+	GRANT USAGE ON FOREIGN SERVER mysql_server TO pguser;
+```
+Where `pguser` is a sample user for works with foreign server (and foreign tables).
+
+### User mapping
+Create an appropriate user mapping:
+
+```sql
+	-- create user mapping
+	CREATE USER MAPPING FOR postgres
 	SERVER mysql_server
-	OPTIONS (username 'foo', password 'bar');
+	OPTIONS (username 'pguser', password 'bar');
+```
+Where `pguser` is a sample user for works with foreign server (and foreign tables).
 
--- create foreign table
-CREATE FOREIGN TABLE warehouse
-	(
-		warehouse_id int,
-		warehouse_name text,
-		warehouse_created timestamp
+### Create foreign table
+All `CREATE FOREIGN TABLE` SQL commands can be executed as a normal PostgreSQL user if there were correct `GRANT USAGE ON FOREIGN SERVER`. No need PostgreSQL supersuer for secirity reasons but also works with PostgreSQL supersuer.
+
+Please specify `table_name` option if MySQL/MariaDB table name is different from foreign table name.
+
+```sql
+	-- create foreign table
+	CREATE FOREIGN TABLE warehouse (
+	  warehouse_id int,
+	  warehouse_name text,
+	  warehouse_created timestamp
 	)
 	SERVER mysql_server
-	OPTIONS (dbname 'db', table_name 'warehouse');
+	OPTIONS (
+	  dbname 'db',
+	  table_name 'warehouse'
+	);
+```
+Soame other oprerations with foreign table data
 
+```sql
 -- insert new rows in table
 INSERT INTO warehouse values (1, 'UPS', current_date);
 INSERT INTO warehouse values (2, 'TV', current_date);
@@ -491,6 +528,14 @@ Limit  (cost=10.00..11.00 rows=1 width=36)
 		Output: warehouse_id, warehouse_name
 		Local server startup cost: 10
 		Remote query: SELECT `warehouse_id`, `warehouse_name` FROM `db`.`warehouse` WHERE ((`warehouse_name` LIKE BINARY 'TV'))
+```
+
+### Import a SQLite database as schema to PostgreSQL:
+
+```sql
+	IMPORT FOREIGN SCHEMA someschema
+	FROM SERVER mysql_server
+	INTO public;
 ```
 
 Limitations
