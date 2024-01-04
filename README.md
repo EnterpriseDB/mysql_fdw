@@ -275,7 +275,7 @@ also support mysql_fdw.
 
 License
 -------
-Copyright (c) 2011-2023, EnterpriseDB Corporation.
+Copyright (c) 2011-2024, EnterpriseDB Corporation.
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written
