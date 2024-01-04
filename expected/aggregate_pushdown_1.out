@@ -882,83 +882,83 @@ SELECT c2, least_agg(c1) FROM fdw132_t1 GROUP BY c2 ORDER BY c2;
 
 -- FDW-129: Limit and offset pushdown with Aggregate pushdown.
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 1 OFFSET 1;
+SELECT sum(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 1 OFFSET 1;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Limit
-   Output: (min(c1)), c1
+   Output: (sum(c1)), c1
    ->  GroupAggregate
-         Output: min(c1), c1
+         Output: sum(c1), c1
          Group Key: fdw132_t1.c1
          ->  Foreign Scan on public.fdw132_t1
                Output: c1, c2, c3, c4
                Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
 (8 rows)
 
-SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 1 OFFSET 1;
- min | c1 
+SELECT sum(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 1 OFFSET 1;
+ sum | c1 
 -----+----
    2 |  2
 (1 row)
 
 -- Limit 0, Offset 0 with aggregates.
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 0 OFFSET 0;
+SELECT sum(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 0 OFFSET 0;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Limit
-   Output: (min(c1)), c1
+   Output: (sum(c1)), c1
    ->  GroupAggregate
-         Output: min(c1), c1
+         Output: sum(c1), c1
          Group Key: fdw132_t1.c1
          ->  Foreign Scan on public.fdw132_t1
                Output: c1, c2, c3, c4
                Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
 (8 rows)
 
-SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 0 OFFSET 0;
- min | c1 
+SELECT sum(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT 0 OFFSET 0;
+ sum | c1 
 -----+----
 (0 rows)
 
 -- Limit NULL
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT NULL OFFSET 2;
+SELECT sum(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT NULL OFFSET 2;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Limit
-   Output: (min(c1)), c1
+   Output: (sum(c1)), c1
    ->  GroupAggregate
-         Output: min(c1), c1
+         Output: sum(c1), c1
          Group Key: fdw132_t1.c1
          ->  Foreign Scan on public.fdw132_t1
                Output: c1, c2, c3, c4
                Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
 (8 rows)
 
-SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT NULL OFFSET 2;
- min | c1 
+SELECT sum(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT NULL OFFSET 2;
+ sum | c1 
 -----+----
   11 | 11
 (1 row)
 
 -- Limit ALL
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT ALL OFFSET 2;
+SELECT sum(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT ALL OFFSET 2;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Limit
-   Output: (min(c1)), c1
+   Output: (sum(c1)), c1
    ->  GroupAggregate
-         Output: min(c1), c1
+         Output: sum(c1), c1
          Group Key: fdw132_t1.c1
          ->  Foreign Scan on public.fdw132_t1
                Output: c1, c2, c3, c4
                Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test1` ORDER BY `c1` IS NULL, `c1` ASC
 (8 rows)
 
-SELECT min(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT ALL OFFSET 2;
- min | c1 
+SELECT sum(c1), c1 FROM fdw132_t1 GROUP BY c1 ORDER BY c1 LIMIT ALL OFFSET 2;
+ sum | c1 
 -----+----
   11 | 11
 (1 row)
