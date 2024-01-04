@@ -70,8 +70,40 @@ ALTER USER MAPPING FOR PUBLIC SERVER mysql_svr
   OPTIONS (SET username :MYSQL_USER_NAME, SET password :MYSQL_PASS);
 SELECT * FROM f_mysql_test ORDER BY 1, 2;
 
+
+-- FDW-654: Connection details should be fetched from mysql default file when
+-- mysql_default_file server level option is set.
+
+CREATE SERVER mysql_server FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (mysql_default_file '/tmp/my.cnf');
+CREATE USER MAPPING FOR public SERVER mysql_server;
+CREATE FOREIGN TABLE f_mysql_file_test(a int, b int) SERVER mysql_server
+  OPTIONS (dbname 'mysql_fdw_regress', table_name 'mysql_test');
+
+-- Negative scenario. Connection should not happen as default file has incorrect
+-- details.
+\! echo [client] > /tmp/my.cnf
+\! echo user=$MYSQL_USER_NAME >> /tmp/my.cnf
+\! echo password=1234 >> /tmp/my.cnf
+SELECT * FROM f_mysql_file_test ORDER BY 1, 2;
+
+-- Prepare the default file with connection details.
+\! echo [client] > /tmp/my.cnf
+\! echo host=$MYSQL_HOST >> /tmp/my.cnf
+\! echo port=$MYSQL_PORT >> /tmp/my.cnf
+\! echo user=$MYSQL_USER_NAME >> /tmp/my.cnf
+\! echo password=$MYSQL_PWD >> /tmp/my.cnf
+\! echo secure_auth=true >> /tmp/my.cnf
+-- Connection should happen as default file exists with details.
+SELECT * FROM f_mysql_file_test ORDER BY 1, 2;
+
+
 -- Cleanup
 DROP FOREIGN TABLE f_mysql_test;
+DROP FOREIGN TABLE f_mysql_file_test;
 DROP USER MAPPING FOR public SERVER mysql_svr;
+DROP USER MAPPING FOR public SERVER mysql_server;
 DROP SERVER mysql_svr;
+DROP SERVER mysql_server;
+\! rm -f /tmp/my.cnf
 DROP EXTENSION mysql_fdw;

@@ -162,6 +162,9 @@ The following parameters can be set on a MySQL foreign server object:
     Before the introduction of the character_set option, the character set
     was set similar to the PostgreSQL database encoding. To get this older
     behavior set the character_set to special value `PGDatabaseEncoding`.
+  * `mysql_default_file`: Set the MySQL default file path if connection
+    details, such as username, password, etc., need to be picked from the
+    default file.
 
 The following parameters can be set on a MySQL foreign table object:
 

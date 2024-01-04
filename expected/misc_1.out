@@ -32,7 +32,7 @@ INSERT INTO fdw519_ft3 VALUES (200, 'EMP2', 'SALESMAN', 600, '1981-02-20', 1600.
 -- and previous versions.
 ALTER SERVER mysql_svr OPTIONS (ADD truncatable 'abc');
 ERROR:  invalid option "truncatable"
-HINT:  Valid options in this context are: host, port, init_command, secure_auth, use_remote_estimate, fetch_size, reconnect, character_set, sql_mode, ssl_key, ssl_cert, ssl_ca, ssl_capath, ssl_cipher
+HINT:  Valid options in this context are: host, port, init_command, secure_auth, use_remote_estimate, fetch_size, reconnect, character_set, mysql_default_file, sql_mode, ssl_key, ssl_cert, ssl_ca, ssl_capath, ssl_cipher
 ALTER FOREIGN TABLE fdw519_ft1 OPTIONS (ADD truncatable 'abc');
 ERROR:  invalid option "truncatable"
 HINT:  Valid options in this context are: dbname, table_name, max_blob_size, fetch_size
@@ -53,7 +53,7 @@ Duplicate entry '1' for key 'student.PRIMARY'
 -- and previous versions.
 ALTER SERVER mysql_svr OPTIONS (ADD truncatable 'false');
 ERROR:  invalid option "truncatable"
-HINT:  Valid options in this context are: host, port, init_command, secure_auth, use_remote_estimate, fetch_size, reconnect, character_set, sql_mode, ssl_key, ssl_cert, ssl_ca, ssl_capath, ssl_cipher
+HINT:  Valid options in this context are: host, port, init_command, secure_auth, use_remote_estimate, fetch_size, reconnect, character_set, mysql_default_file, sql_mode, ssl_key, ssl_cert, ssl_ca, ssl_capath, ssl_cipher
 -- Truncate the table.
 TRUNCATE fdw519_ft1;
 ERROR:  "fdw519_ft1" is not a table
@@ -161,7 +161,7 @@ ALTER SERVER mysql_svr OPTIONS (SET truncatable 'true');
 ERROR:  option "truncatable" not found
 ALTER SERVER mysql_svr1 OPTIONS (ADD truncatable 'true');
 ERROR:  invalid option "truncatable"
-HINT:  Valid options in this context are: host, port, init_command, secure_auth, use_remote_estimate, fetch_size, reconnect, character_set, sql_mode, ssl_key, ssl_cert, ssl_ca, ssl_capath, ssl_cipher
+HINT:  Valid options in this context are: host, port, init_command, secure_auth, use_remote_estimate, fetch_size, reconnect, character_set, mysql_default_file, sql_mode, ssl_key, ssl_cert, ssl_ca, ssl_capath, ssl_cipher
 ALTER TABLE fdw519_ft1 OPTIONS (SET truncatable 'true');
 ERROR:  option "truncatable" not found
 TRUNCATE fdw519_ft1, fdw519_ft2, fdw519_ft3;

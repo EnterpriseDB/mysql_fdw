@@ -54,6 +54,7 @@ static struct MySQLFdwOption valid_options[] =
 	{"fetch_size", ForeignTableRelationId},
 	{"reconnect", ForeignServerRelationId},
 	{"character_set", ForeignServerRelationId},
+	{"mysql_default_file", ForeignServerRelationId},
 #if PG_VERSION_NUM >= 140000
 	/* truncatable is available on both server and table */
 	{"truncatable", ForeignServerRelationId},
@@ -269,6 +270,9 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 
 		if (strcmp(def->defname, "character_set") == 0)
 			opt->character_set = defGetString(def);
+
+		if (strcmp(def->defname, "mysql_default_file") == 0)
+			opt->mysql_default_file = defGetString(def);
 
 		if (strcmp(def->defname, "sql_mode") == 0)
 			opt->sql_mode = defGetString(def);
