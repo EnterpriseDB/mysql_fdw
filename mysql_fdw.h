@@ -4,7 +4,7 @@
  * 		Foreign-data wrapper for remote MySQL servers
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
- * Portions Copyright (c) 2004-2023, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2004-2024, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
  * 		mysql_fdw.h
@@ -105,6 +105,8 @@ typedef struct mysql_opt
 	bool		reconnect;		/* set to true for automatic reconnection */
 	char	   *character_set;	/* Character set used for remote connection */
 	char	   *sql_mode;		/* MySQL sql_mode variable for connection */
+	char	   *mysql_default_file; /* Path of a file from which connection
+									 * options are to be read */
 
 	/* SSL parameters; unused options may be given as NULL */
 	char	   *ssl_key;		/* MySQL SSL: path to the key file */

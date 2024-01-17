@@ -564,21 +564,17 @@ SELECT * FROM f_test_tbl1 ORDER BY c1 USING OPERATOR(public.<^);
 (6 rows)
 
 EXPLAIN (COSTS FALSE, VERBOSE)
-SELECT MIN(c1) FROM f_test_tbl1 ORDER BY 1 USING OPERATOR(public.<^);
-                                                                QUERY PLAN                                                                 
--------------------------------------------------------------------------------------------------------------------------------------------
+SELECT MIN(c1) FROM f_test_tbl1 GROUP BY c4 ORDER BY 1 USING OPERATOR(public.<^);
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
  Sort
-   Output: ($0)
-   Sort Key: ($0) USING <^
-   InitPlan 1 (returns $0)
-     ->  Limit
-           Output: f_test_tbl1.c1
-           ->  Foreign Scan on public.f_test_tbl1
-                 Output: f_test_tbl1.c1
-                 Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c1` IS NOT NULL)) ORDER BY `c1` IS NULL, `c1` ASC
-   ->  Result
-         Output: $0
-(11 rows)
+   Output: (min(c1)), c4
+   Sort Key: (min(f_test_tbl1.c1)) USING <^
+   ->  Foreign Scan
+         Output: (min(c1)), c4
+         Relations: Aggregate on (mysql_fdw_regress.f_test_tbl1)
+         Remote query: SELECT min(`c1`), `c4` FROM `mysql_fdw_regress`.`test_tbl1` GROUP BY 2
+(7 rows)
 
 -- Cleanup
 DELETE FROM f_test_tbl1;

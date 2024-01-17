@@ -4,7 +4,7 @@
  * 		Connection management functions for mysql_fdw
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
- * Portions Copyright (c) 2004-2023, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2004-2024, EnterpriseDB Corporation.
  *
  * IDENTIFICATION
  * 		connection.c
@@ -230,15 +230,33 @@ mysql_fdw_connect(mysql_opt *opt)
 	 */
 	mysql_options(conn, MYSQL_OPT_RECONNECT, &opt->reconnect);
 
-	mysql_ssl_set(conn, opt->ssl_key, opt->ssl_cert, opt->ssl_ca,
-				  opt->ssl_capath, ssl_cipher);
+	/*
+	 * If the mysql_default_file option is provided, then read the connection
+	 * details from the given file.
+	 */
+	if (opt->mysql_default_file)
+	{
+		mysql_options(conn, MYSQL_READ_DEFAULT_FILE,
+					  (void *)opt->mysql_default_file);
+		if (!mysql_real_connect(conn, NULL, NULL, NULL, NULL, 0, NULL, 0))
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+					 errmsg("failed to connect to MySQL: %s",
+							mysql_error(conn))));
+	}
+	else
+	{
+		mysql_ssl_set(conn, opt->ssl_key, opt->ssl_cert, opt->ssl_ca,
+					  opt->ssl_capath, ssl_cipher);
 
-	if (!mysql_real_connect(conn, opt->svr_address, opt->svr_username,
-							opt->svr_password, svr_database, opt->svr_port,
-							NULL, 0))
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
-				 errmsg("failed to connect to MySQL: %s", mysql_error(conn))));
+		if (!mysql_real_connect(conn, opt->svr_address, opt->svr_username,
+								opt->svr_password, svr_database, opt->svr_port,
+								NULL, 0))
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+					 errmsg("failed to connect to MySQL: %s",
+							mysql_error(conn))));
+	}
 
 	/* Useful for verifying that the connection's secured */
 	elog(DEBUG1,

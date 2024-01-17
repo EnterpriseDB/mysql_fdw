@@ -78,8 +78,40 @@ SELECT * FROM f_mysql_test ORDER BY 1, 2;
  1 | 1
 (1 row)
 
+-- FDW-654: Connection details should be fetched from mysql default file when
+-- mysql_default_file server level option is set.
+CREATE SERVER mysql_server FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (mysql_default_file '/tmp/my.cnf');
+CREATE USER MAPPING FOR public SERVER mysql_server;
+CREATE FOREIGN TABLE f_mysql_file_test(a int, b int) SERVER mysql_server
+  OPTIONS (dbname 'mysql_fdw_regress', table_name 'mysql_test');
+-- Negative scenario. Connection should not happen as default file has incorrect
+-- details.
+\! echo [client] > /tmp/my.cnf
+\! echo user=$MYSQL_USER_NAME >> /tmp/my.cnf
+\! echo password=1234 >> /tmp/my.cnf
+SELECT * FROM f_mysql_file_test ORDER BY 1, 2;
+ERROR:  failed to connect to MySQL: Access denied for user 'edb'@'localhost' (using password: YES)
+-- Prepare the default file with connection details.
+\! echo [client] > /tmp/my.cnf
+\! echo host=$MYSQL_HOST >> /tmp/my.cnf
+\! echo port=$MYSQL_PORT >> /tmp/my.cnf
+\! echo user=$MYSQL_USER_NAME >> /tmp/my.cnf
+\! echo password=$MYSQL_PWD >> /tmp/my.cnf
+\! echo secure_auth=true >> /tmp/my.cnf
+-- Connection should happen as default file exists with details.
+SELECT * FROM f_mysql_file_test ORDER BY 1, 2;
+ a | b 
+---+---
+ 1 | 1
+(1 row)
+
 -- Cleanup
 DROP FOREIGN TABLE f_mysql_test;
+DROP FOREIGN TABLE f_mysql_file_test;
 DROP USER MAPPING FOR public SERVER mysql_svr;
+DROP USER MAPPING FOR public SERVER mysql_server;
 DROP SERVER mysql_svr;
+DROP SERVER mysql_server;
+\! rm -f /tmp/my.cnf
 DROP EXTENSION mysql_fdw;
