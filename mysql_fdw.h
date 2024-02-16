@@ -256,6 +256,36 @@ typedef struct MySQLColumn
 } MySQLColumn;
 
 
+/*
+ * Connection cache hash table entry
+ *
+ * The lookup key in this hash table is the foreign server OID plus the user
+ * mapping OID.  (We use just one connection per user per foreign server,
+ * so that we can ensure all scans use the same snapshot during a query.)
+ */
+typedef struct ConnCacheKey
+{
+        Oid                     serverid;               /* OID of foreign server */
+        Oid                     userid;                 /* OID of local user whose mapping we use */
+} ConnCacheKey;
+
+typedef struct ConnCacheEntry
+{
+        ConnCacheKey key;                       /* hash key (must be first) */
+        MYSQL      *conn;                       /* connection to foreign server, or NULL */
+        bool            invalidated;    /* true if reconnect is pending */
+        uint32          server_hashvalue;       /* hash value of foreign server OID */
+        uint32          mapping_hashvalue;      /* hash value of user mapping OID */
+        HTAB *PrepStmtCache; 
+
+} ConnCacheEntry;
+
+typedef struct StmtCacheEntry
+{
+	uint32 key;
+        MYSQL_STMT *stmt;
+} StmtCacheEntry;
+
 extern int ((mysql_options) (MYSQL *mysql, enum mysql_option option,
 							 const void *arg));
 extern int ((mysql_stmt_prepare) (MYSQL_STMT *stmt, const char *query,
@@ -351,5 +381,7 @@ MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user,
 MYSQL *mysql_fdw_connect(mysql_opt *opt);
 void mysql_cleanup_connection(void);
 void mysql_release_connection(MYSQL *conn);
+
+ConnCacheEntry *get_conn_cache_entry(ForeignServer *server, UserMapping *user, mysql_opt *opt);
 
 #endif							/* MYSQL_FDW_H */

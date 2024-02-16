@@ -1764,6 +1764,8 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
 						 collation == inner_cxt.collation)
 					state = FDW_COLLATE_SAFE;
+                                else if (collation == DEFAULT_COLLATION_OID)
+                                        state = FDW_COLLATE_NONE;
 				else
 					state = FDW_COLLATE_UNSAFE;
 			}
