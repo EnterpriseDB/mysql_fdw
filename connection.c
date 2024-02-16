@@ -26,27 +26,6 @@
 /* Length of host */
 #define HOST_LEN 256
 
-/*
- * Connection cache hash table entry
- *
- * The lookup key in this hash table is the foreign server OID plus the user
- * mapping OID.  (We use just one connection per user per foreign server,
- * so that we can ensure all scans use the same snapshot during a query.)
- */
-typedef struct ConnCacheKey
-{
-	Oid			serverid;		/* OID of foreign server */
-	Oid			userid;			/* OID of local user whose mapping we use */
-} ConnCacheKey;
-
-typedef struct ConnCacheEntry
-{
-	ConnCacheKey key;			/* hash key (must be first) */
-	MYSQL	   *conn;			/* connection to foreign server, or NULL */
-	bool		invalidated;	/* true if reconnect is pending */
-	uint32		server_hashvalue;	/* hash value of foreign server OID */
-	uint32		mapping_hashvalue;	/* hash value of user mapping OID */
-} ConnCacheEntry;
 
 /*
  * Connection cache (initialized on first use)
@@ -54,6 +33,25 @@ typedef struct ConnCacheEntry
 static HTAB *ConnectionHash = NULL;
 
 static void mysql_inval_callback(Datum arg, int cacheid, uint32 hashvalue);
+
+ConnCacheEntry *get_conn_cache_entry(ForeignServer *server, UserMapping *user, mysql_opt *opt) {
+	bool		found;
+	ConnCacheEntry *entry;
+	ConnCacheKey key;
+
+	if (ConnectionHash == NULL) {
+		return NULL;
+	}
+
+	key.serverid = server->serverid;
+	key.userid = user->userid;
+
+	entry = hash_search(ConnectionHash, &key, HASH_ENTER, &found);
+	if (!found)
+		return NULL;
+
+	return entry;
+}
 
 /*
  * mysql_get_connection:
