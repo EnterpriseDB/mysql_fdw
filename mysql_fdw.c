@@ -613,19 +613,11 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 										  mysqlFdwPrivateScanTList);
 		TupleDesc	scan_tupdesc = ExecTypeFromTL(scan_tlist);
 
-#if PG_VERSION_NUM >= 160000
-		mysql_build_whole_row_constr_info(festate, tupleDescriptor,
-										  fsplan->fs_base_relids,
-										  list_length(node->ss.ps.state->es_range_table),
-										  whole_row_lists, scan_tlist,
-										  fsplan->fdw_scan_tlist);
-#else
 		mysql_build_whole_row_constr_info(festate, tupleDescriptor,
 										  fsplan->fs_relids,
 										  list_length(node->ss.ps.state->es_range_table),
 										  whole_row_lists, scan_tlist,
 										  fsplan->fdw_scan_tlist);
-#endif
 
 		/* Change tuple descriptor to match the result from foreign server. */
 		tupleDescriptor = scan_tupdesc;

@@ -517,6 +517,17 @@ SELECT t1.c1, t1.phv, t2.c2, t2.phv
 
 SET enable_partitionwise_join TO off;
 
+-- FDW-679: Whole-row reference in left join should work correctly.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t3 FROM fdw139_t1 t1
+    LEFT JOIN fdw139_t1 t2 ON (t1.c1 = t2.c1)
+    LEFT JOIN fdw139_t1 t3 ON (t3.c1 = t2.c1)
+  ORDER BY 1;
+SELECT t3 FROM fdw139_t1 t1
+    LEFT JOIN fdw139_t1 t2 ON (t1.c1 = t2.c1)
+    LEFT JOIN fdw139_t1 t3 ON (t3.c1 = t2.c1)
+  ORDER BY 1;
+
 -- Cleanup
 DELETE FROM fdw139_t1;
 DELETE FROM fdw139_t2;
