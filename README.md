@@ -257,6 +257,8 @@ Limit  (cost=10.00..11.00 rows=1 width=36)
 		Remote query: SELECT `warehouse_id`, `warehouse_name` FROM `db`.`warehouse` WHERE ((`warehouse_name` LIKE BINARY 'TV'))
 ```
 
+For more details, please refer to [mysql_fdw documentation][5].
+
 Contributing
 ------------
 If you experience any bug and have a fix for that, or have a new idea,
@@ -289,3 +291,4 @@ See the [`LICENSE`][4] file for full details.
 [2]: https://github.com/enterprisedb/mysql_fdw/issues/new
 [3]: CONTRIBUTING.md
 [4]: LICENSE
+[5]: https://www.enterprisedb.com/docs/mysql_data_adapter/latest/
