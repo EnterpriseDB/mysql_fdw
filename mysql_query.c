@@ -27,11 +27,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
 #include "mysql_query.h"
-#if PG_VERSION_NUM < 120000
-#include "optimizer/var.h"
-#else
 #include "optimizer/optimizer.h"
-#endif
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/datetime.h"

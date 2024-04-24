@@ -28,11 +28,7 @@
 #include "foreign/foreign.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
-#if PG_VERSION_NUM < 120000
-#include "nodes/relation.h"
-#else
 #include "nodes/pathnodes.h"
-#endif
 #include "utils/rel.h"
 
 #define MYSQL_PREFETCH_ROWS	100

@@ -110,7 +110,7 @@ reasonably POSIX-compliant system.
 
 `mysql_fdw` is designed to be compatible with PostgreSQL 10 ~ 15. 
 Please note that this version of mysql_fdw works with PostgreSQL and EDB
-Postgres Advanced Server 11, 12, 13, 14, 15, and 16.
+Postgres Advanced Server 12, 13, 14, 15, and 16.
 
 Installation
 ------------
@@ -548,6 +548,8 @@ Limitations
 
 **Yet not described**.
    
+For more details, please refer to [mysql_fdw documentation][5].
+
 Contributing
 ------------
 If you experience any bug and have a fix for that, or have a new idea,
@@ -620,3 +622,4 @@ See the [`LICENSE`][4] file for full details.
 [2]: https://github.com/enterprisedb/`mysql_fdw`/issues/new
 [3]: CONTRIBUTING.md
 [4]: LICENSE
+[5]: https://www.enterprisedb.com/docs/mysql_data_adapter/latest/

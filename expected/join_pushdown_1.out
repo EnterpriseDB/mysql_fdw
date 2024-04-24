@@ -1235,6 +1235,35 @@ SELECT t1.c1, t1.phv, t2.c2, t2.phv
 (4 rows)
 
 SET enable_partitionwise_join TO off;
+-- FDW-679: Whole-row reference in left join should work correctly.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t3 FROM fdw139_t1 t1
+    LEFT JOIN fdw139_t1 t2 ON (t1.c1 = t2.c1)
+    LEFT JOIN fdw139_t1 t3 ON (t3.c1 = t2.c1)
+  ORDER BY 1;
+                                                                                                                   QUERY PLAN                                                                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: t3.*
+   Sort Key: t3.*
+   ->  Foreign Scan
+         Output: t3.*
+         Relations: ((mysql_fdw_regress.fdw139_t1 t1) LEFT JOIN (mysql_fdw_regress.fdw139_t1 t2)) LEFT JOIN (mysql_fdw_regress.fdw139_t1 t3)
+         Remote query: SELECT r4.`c1`, r4.`c2`, r4.`c3`, r4.`c4` FROM ((`mysql_fdw_regress`.`test1` r1 LEFT JOIN `mysql_fdw_regress`.`test1` r2 ON (((r1.`c1` = r2.`c1`)))) LEFT JOIN `mysql_fdw_regress`.`test1` r4 ON (((r4.`c1` = r2.`c1`))))
+(7 rows)
+
+SELECT t3 FROM fdw139_t1 t1
+    LEFT JOIN fdw139_t1 t2 ON (t1.c1 = t2.c1)
+    LEFT JOIN fdw139_t1 t3 ON (t3.c1 = t2.c1)
+  ORDER BY 1;
+       t3        
+-----------------
+ (1,1,AAA1,foo)
+ (2,2,AAA2,bar)
+ (3,3,AAA11,foo)
+ (4,4,AAA12,foo)
+(4 rows)
+
 -- Cleanup
 DELETE FROM fdw139_t1;
 DELETE FROM fdw139_t2;

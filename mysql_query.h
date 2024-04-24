@@ -17,11 +17,7 @@
 
 #include "foreign/foreign.h"
 #include "lib/stringinfo.h"
-#if PG_VERSION_NUM < 120000
-#include "nodes/relation.h"
-#else
 #include "nodes/pathnodes.h"
-#endif
 #include "utils/rel.h"
 
 
