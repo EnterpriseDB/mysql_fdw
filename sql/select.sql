@@ -535,6 +535,16 @@ IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (timestamp_test)
 SELECT attname, atttypid::regtype FROM pg_attribute
   WHERE attrelid = 'timestamp_test'::regclass AND attnum >= 1 ORDER BY 1;
 
+SET timezone = 'Asia/Kolkata';
+INSERT INTO timestamp_test VALUES (1, '2020-01-01 00:00:00');
+INSERT INTO timestamp_test VALUES (2, '2020-01-01 00:00:00 +0:00');
+SET timezone = 'UTC';
+INSERT INTO timestamp_test VALUES (3, '2020-01-01 00:00:00');
+INSERT INTO timestamp_test VALUES (4, '2020-01-01 00:00:00 +5:30');
+SELECT * FROM timestamp_test ORDER BY 1;
+SET timezone = 'Asia/Kolkata';
+SELECT * FROM timestamp_test ORDER BY 1;
+
 
 -- Cleanup
 DROP TABLE l_test_tbl1;
@@ -548,6 +558,7 @@ DELETE FROM f_test_tbl1;
 DELETE FROM f_test_tbl2;
 DELETE FROM f_numbers;
 DELETE FROM f_enum_t1;
+DELETE FROM timestamp_test;
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
 DROP FOREIGN TABLE f_numbers;

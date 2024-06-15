@@ -1742,6 +1742,13 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 											  "mysql_fdw temporary data",
 											  ALLOCSET_DEFAULT_SIZES);
 
+	/*
+	 * Set the session timezone to UTC on MySQL, as we are converting timestamp
+	 * values to UTC while doing DML operations.
+	 */
+	if (mysql_query(fmstate->conn, "SET session time_zone = '+00:00'") != 0)
+		mysql_error_print(fmstate->conn);
+
 	if (mtstate->operation == CMD_UPDATE)
 	{
 		Form_pg_attribute attr;
