@@ -2209,6 +2209,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 					 "    WHEN c.DATA_TYPE = 'longblob' THEN 'bytea'"
 					 "    WHEN c.DATA_TYPE = 'binary' THEN 'bytea'"
 					 "    WHEN c.DATA_TYPE = 'varbinary' THEN 'bytea'"
+					 "    WHEN c.DATA_TYPE = 'timestamp' THEN 'timestamptz'"
 					 "    ELSE c.DATA_TYPE"
 					 "  END,"
 					 "  c.COLUMN_TYPE,"

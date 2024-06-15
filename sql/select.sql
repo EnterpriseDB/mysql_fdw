@@ -529,6 +529,13 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM f_test_tbl1 t1 WHERE c1 = ANY(ARRAY[100, 200, c1 + 10000]);
 SELECT * FROM f_test_tbl1 t1 WHERE c1 = ANY(ARRAY[100, 200, c1 + 10000]);
 
+-- FDW:668 - MySQL's timestamp datatype should be mapped to PG's timestamptz.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (timestamp_test)
+  FROM SERVER mysql_svr INTO public;
+SELECT attname, atttypid::regtype FROM pg_attribute
+  WHERE attrelid = 'timestamp_test'::regclass AND attnum >= 1 ORDER BY 1;
+
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
@@ -554,6 +561,7 @@ DROP FOREIGN TABLE mysql_test;
 DROP FOREIGN TABLE test_tbl1;
 DROP FOREIGN TABLE f_test6;
 DROP FOREIGN TABLE f_test7;
+DROP FOREIGN TABLE timestamp_test;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;
