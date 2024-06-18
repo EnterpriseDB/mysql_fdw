@@ -546,6 +546,97 @@ SET timezone = 'Asia/Kolkata';
 SELECT * FROM timestamp_test ORDER BY 1;
 
 
+-- FDW:692 - Scalar array operation with operator = ANY/<> ALL should pushdown.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 = ANY ('{400, 4000}'::INT[])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 = ANY ('{400, 4000}'::INT[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c4 FROM f_test_tbl1 e
+  WHERE c4 = ANY ('{400, NULL, 800}'::INT[])
+  ORDER BY c1;
+SELECT c1, c2, c4 FROM f_test_tbl1 e
+  WHERE c4 = ANY ('{400, NULL, 800}'::INT[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c4 FROM f_test_tbl1 e
+  WHERE c4 = ANY ('{400, 800}'::INT[])
+  ORDER BY c1;
+SELECT c1, c2, c4 FROM f_test_tbl1 e
+  WHERE c4 = ANY ('{400, 800}'::INT[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 != ALL ('{400, 4000}'::INT[])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 != ALL ('{400, 4000}'::INT[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c4 FROM f_test_tbl1 e
+  WHERE c4 != ALL ('{400, NULL, 800}'::INT[])
+  ORDER BY c1;
+SELECT c1, c2, c4 FROM f_test_tbl1 e
+  WHERE c4 != ALL ('{400, NULL, 800}'::INT[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c4 FROM f_test_tbl1 e
+  WHERE c4 != ALL ('{400, 800}'::INT[])
+  ORDER BY c1;
+SELECT c1, c2, c4 FROM f_test_tbl1 e
+  WHERE c4 != ALL ('{400, 800}'::INT[])
+  ORDER BY c1;
+
+-- Scalar array operation with other than operator =/<> should not pushdown.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 > ANY ('{400, 4000}'::INT[])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 > ANY ('{400, 4000}'::INT[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 < ANY (ARRAY[100, 200, 500])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 < ANY (ARRAY[100, 200, 500])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 > ALL (ARRAY[100, 200, 500])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 > ALL (ARRAY[100, 200, 500])
+  ORDER BY c1;
+
+-- Scalar array operation with = ALL/<> ANY should not pushdown.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 != ANY (ARRAY[100, 200, 500])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 != ANY (ARRAY[100, 200, 500])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 = ALL ('{400, 500}'::INT[])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 = ALL ('{400, 500}'::INT[])
+  ORDER BY c1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

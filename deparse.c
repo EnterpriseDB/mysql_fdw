@@ -1694,8 +1694,32 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 		case T_ScalarArrayOpExpr:
 			{
 				ScalarArrayOpExpr *oe = (ScalarArrayOpExpr *) node;
+				char	   *opname;
+				Node	   *arr = (Node *) lsecond(oe->args);
 
 				if (!mysql_check_remote_pushability(oe->opno))
+					return false;
+
+				/*
+				 * The number of elements in the array must be fixed, so that
+				 * it can be deparsed back to "foo IN (...)" form.
+				 */
+				if (!(IsA(arr, Const)))
+					return false;
+
+				opname = get_opname(oe->opno);
+
+				if (opname == NULL)
+					elog(ERROR, "cache lookup failed for operator %u", oe->opno);
+
+				/*
+				 * Don't push down ScalarArrayExprs (ANY and ALL), because
+				 * MySQL can't handle them.  Except when it's of the simple
+				 * "foo = ANY ('<constant>')" or "foo <> ALL ('<constant>')"
+				 * forms, and deparse that into "foo [NOT] IN (...)".
+				 */
+				if (!((strcmp(opname, "=") == 0 && oe->useOr) ||
+					  (strcmp(opname, "<>") == 0 && !oe->useOr)))
 					return false;
 
 				/*
