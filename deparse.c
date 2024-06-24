@@ -602,39 +602,6 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 	appendStringInfoString(buf, mysql_quote_identifier(colname, '`'));
 }
 
-static void
-mysql_deparse_string(StringInfo buf, const char *val, bool isstr)
-{
-	const char *valptr;
-	int			i = 0;
-
-	if (isstr)
-		appendStringInfoChar(buf, '\'');
-
-	for (valptr = val; *valptr; valptr++, i++)
-	{
-		char		ch = *valptr;
-
-		/*
-		 * Remove '{', '}', and \" character from the string. Because this
-		 * syntax is not recognize by the remote MySQL server.
-		 */
-		if ((ch == '{' && i == 0) || (ch == '}' && (i == (strlen(val) - 1))) ||
-			ch == '\"')
-			continue;
-
-		if (isstr && ch == ',')
-		{
-			appendStringInfoString(buf, "', '");
-			continue;
-		}
-		appendStringInfoChar(buf, ch);
-	}
-
-	if (isstr)
-		appendStringInfoChar(buf, '\'');
-}
-
 /*
 * Append a SQL string literal representing "val" to buf.
 */
@@ -1280,9 +1247,6 @@ mysql_deparse_scalar_array_op_expr(ScalarArrayOpExpr *node,
 	Expr	   *arg2;
 	Form_pg_operator form;
 	char	   *opname;
-	Oid			typoutput;
-	bool		typIsVarlena;
-	char	   *extval;
 
 	/* Retrieve information about the operator from system catalog. */
 	tuple = SearchSysCache1(OPEROID, ObjectIdGetDatum(node->opno));
@@ -1296,51 +1260,67 @@ mysql_deparse_scalar_array_op_expr(ScalarArrayOpExpr *node,
 	/* Deparse left operand. */
 	arg1 = linitial(node->args);
 	deparseExpr(arg1, context);
-	appendStringInfoChar(buf, ' ');
 
 	opname = NameStr(form->oprname);
 	if (strcmp(opname, "<>") == 0)
-		appendStringInfo(buf, " NOT ");
+		appendStringInfo(buf, " NOT");
 
 	/* Deparse operator name plus decoration. */
 	appendStringInfo(buf, " IN (");
 
 	/* Deparse right operand. */
 	arg2 = lsecond(node->args);
-	switch (nodeTag((Node *) arg2))
+	if (IsA(arg2, Const) && ((Const *) arg2)->constisnull)
 	{
-		case T_Const:
-			{
-				Const	   *c = (Const *) arg2;
-
-				if (c->constisnull)
-				{
-					appendStringInfoString(buf, " NULL");
-					ReleaseSysCache(tuple);
-					return;
-				}
-
-				getTypeOutputInfo(c->consttype, &typoutput, &typIsVarlena);
-				extval = OidOutputFunctionCall(typoutput, c->constvalue);
-
-				switch (c->consttype)
-				{
-					case INT4ARRAYOID:
-					case OIDARRAYOID:
-						mysql_deparse_string(buf, extval, false);
-						break;
-					default:
-						mysql_deparse_string(buf, extval, true);
-						break;
-				}
-			}
-			break;
-		default:
-			deparseExpr(arg2, context);
-			break;
+		appendStringInfoString(buf, "NULL");
 	}
-	appendStringInfoChar(buf, ')');
+	else if (IsA(arg2, Const))
+	{
+		Const	   *arrayconst = (Const *) arg2;
+		int 		i;
+		int			num_attr;
+		Datum	   *attr;
+		int16		elmlen;
+		bool		elmbyval;
+		bool		typIsVarlena;
+		char		elmalign;
+		Oid 		typOutput;
+		ArrayType  *arrayval;
+		bool	   *nullsp = NULL;
+		Oid			elemtype;
 
+		arrayval = DatumGetArrayTypeP(arrayconst->constvalue);
+		elemtype = ARR_ELEMTYPE(arrayval);
+		get_typlenbyvalalign(elemtype, &elmlen, &elmbyval, &elmalign);
+		deconstruct_array(arrayval, elemtype, elmlen, elmbyval,
+						  elmalign, &attr, &nullsp, &num_attr);
+		getTypeOutputInfo(elemtype, &typOutput, &typIsVarlena);
+
+		for (i = 0; i < num_attr; i++)
+		{
+			if (i != 0)
+				appendStringInfoString(buf, ", ");
+
+			if (nullsp[i])
+				appendStringInfoString(buf, "NULL");
+			else
+			{
+				char	   *str = OidOutputFunctionCall(typOutput, attr[i]);
+
+				/*
+				 * Do not quote values for int2, int4, int8, and oid array
+				 * elements.
+				 */
+				if (elemtype == INT2OID || elemtype == INT4OID ||
+					elemtype == INT8OID || elemtype == OIDOID)
+					appendStringInfoString(buf, str);
+				else
+					mysql_deparse_string_literal(buf, str);
+			}
+		}
+	}
+
+	appendStringInfoChar(buf, ')');
 	ReleaseSysCache(tuple);
 }
 

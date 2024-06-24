@@ -1811,7 +1811,7 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
 ------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c1`  IN (400,4000)) ORDER BY `c1` IS NULL, `c1` ASC
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c1` IN (400, 4000)) ORDER BY `c1` IS NULL, `c1` ASC
 (3 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
@@ -1826,11 +1826,11 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c4 FROM f_test_tbl1 e
   WHERE c4 = ANY ('{400, NULL, 800}'::INT[])
   ORDER BY c1;
-                                                                  QUERY PLAN                                                                  
-----------------------------------------------------------------------------------------------------------------------------------------------
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c4
-   Remote query: SELECT `c1`, `c2`, `c4` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c4`  IN (400,NULL,800)) ORDER BY `c1` IS NULL, `c1` ASC
+   Remote query: SELECT `c1`, `c2`, `c4` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c4` IN (400, NULL, 800)) ORDER BY `c1` IS NULL, `c1` ASC
 (3 rows)
 
 SELECT c1, c2, c4 FROM f_test_tbl1 e
@@ -1851,7 +1851,7 @@ SELECT c1, c2, c4 FROM f_test_tbl1 e
 -----------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c4
-   Remote query: SELECT `c1`, `c2`, `c4` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c4`  IN (400,800)) ORDER BY `c1` IS NULL, `c1` ASC
+   Remote query: SELECT `c1`, `c2`, `c4` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c4` IN (400, 800)) ORDER BY `c1` IS NULL, `c1` ASC
 (3 rows)
 
 SELECT c1, c2, c4 FROM f_test_tbl1 e
@@ -1868,11 +1868,11 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c1 != ALL ('{400, 4000}'::INT[])
   ORDER BY c1;
-                                                                     QUERY PLAN                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c6, c8
-   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c1`  NOT  IN (400,4000)) ORDER BY `c1` IS NULL, `c1` ASC
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c1` NOT IN (400, 4000)) ORDER BY `c1` IS NULL, `c1` ASC
 (3 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
@@ -1903,7 +1903,7 @@ SELECT c1, c2, c4 FROM f_test_tbl1 e
 ---------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c4
-   Remote query: SELECT `c1`, `c2`, `c4` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c4`  NOT  IN (400,NULL,800)) ORDER BY `c1` IS NULL, `c1` ASC
+   Remote query: SELECT `c1`, `c2`, `c4` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c4` NOT IN (400, NULL, 800)) ORDER BY `c1` IS NULL, `c1` ASC
 (3 rows)
 
 SELECT c1, c2, c4 FROM f_test_tbl1 e
@@ -1917,11 +1917,11 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c4 FROM f_test_tbl1 e
   WHERE c4 != ALL ('{400, 800}'::INT[])
   ORDER BY c1;
-                                                                  QUERY PLAN                                                                  
-----------------------------------------------------------------------------------------------------------------------------------------------
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1 e
    Output: c1, c2, c4
-   Remote query: SELECT `c1`, `c2`, `c4` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c4`  NOT  IN (400,800)) ORDER BY `c1` IS NULL, `c1` ASC
+   Remote query: SELECT `c1`, `c2`, `c4` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c4` NOT IN (400, 800)) ORDER BY `c1` IS NULL, `c1` ASC
 (3 rows)
 
 SELECT c1, c2, c4 FROM f_test_tbl1 e
@@ -2074,6 +2074,117 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
  c1 | c2 | c6 | c8 
 ----+----+----+----
 (0 rows)
+
+-- FDW-693: ScalarArrayOpExpr with multidimensional array should pushdown.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c2 = ANY('{{EMP2, EMP4}, {EMP3, EMP7}, {NULL, EMP8}}'::TEXT[])
+  ORDER BY c1;
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
+   Output: c1, c2, c6, c8
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c2` IN ('EMP2', 'EMP4', 'EMP3', 'EMP7', NULL, 'EMP8')) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
+
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c2 = ANY('{{EMP2, EMP4}, {EMP3, EMP7}, {NULL, EMP8}}'::TEXT[])
+  ORDER BY c1;
+ c1  |  c2  |     c6     | c8 
+-----+------+------------+----
+ 200 | EMP2 | 1600.00000 | 30
+ 300 | EMP3 | 1250.00000 | 30
+ 400 | EMP4 | 2975.12000 | 20
+ 700 | EMP7 | 2450.45000 | 10
+ 800 | EMP8 | 3000.00000 | 20
+(5 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 = ANY('{{100, 400}, {300, 500}, {NULL, 4000}}'::INT[])
+  ORDER BY c1;
+                                                                             QUERY PLAN                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
+   Output: c1, c2, c6, c8
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c1` IN (100, 400, 300, 500, NULL, 4000)) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
+
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 = ANY('{{100, 400}, {300, 500}, {NULL, 4000}}'::INT[])
+  ORDER BY c1;
+ c1  |  c2  |     c6     | c8 
+-----+------+------------+----
+ 100 | EMP1 |  800.23000 | 20
+ 300 | EMP3 | 1250.00000 | 30
+ 400 | EMP4 | 2975.12000 | 20
+ 500 | EMP5 | 1250.00000 | 30
+(4 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c4 = ANY('{{100, 400}, {300, 500}, {NULL, 4000}}'::INT8[])
+  ORDER BY c1;
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
+   Output: c1, c2, c4, c6, c8
+   Remote query: SELECT `c1`, `c2`, `c4`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c4` IN (100, 400, 300, 500, NULL, 4000)) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
+
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c4 = ANY('{{100, 400}, {300, 600}, {NULL, 4000}}'::INT8[])
+  ORDER BY c1;
+  c1  |  c2   | c4  |     c6     | c8 
+------+-------+-----+------------+----
+  200 | EMP2  | 600 | 1600.00000 | 30
+  300 | EMP3  | 600 | 1250.00000 | 30
+  500 | EMP5  | 600 | 1250.00000 | 30
+  800 | EMP8  | 400 | 3000.00000 | 20
+ 1000 | EMP10 | 600 | 1500.00000 | 30
+ 1200 | EMP12 | 600 |  950.00000 | 30
+ 1300 | EMP13 | 400 | 3000.00000 | 20
+(7 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = ANY('{{100, 400}, {300, 2850.00000}, {NULL, 1250.00000}}'::NUMERIC[])
+  ORDER BY c1;
+                                                                                            QUERY PLAN                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
+   Output: c1, c2, c4, c6, c8
+   Remote query: SELECT `c1`, `c2`, `c4`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c6` IN ('100', '400', '300', '2850.00000', NULL, '1250.00000')) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
+
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = ANY('{{100, 400}, {300, 2850.00000}, {NULL, 1250.00000}}'::NUMERIC[])
+  ORDER BY c1;
+ c1  |  c2  | c4  |     c6     | c8 
+-----+------+-----+------------+----
+ 300 | EMP3 | 600 | 1250.00000 | 30
+ 500 | EMP5 | 600 | 1250.00000 | 30
+ 600 | EMP6 | 900 | 2850.00000 | 30
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = ANY (ARRAY[400, 2850.00000])
+  ORDER BY c1;
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
+   Output: c1, c2, c6, c8
+   Remote query: SELECT `c1`, `c2`, `c6`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` WHERE (`c6` IN ('400', '2850.00000')) ORDER BY `c1` IS NULL, `c1` ASC
+(3 rows)
+
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = ANY (ARRAY[400, 2850.00000])
+  ORDER BY c1;
+ c1  |  c2  |     c6     | c8 
+-----+------+------------+----
+ 600 | EMP6 | 2850.00000 | 30
+(1 row)
 
 -- Cleanup
 DROP TABLE l_test_tbl1;

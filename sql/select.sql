@@ -637,6 +637,47 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c1 = ALL ('{400, 500}'::INT[])
   ORDER BY c1;
 
+-- FDW-693: ScalarArrayOpExpr with multidimensional array should pushdown.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c2 = ANY('{{EMP2, EMP4}, {EMP3, EMP7}, {NULL, EMP8}}'::TEXT[])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c2 = ANY('{{EMP2, EMP4}, {EMP3, EMP7}, {NULL, EMP8}}'::TEXT[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 = ANY('{{100, 400}, {300, 500}, {NULL, 4000}}'::INT[])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c1 = ANY('{{100, 400}, {300, 500}, {NULL, 4000}}'::INT[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c4 = ANY('{{100, 400}, {300, 500}, {NULL, 4000}}'::INT8[])
+  ORDER BY c1;
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c4 = ANY('{{100, 400}, {300, 600}, {NULL, 4000}}'::INT8[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = ANY('{{100, 400}, {300, 2850.00000}, {NULL, 1250.00000}}'::NUMERIC[])
+  ORDER BY c1;
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = ANY('{{100, 400}, {300, 2850.00000}, {NULL, 1250.00000}}'::NUMERIC[])
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = ANY (ARRAY[400, 2850.00000])
+  ORDER BY c1;
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = ANY (ARRAY[400, 2850.00000])
+  ORDER BY c1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
