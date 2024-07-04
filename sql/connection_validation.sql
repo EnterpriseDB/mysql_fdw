@@ -34,7 +34,7 @@ $$
 BEGIN
   SELECT * FROM f_mysql_test ORDER BY 1, 2;
   EXCEPTION WHEN others THEN
-	IF SQLERRM LIKE 'failed to connect to MySQL: Unknown MySQL server host ''localhos'' (%)' THEN
+	IF SQLERRM LIKE 'failed to connect to MySQL: Unknown % server host ''localhos'' (%)' THEN
 	  RAISE NOTICE 'failed to connect to MySQL: Unknown MySQL server host ''localhos''';
     ELSE
 	  RAISE NOTICE '%', SQLERRM;
@@ -83,9 +83,26 @@ CREATE FOREIGN TABLE f_mysql_file_test(a int, b int) SERVER mysql_server
 -- Negative scenario. Connection should not happen as default file has incorrect
 -- details.
 \! echo [client] > /tmp/my.cnf
+\! echo host=localhos >> /tmp/my.cnf
 \! echo user=$MYSQL_USER_NAME >> /tmp/my.cnf
 \! echo password=1234 >> /tmp/my.cnf
-SELECT * FROM f_mysql_file_test ORDER BY 1, 2;
+-- Set wrong host, subsequent operation should use these connection details
+-- and fail as the host address is not correct. The error code in error
+-- message is different for different server versions and platform, so check
+-- that through plpgsql block and give the generic error message.
+DO
+$$
+BEGIN
+  SELECT * FROM f_mysql_file_test ORDER BY 1, 2;
+  EXCEPTION WHEN others THEN
+	IF SQLERRM LIKE 'failed to connect to MySQL: Unknown % server host ''localhos'' (%)' THEN
+	  RAISE NOTICE 'failed to connect to MySQL: Unknown MySQL server host ''localhos''';
+    ELSE
+	  RAISE NOTICE '%', SQLERRM;
+	END IF;
+END;
+$$
+LANGUAGE plpgsql;
 
 -- Prepare the default file with connection details.
 \! echo [client] > /tmp/my.cnf
