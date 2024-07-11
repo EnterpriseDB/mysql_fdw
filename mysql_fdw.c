@@ -115,9 +115,9 @@ unsigned int ((mysql_num_rows) (MYSQL_RES *result));
 
 /*
  * In PG 9.5.1 the number will be 90501,
- * our version is 2.9.1 so number will be 20901
+ * our version is 2.9.2 so number will be 20902
  */
-#define CODE_VERSION   20901
+#define CODE_VERSION   20902
 
 /*
  * The number of rows in a foreign relation are estimated to be so less that
