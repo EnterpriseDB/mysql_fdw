@@ -1544,6 +1544,14 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				Param	   *p = (Param *) node;
 
 				/*
+				 * Bail out on planner internal params.  We could perhaps pass
+				 * them to the remote server as regular params, but we don't
+				 * have the machinery to do that at the moment.
+				 */
+				if (p->paramkind != PARAM_EXTERN)
+					return false;
+
+				/*
 				 * Collation rule is same as for Consts and non-foreign Vars.
 				 */
 				collation = p->paramcollid;

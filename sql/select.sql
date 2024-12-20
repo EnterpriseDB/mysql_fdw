@@ -678,6 +678,15 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 = ANY (ARRAY[400, 2850.00000])
   ORDER BY c1;
 
+-- FDW-704: Self join queries with CTE should work correctly.
+WITH
+  tbl1 (a, b) AS MATERIALIZED (VALUES (1,1))
+SELECT
+  (SELECT t.a FROM f_mysql_test "t"
+    LEFT JOIN f_mysql_test "s" ON s.a = t.a
+    WHERE t.a = tbl1.a AND t.b = tbl1.b) "val"
+  FROM tbl1;
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;

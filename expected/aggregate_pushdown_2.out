@@ -607,11 +607,13 @@ SELECT c2, sum FROM fdw132_t1 t1, lateral (SELECT sum(t2.c1 + t1.c1) sum FROM fd
    ->  Subquery Scan on qry
          Output: qry.sum, t2.c1
          Filter: ((t1.c2 * 2) = qry.sum)
-         ->  Foreign Scan
-               Output: (sum((t2.c1 + t1.c1))), t2.c1
-               Relations: Aggregate on (mysql_fdw_regress.fdw132_t2 t2)
-               Remote query: SELECT sum((`c1` + ?)), `c1` FROM `mysql_fdw_regress`.`test2` GROUP BY 2
-(12 rows)
+         ->  GroupAggregate
+               Output: sum((t2.c1 + t1.c1)), t2.c1
+               Group Key: t2.c1
+               ->  Foreign Scan on public.fdw132_t2 t2
+                     Output: t2.c1, t2.c2, t2.c3, t2.c4
+                     Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test2` ORDER BY `c1` IS NULL, `c1` ASC
+(14 rows)
 
 -- Check with placeHolderVars
 EXPLAIN (VERBOSE, COSTS OFF)

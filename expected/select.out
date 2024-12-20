@@ -1202,19 +1202,21 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, c2 FROM f_test_tbl1
   WHERE c8 = (SELECT c1 FROM f_test_tbl2 WHERE c1 = (SELECT 20))
   ORDER BY c1;
-                                                        QUERY PLAN                                                         
----------------------------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.f_test_tbl1
    Output: f_test_tbl1.c1, f_test_tbl1.c2
-   Remote query: SELECT `c1`, `c2` FROM `mysql_fdw_regress`.`test_tbl1` WHERE ((`c8` = ?)) ORDER BY `c1` IS NULL, `c1` ASC
+   Filter: (f_test_tbl1.c8 = $1)
+   Remote query: SELECT `c1`, `c2`, `c8` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c1` IS NULL, `c1` ASC
    InitPlan 2 (returns $1)
      ->  Foreign Scan on public.f_test_tbl2
            Output: f_test_tbl2.c1
-           Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl2` WHERE ((`c1` = ?))
+           Filter: (f_test_tbl2.c1 = $0)
+           Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl2`
            InitPlan 1 (returns $0)
              ->  Result
                    Output: 20
-(10 rows)
+(12 rows)
 
 SELECT c1, c2 FROM f_test_tbl1
   WHERE c8 = (SELECT c1 FROM f_test_tbl2 WHERE c1 = (SELECT 20))
@@ -2184,6 +2186,19 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
  c1  |  c2  |     c6     | c8 
 -----+------+------------+----
  600 | EMP6 | 2850.00000 | 30
+(1 row)
+
+-- FDW-704: Self join queries with CTE should work correctly.
+WITH
+  tbl1 (a, b) AS MATERIALIZED (VALUES (1,1))
+SELECT
+  (SELECT t.a FROM f_mysql_test "t"
+    LEFT JOIN f_mysql_test "s" ON s.a = t.a
+    WHERE t.a = tbl1.a AND t.b = tbl1.b) "val"
+  FROM tbl1;
+ val 
+-----
+   1
 (1 row)
 
 -- Cleanup
