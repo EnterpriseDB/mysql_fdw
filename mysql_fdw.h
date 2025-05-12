@@ -73,11 +73,7 @@
 #define mysql_num_rows (*_mysql_num_rows)
 
 /* Macro for list API backporting. */
-#if PG_VERSION_NUM < 130000
-#define mysql_list_concat(l1, l2) list_concat(l1, list_copy(l2))
-#else
 #define mysql_list_concat(l1, l2) list_concat((l1), (l2))
-#endif
 
 /*
  * Options structure to store the MySQL

@@ -5,7 +5,7 @@ This is a foreign data wrapper (FDW) to connect [PostgreSQL](https://www.postgre
 to [MySQL][1].
 
 Please note that this version of mysql_fdw works with PostgreSQL and EDB
-Postgres Advanced Server 12, 13, 14, 15, 16, and 17.
+Postgres Advanced Server 13, 14, 15, 16, and 17.
 
 Contents
 --------

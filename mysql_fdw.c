@@ -1599,11 +1599,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	 * Core code already has some lock on each rel being planned, so we can
 	 * use NoLock here.
 	 */
-#if PG_VERSION_NUM < 130000
-	rel = heap_open(rte->relid, NoLock);
-#else
 	rel = table_open(rte->relid, NoLock);
-#endif
 
 	foreignTableId = RelationGetRelid(rel);
 
@@ -1695,11 +1691,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 				 errmsg("RETURNING is not supported by this FDW")));
 
-#if PG_VERSION_NUM < 130000
-	heap_close(rel, NoLock);
-#else
 	table_close(rel, NoLock);
-#endif
 
 	return list_make2(makeString(sql.data), targetAttrs);
 }
@@ -3272,11 +3264,7 @@ mysql_build_scan_list_for_baserel(Oid relid, Index varno,
 	*retrieved_attrs = NIL;
 
 	/* Planner must have taken a lock, so request no lock here */
-#if PG_VERSION_NUM < 130000
-	relation = heap_open(relid, NoLock);
-#else
 	relation = table_open(relid, NoLock);
-#endif
 
 	tupdesc = RelationGetDescr(relation);
 
@@ -3309,11 +3297,7 @@ mysql_build_scan_list_for_baserel(Oid relid, Index varno,
 		}
 	}
 
-#if PG_VERSION_NUM < 130000
-	heap_close(relation, NoLock);
-#else
 	table_close(relation, NoLock);
-#endif
 
 	return tlist;
 }

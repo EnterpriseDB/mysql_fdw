@@ -14,9 +14,7 @@
 
 #include "postgres.h"
 
-#if PG_VERSION_NUM >= 130000
 #include "common/hashfn.h"
-#endif
 #include "mysql_fdw.h"
 #include "utils/hsearch.h"
 #include "utils/inval.h"
