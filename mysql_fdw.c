@@ -32,6 +32,10 @@
 #include "access/table.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
+#if PG_VERSION_NUM >= 180000
+#include "commands/explain_format.h"
+#include "commands/explain_state.h"
+#endif
 #include "catalog/heap.h"
 #include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
@@ -347,7 +351,7 @@ static TargetEntry *mysql_tlist_member_match_var(Var *var, List *targetlist);
 static List *mysql_varlist_append_unique_var(List *varlist, Var *var);
 #endif
 
-void *mysql_dll_handle = NULL;
+static void *mysql_dll_handle = NULL;
 static int wait_timeout = WAIT_TIMEOUT;
 static int interactive_timeout = INTERACTIVE_TIMEOUT;
 static void mysql_error_print(MYSQL *conn);
@@ -1224,7 +1228,20 @@ mysqlGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel,
 					   foreigntableid);
 
 	/* Create a ForeignPath node and add it as only possible path */
-#if PG_VERSION_NUM >= 170000
+#if PG_VERSION_NUM >= 180000
+	add_path(baserel, (Path *)
+			 create_foreignscan_path(root, baserel,
+									 NULL,	/* default pathtarget */
+									 baserel->rows,
+									 0,
+									 startup_cost,
+									 total_cost,
+									 NIL,	/* no pathkeys */
+									 baserel->lateral_relids,
+									 NULL,	/* no extra plan */
+									 NIL, /* no fdw_restrictinfo list */
+									 NIL));	/* no fdw_private data */
+#elif PG_VERSION_NUM >= 170000
 	add_path(baserel, (Path *)
 			 create_foreignscan_path(root, baserel,
 									 NULL,	/* default pathtarget */
@@ -2833,7 +2850,20 @@ mysqlGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 	 * Create a new join path and add it to the joinrel which represents a
 	 * join between foreign tables.
 	 */
-#if PG_VERSION_NUM >= 170000
+#if PG_VERSION_NUM >= 180000
+	joinpath = create_foreign_join_path(root,
+										joinrel,
+										NULL,	/* default pathtarget */
+										joinrel->rows,
+										0,
+										startup_cost,
+										total_cost,
+										NIL,	/* no pathkeys */
+										joinrel->lateral_relids,
+										epq_path,
+										extra->restrictlist,
+										NIL);	/* no fdw_private */
+#elif PG_VERSION_NUM >= 170000
 	joinpath = create_foreign_join_path(root,
 										joinrel,
 										NULL,	/* default pathtarget */
@@ -3862,7 +3892,19 @@ mysql_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 #endif
 
 	/* Create and add foreign path to the grouping relation. */
-#if PG_VERSION_NUM >= 170000
+#if PG_VERSION_NUM >= 180000
+	grouppath = create_foreign_upper_path(root,
+										  grouped_rel,
+										  grouped_rel->reltarget,
+										  num_groups,
+										  0,
+										  startup_cost,
+										  total_cost,
+										  NIL,	/* no pathkeys */
+										  NULL,
+										  NIL,	/* no fdw_restrictinfo list */
+										  NIL);	/* no fdw_private */
+#elif PG_VERSION_NUM >= 170000
 	grouppath = create_foreign_upper_path(root,
 										  grouped_rel,
 										  grouped_rel->reltarget,
@@ -4083,10 +4125,17 @@ mysql_get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel)
 			continue;
 
 		/* Looks like we can generate a pathkey, so let's do it. */
+#if PG_VERSION_NUM >= 180000
+		pathkey = make_canonical_pathkey(root, cur_ec,
+										 linitial_oid(cur_ec->ec_opfamilies),
+										 COMPARE_LT,
+										 false);
+#else
 		pathkey = make_canonical_pathkey(root, cur_ec,
 										 linitial_oid(cur_ec->ec_opfamilies),
 										 BTLessStrategyNumber,
 										 false);
+#endif
 
 		/* Check for sort operator pushability. */
 		if (mysql_get_sortby_direction_string(em, pathkey) == NULL)
@@ -4151,7 +4200,20 @@ mysql_add_paths_with_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 								 -1.0);
 
 		if (IS_SIMPLE_REL(rel))
-#if PG_VERSION_NUM >= 170000
+#if PG_VERSION_NUM >= 180000
+			add_path(rel, (Path *)
+					 create_foreignscan_path(root, rel,
+											 NULL,
+											 rel->rows,
+											 0,
+											 startup_cost,
+											 total_cost,
+											 useful_pathkeys,
+											 rel->lateral_relids,
+											 sorted_epq_path,
+											 NIL,	/* no fdw_restrictinfo list */
+											 NIL));	/* no fdw_private list */
+#elif PG_VERSION_NUM >= 170000
 			add_path(rel, (Path *)
 					 create_foreignscan_path(root, rel,
 											 NULL,
@@ -4176,7 +4238,20 @@ mysql_add_paths_with_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 											 NIL));	/* no fdw_private list */
 #endif
 		else
-#if PG_VERSION_NUM >= 170000
+#if PG_VERSION_NUM >= 180000
+			add_path(rel, (Path *)
+					 create_foreign_join_path(root, rel,
+											  NULL,
+											  rel->rows,
+											  0,
+											  startup_cost,
+											  total_cost,
+											  useful_pathkeys,
+											  rel->lateral_relids,
+											  sorted_epq_path,
+											  restrictlist,
+											  NIL));	/* no fdw_private */
+#elif PG_VERSION_NUM >= 170000
 			add_path(rel, (Path *)
 					 create_foreign_join_path(root, rel,
 											  NULL,
@@ -4335,7 +4410,19 @@ mysql_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	fdw_private = list_make2(makeInteger(true), makeInteger(false));
 
 	/* Create foreign ordering path */
-#if PG_VERSION_NUM >= 170000
+#if PG_VERSION_NUM >= 180000
+	ordered_path = create_foreign_upper_path(root,
+											 input_rel,
+											 root->upper_targets[UPPERREL_ORDERED],
+											 rows,
+											 0,
+											 startup_cost,
+											 total_cost,
+											 root->sort_pathkeys,
+											 NULL,	/* no extra plan */
+											 NIL,	/* no fdw_restrictinfo list */
+											 fdw_private);
+#elif PG_VERSION_NUM >= 170000
 	ordered_path = create_foreign_upper_path(root,
 											 input_rel,
 											 root->upper_targets[UPPERREL_ORDERED],
@@ -4528,7 +4615,19 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 				 * no-longer-needed outer plan (if any), which makes the
 				 * EXPLAIN output look cleaner
 				 */
-#if PG_VERSION_NUM >= 170000
+#if PG_VERSION_NUM >= 180000
+				final_path = create_foreign_upper_path(root,
+													   path->parent,
+													   path->pathtarget,
+													   path->rows,
+													   0,
+													   path->startup_cost,
+													   path->total_cost,
+													   path->pathkeys,
+													   NULL,	/* no extra plan */
+													   NIL,		/* no fdw_restrictinfo list */
+													   NIL);	/* no fdw_private */
+#elif PG_VERSION_NUM >= 170000
 				final_path = create_foreign_upper_path(root,
 													   path->parent,
 													   path->pathtarget,
@@ -4654,7 +4753,19 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	 * Create foreign final path; this gets rid of a no-longer-needed outer
 	 * plan (if any), which makes the EXPLAIN output look cleaner
 	 */
-#if PG_VERSION_NUM >= 170000
+#if PG_VERSION_NUM >= 180000
+	final_path = create_foreign_upper_path(root,
+										   input_rel,
+										   root->upper_targets[UPPERREL_FINAL],
+										   rows,
+										   0,
+										   startup_cost,
+										   total_cost,
+										   pathkeys,
+										   NULL,	/* no extra plan */
+										   NIL,		/* no fdw_restrictinfo list */
+										   fdw_private);
+#elif PG_VERSION_NUM >= 170000
 	final_path = create_foreign_upper_path(root,
 										   input_rel,
 										   root->upper_targets[UPPERREL_FINAL],
@@ -4946,13 +5057,26 @@ mysql_get_sortby_direction_string(EquivalenceMember *em, PathKey *pathkey)
 	if (!mysql_is_builtin(pathkey->pk_opfamily))
 		return NULL;
 
+#if PG_VERSION_NUM >= 180000
+	oprid = get_opfamily_member_for_cmptype(pathkey->pk_opfamily,
+											em->em_datatype,
+											em->em_datatype,
+											pathkey->pk_cmptype);
+#else
 	oprid = get_opfamily_member(pathkey->pk_opfamily, em->em_datatype,
 								em->em_datatype, pathkey->pk_strategy);
+#endif
 
 	if (!OidIsValid(oprid))
+#if PG_VERSION_NUM >= 180000
+		elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
+			 pathkey->pk_cmptype, em->em_datatype, em->em_datatype,
+			 pathkey->pk_opfamily);
+#else
 		elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
 			 pathkey->pk_strategy, em->em_datatype, em->em_datatype,
 			 pathkey->pk_opfamily);
+#endif
 
 	/* Can't push down the sort if the operator is not shippable. */
 	if (!mysql_check_remote_pushability(oprid))
