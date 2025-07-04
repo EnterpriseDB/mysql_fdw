@@ -2538,18 +2538,18 @@ process_query_params(ExprContext *econtext,
 	{
 		ExprState  *expr_state = (ExprState *) lfirst(lc);
 		Datum		expr_value;
-		bool		isNull;
+		bool		*isNull = (bool *) palloc(sizeof(bool));
 
 		/* Evaluate the parameter expression */
-		expr_value = ExecEvalExpr(expr_state, econtext, &isNull);
+		expr_value = ExecEvalExpr(expr_state, econtext, isNull);
 		mysql_bind_sql_var(param_types[i], i, expr_value, *mysql_bind_buf,
-						   &isNull);
+						   isNull);
 
 		/*
 		 * Get string representation of each parameter value by invoking
 		 * type-specific output function, unless the value is null.
 		 */
-		if (isNull)
+		if (*isNull)
 			param_values[i] = NULL;
 		else
 			param_values[i] = OutputFunctionCall(&param_flinfo[i], expr_value);
