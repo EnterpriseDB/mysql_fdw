@@ -447,9 +447,7 @@ mysql_deparse_insert(StringInfo buf, PlannerInfo *root, Index rtindex,
 					 Relation rel, List *targetAttrs, bool doNothing)
 {
 	ListCell   *lc;
-#if PG_VERSION_NUM >= 140000
 	TupleDesc	tupdesc = RelationGetDescr(rel);
-#endif
 
 	appendStringInfo(buf, "INSERT %sINTO ", doNothing ? "IGNORE " : "");
 	mysql_deparse_relation(buf, rel);
@@ -483,13 +481,11 @@ mysql_deparse_insert(StringInfo buf, PlannerInfo *root, Index rtindex,
 				appendStringInfoString(buf, ", ");
 			first = false;
 
-#if PG_VERSION_NUM >= 140000
 			if (TupleDescAttr(tupdesc, lfirst_int(lc) - 1)->attgenerated)
 			{
 				appendStringInfoString(buf, "DEFAULT");
 				continue;
 			}
-#endif
 			appendStringInfo(buf, "?");
 			pindex++;
 		}
@@ -771,9 +767,7 @@ mysql_deparse_update(StringInfo buf, PlannerInfo *root, Index rtindex,
 	AttrNumber	pindex;
 	bool		first;
 	ListCell   *lc;
-#if PG_VERSION_NUM >= 140000
 	TupleDesc	tupdesc = RelationGetDescr(rel);
-#endif
 
 	appendStringInfoString(buf, "UPDATE ");
 	mysql_deparse_relation(buf, rel);
@@ -794,13 +788,11 @@ mysql_deparse_update(StringInfo buf, PlannerInfo *root, Index rtindex,
 
 		mysql_deparse_column_ref(buf, rtindex, attnum, root, false);
 
-#if PG_VERSION_NUM >= 140000
 		if (TupleDescAttr(tupdesc, attnum - 1)->attgenerated)
 		{
 			appendStringInfoString(buf, " = DEFAULT");
 			continue;
 		}
-#endif
 		appendStringInfo(buf, " = ?");
 		pindex++;
 	}
@@ -2481,7 +2473,6 @@ mysql_append_limit_clause(deparse_expr_cxt *context)
 	}
 }
 
-#if PG_VERSION_NUM >= 140000
 /*
  * mysql_deparse_truncate_sql
  * 		Construct a simple "TRUNCATE <relname>" statement.
@@ -2493,7 +2484,6 @@ mysql_deparse_truncate_sql(StringInfo buf, Relation rel)
 
 	mysql_deparse_relation(buf, rel);
 }
-#endif
 
 /*
  * mysql_append_orderby_suffix

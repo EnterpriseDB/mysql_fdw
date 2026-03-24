@@ -32,8 +32,6 @@ INSERT INTO fdw519_ft3 VALUES (100, 'EMP1', 'ADMIN', 1300, '1980-12-17', 800.23,
 INSERT INTO fdw519_ft3 VALUES (200, 'EMP2', 'SALESMAN', 600, '1981-02-20', 1600.00, 300, 30);
 
 -- Check truncatable option with invalid values.
--- Since truncatable option is available since v14, this gives an error on v13
--- and previous versions.
 ALTER SERVER mysql_svr OPTIONS (ADD truncatable 'abc');
 ALTER FOREIGN TABLE fdw519_ft1 OPTIONS (ADD truncatable 'abc');
 
@@ -44,8 +42,6 @@ SELECT * FROM fdw519_ft1 ORDER BY 1;
 INSERT INTO fdw519_ft1 VALUES(1, 'One', 101);
 
 -- Set truncatable to false
--- Since truncatable option is available since v14, this gives an error on v13
--- and previous versions.
 ALTER SERVER mysql_svr OPTIONS (ADD truncatable 'false');
 
 -- Truncate the table.
@@ -53,15 +49,11 @@ TRUNCATE fdw519_ft1;
 SELECT * FROM fdw519_ft1 ORDER BY 1;
 
 -- Set truncatable to true
--- Since truncatable option is available since v14, this gives an error on v13
--- and previous versions.
 ALTER SERVER mysql_svr OPTIONS (SET truncatable 'true');
 TRUNCATE fdw519_ft1;
 SELECT * FROM fdw519_ft1 ORDER BY 1;
 
 -- truncatable to true on Server but false on table level.
--- Since truncatable option is available since v14, this gives an error on v13
--- and previous versions.
 ALTER SERVER mysql_svr OPTIONS (SET truncatable 'false');
 ALTER TABLE fdw519_ft2 OPTIONS (ADD truncatable 'true');
 SELECT * FROM fdw519_ft2 ORDER BY 1;

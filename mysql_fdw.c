@@ -45,9 +45,7 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
-#if PG_VERSION_NUM >= 140000
 #include "optimizer/appendinfo.h"
-#endif
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
@@ -206,16 +204,10 @@ static TupleTableSlot *mysqlExecForeignInsert(EState *estate,
 											  ResultRelInfo *resultRelInfo,
 											  TupleTableSlot *slot,
 											  TupleTableSlot *planSlot);
-#if PG_VERSION_NUM >= 140000
 static void mysqlAddForeignUpdateTargets(PlannerInfo *root,
 										 Index rtindex,
 										 RangeTblEntry *target_rte,
 										 Relation target_relation);
-#else
-static void mysqlAddForeignUpdateTargets(Query *parsetree,
-										 RangeTblEntry *target_rte,
-										 Relation target_relation);
-#endif
 static TupleTableSlot *mysqlExecForeignUpdate(EState *estate,
 											  ResultRelInfo *resultRelInfo,
 											  TupleTableSlot *slot,
@@ -263,11 +255,9 @@ static void mysqlBeginForeignInsert(ModifyTableState *mtstate,
 									ResultRelInfo *resultRelInfo);
 static void mysqlEndForeignInsert(EState *estate,
 								  ResultRelInfo *resultRelInfo);
-#if PG_VERSION_NUM >= 140000
 static void mysqlExecForeignTruncate(List *rels,
 									 DropBehavior behavior,
 									 bool restart_seqs);
-#endif
 
 /*
  * Helper functions
@@ -358,9 +348,7 @@ static void mysql_error_print(MYSQL *conn);
 static void mysql_stmt_error_print(MySQLFdwExecState *festate,
 								   const char *msg);
 static List *getUpdateTargetAttrs(PlannerInfo *root, RangeTblEntry *rte);
-#if PG_VERSION_NUM >= 140000
 static char *mysql_remove_quotes(char *s1);
-#endif
 
 /*
  * mysql_load_library function dynamically load the mysql's library
@@ -571,10 +559,8 @@ mysql_fdw_handler(PG_FUNCTION_ARGS)
 	/* Support functions for upper relation push-down */
 	fdwroutine->GetForeignUpperPaths = mysqlGetForeignUpperPaths;
 
-#if PG_VERSION_NUM >= 140000
 	/* Support function for TRUNCATE */
 	fdwroutine->ExecForeignTruncate = mysqlExecForeignTruncate;
-#endif
 
 
 	PG_RETURN_POINTER(fdwroutine);
@@ -1479,11 +1465,7 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 									  has_final_sort, has_limit, &retrieved_attrs,
 									  &params_list);
 
-#if PG_VERSION_NUM >= 140000
 	if (bms_is_member(foreignrel->relid, root->all_result_relids) &&
-#else
-	if (foreignrel->relid == root->parse->resultRelation &&
-#endif
 		(root->parse->commandType == CMD_UPDATE ||
 		 root->parse->commandType == CMD_DELETE))
 	{
@@ -1789,11 +1771,7 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	if (mtstate->operation == CMD_UPDATE)
 	{
 		Form_pg_attribute attr;
-#if PG_VERSION_NUM >= 140000
 		Plan	   *subplan = outerPlanState(mtstate)->plan;
-#else
-		Plan	   *subplan = mtstate->mt_plans[subplan_index]->plan;
-#endif
 
 		Assert(subplan != NULL);
 
@@ -1919,9 +1897,7 @@ mysqlExecForeignUpdate(EState *estate,
 	HeapTuple	tuple;
 	Form_pg_attribute attr;
 	bool		found_row_id_col = false;
-#if PG_VERSION_NUM >= 140000
 	TupleDesc	tupdesc = RelationGetDescr(rel);
-#endif
 
 	n_params = list_length(fmstate->retrieved_attrs);
 
@@ -1945,11 +1921,9 @@ mysqlExecForeignUpdate(EState *estate,
 			continue;
 		}
 
-#if PG_VERSION_NUM >= 140000
 		/* Ignore generated columns; they are set to DEFAULT. */
 		if (TupleDescAttr(tupdesc, attnum - 1)->attgenerated)
 			continue;
-#endif
 
 		type = TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1)->atttypid;
 		value = slot_getattr(slot, attnum, (bool *) (&isnull[bindnum]));
@@ -2039,24 +2013,14 @@ mysqlExecForeignUpdate(EState *estate,
  * 		using first column as row identification column, so we are adding
  * 		that into target list.
  */
-#if PG_VERSION_NUM >= 140000
 static void
 mysqlAddForeignUpdateTargets(PlannerInfo *root,
 							 Index rtindex,
 							 RangeTblEntry *target_rte,
 							 Relation target_relation)
-#else
-static void
-mysqlAddForeignUpdateTargets(Query *parsetree,
-							 RangeTblEntry *target_rte,
-							 Relation target_relation)
-#endif
 {
 	Var		   *var;
 	const char *attrname;
-#if PG_VERSION_NUM < 140000
-	TargetEntry *tle;
-#endif
 
 	/*
 	 * What we need is the rowid which is the first column
@@ -2065,11 +2029,7 @@ mysqlAddForeignUpdateTargets(Query *parsetree,
 		TupleDescAttr(RelationGetDescr(target_relation), 0);
 
 	/* Make a Var representing the desired value */
-#if PG_VERSION_NUM >= 140000
 	var = makeVar(rtindex,
-#else
-	var = makeVar(parsetree->resultRelation,
-#endif
 				  1,
 				  attr->atttypid,
 				  attr->atttypmod,
@@ -2079,18 +2039,8 @@ mysqlAddForeignUpdateTargets(Query *parsetree,
 	/* Get name of the row identifier column */
 	attrname = NameStr(attr->attname);
 
-#if PG_VERSION_NUM >= 140000
 	/* Register it as a row-identity column needed by this target rel */
 	add_row_identity_var(root, var, rtindex, attrname);
-#else
-	/* Wrap it in a TLE with the right name ... */
-	tle = makeTargetEntry((Expr *) var,
-						  list_length(parsetree->targetList) + 1,
-						  pstrdup(attrname), true);
-
-	/* ... and add it to the query's targetlist */
-	parsetree->targetList = lappend(parsetree->targetList, tle);
-#endif
 }
 
 /*
@@ -2169,9 +2119,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	MYSQL_RES  *volatile res = NULL;
 	MYSQL_ROW	row;
 	ListCell   *lc;
-#if PG_VERSION_NUM >= 140000
 	bool		import_generated = true;
-#endif
 
 	/* Parse statement options */
 	foreach(lc, stmt->options)
@@ -2184,10 +2132,8 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			import_not_null = defGetBoolean(def);
 		else if (strcmp(def->defname, "import_enum_as_text") == 0)
 			import_enum_as_text = defGetBoolean(def);
-#if PG_VERSION_NUM >= 140000
 		else if (strcmp(def->defname, "import_generated") == 0)
 			import_generated = defGetBoolean(def);
-#endif
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
@@ -2258,13 +2204,9 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 					 "  END,"
 					 "  c.COLUMN_TYPE,"
 					 "  IF(c.IS_NULLABLE = 'NO', 't', 'f'),"
-#if PG_VERSION_NUM >= 140000
 					 "  c.COLUMN_DEFAULT,"
 					 "  c.EXTRA,"
 					 "  c.GENERATION_EXPRESSION"
-#else
-					 "  c.COLUMN_DEFAULT"
-#endif
 					 " FROM"
 					 "  information_schema.TABLES AS t"
 					 " JOIN"
@@ -2328,9 +2270,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			char	   *typedfn;
 			char	   *attnotnull;
 			char	   *attdefault;
-#if PG_VERSION_NUM >= 140000
 			char	   *attgenerated;
-#endif
 
 			/*
 			 * If the table has no columns, we'll see nulls here. Also, if we
@@ -2394,8 +2334,6 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			if (import_default && attdefault != NULL)
 				appendStringInfo(&buf, " DEFAULT %s", attdefault);
 
-#if PG_VERSION_NUM >= 140000
-
 			/*
 			 * Add GENERATED if needed.  Map VIRTUAL GENERATED to STORED in
 			 * Postgres.
@@ -2415,7 +2353,6 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 								 generated_expr);
 				pfree(generated_expr);
 			}
-#endif
 
 			/* Add NOT NULL if needed */
 			if (import_not_null && attnotnull[0] == 't')
@@ -3703,18 +3640,9 @@ mysql_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 									  grouped_rel->relids,
 									  NULL,
 									  NULL);
-#elif PG_VERSION_NUM >= 140000
+#else
 			rinfo = make_restrictinfo(root,
 									  expr,
-									  true,
-									  false,
-									  false,
-									  root->qual_security_level,
-									  grouped_rel->relids,
-									  NULL,
-									  NULL);
-#else
-			rinfo = make_restrictinfo(expr,
 									  true,
 									  false,
 									  false,
@@ -3879,17 +3807,10 @@ mysql_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	total_cost = 10 + startup_cost;
 
 	/* Estimate output tuples which should be same as number of groups */
-#if PG_VERSION_NUM >= 140000
 	num_groups = estimate_num_groups(root,
 									 get_sortgrouplist_exprs(root->parse->groupClause,
 															 fpinfo->grouped_tlist),
 									 input_rel->rows, NULL, NULL);
-#else
-	num_groups = estimate_num_groups(root,
-									 get_sortgrouplist_exprs(root->parse->groupClause,
-															 fpinfo->grouped_tlist),
-									 input_rel->rows, NULL);
-#endif
 
 	/* Create and add foreign path to the grouping relation. */
 #if PG_VERSION_NUM >= 180000
@@ -4792,7 +4713,6 @@ mysql_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	add_path(final_rel, (Path *) final_path);
 }
 
-#if PG_VERSION_NUM >= 140000
 /*
  * mysqlExecForeignTruncate
  *		Truncate one or more foreign tables.
@@ -4903,9 +4823,7 @@ mysqlExecForeignTruncate(List *rels,
 		pfree(sql.data);
 	}
 }
-#endif
 
-#if PG_VERSION_NUM >= 140000
 /*
  * mysql_remove_quotes
  *
@@ -4949,7 +4867,6 @@ mysql_remove_quotes(char *s1)
 
 	return s2;
 }
-#endif
 
 /*
  * mysql_display_pushdown_list

@@ -332,9 +332,7 @@ extern EquivalenceMember *mysql_find_em_for_rel_target(PlannerInfo *root,
 													   EquivalenceClass *ec,
 													   RelOptInfo *rel);
 extern bool mysql_is_builtin(Oid objectId);
-#if PG_VERSION_NUM >= 140000
 extern void mysql_deparse_truncate_sql(StringInfo buf, Relation rel);
-#endif
 extern char *mysql_quote_identifier(const char *str, char quotechar);
 
 /* connection.c headers */
