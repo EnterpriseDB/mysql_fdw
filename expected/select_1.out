@@ -2201,6 +2201,236 @@ SELECT
    1
 (1 row)
 
+-- FDW-741: Do not add expression IS NULL clause in ORDER BY when column
+-- marked as NOT NULL to avoid performance impact.
+CREATE FOREIGN TABLE fdw741_t1(c1 INTEGER NOT NULL, c2 VARCHAR(10) NOT NULL, c3 CHAR(9), c4 BIGINT, c5 pg_catalog.Date, c6 DECIMAL, c7 INTEGER NOT NULL, c8 SMALLINT)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'test_tbl1');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1 FROM fdw741_t1 ORDER BY c1;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Foreign Scan on public.fdw741_t1
+   Output: c1
+   Remote query: SELECT `c1` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c1` ASC
+(3 rows)
+
+SELECT c1 FROM fdw741_t1 ORDER BY c1;
+  c1  
+------
+  100
+  200
+  300
+  400
+  500
+  600
+  700
+  800
+  900
+ 1000
+ 1100
+ 1200
+ 1300
+ 1400
+(14 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c4 FROM fdw741_t1 ORDER BY c4;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Foreign Scan on public.fdw741_t1
+   Output: c4
+   Remote query: SELECT `c4` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c4` IS NULL, `c4` ASC
+(3 rows)
+
+SELECT c4 FROM fdw741_t1 ORDER BY c4;
+  c4  
+------
+  400
+  400
+  600
+  600
+  600
+  600
+  600
+  700
+  800
+  900
+  900
+  900
+ 1300
+     
+(14 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM fdw741_t1 ORDER BY c1, c4;
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.fdw741_t1
+   Output: c1, c4
+   Remote query: SELECT `c1`, `c4` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c1` ASC, `c4` IS NULL, `c4` ASC
+(3 rows)
+
+SELECT c1, c4 FROM fdw741_t1 ORDER BY c1, c4;
+  c1  |  c4  
+------+------
+  100 | 1300
+  200 |  600
+  300 |  600
+  400 |  900
+  500 |  600
+  600 |  900
+  700 |  900
+  800 |  400
+  900 |     
+ 1000 |  600
+ 1100 |  800
+ 1200 |  600
+ 1300 |  400
+ 1400 |  700
+(14 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c7 FROM fdw741_t1 ORDER BY c1, c7;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Foreign Scan on public.fdw741_t1
+   Output: c1, c7
+   Remote query: SELECT `c1`, `c7` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY `c1` ASC, `c7` ASC
+(3 rows)
+
+SELECT c1, c7 FROM fdw741_t1 ORDER BY c1, c7;
+  c1  |  c7  
+------+------
+  100 |     
+  200 |  300
+  300 |  500
+  400 |     
+  500 | 1400
+  600 |     
+  700 |     
+  800 |     
+  900 |     
+ 1000 |    0
+ 1100 |     
+ 1200 |     
+ 1300 |     
+ 1400 |     
+(14 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c7 FROM fdw741_t1 ORDER BY (c1 + c7);
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Foreign Scan on public.fdw741_t1
+   Output: c1, c7, (c1 + c7)
+   Remote query: SELECT `c1`, `c7` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY (`c1` + `c7`) ASC
+(3 rows)
+
+SELECT c1, c7 FROM fdw741_t1 ORDER BY (c1 + c7);
+  c1  |  c7  
+------+------
+  100 |     
+  400 |     
+  600 |     
+  700 |     
+  800 |     
+  900 |     
+ 1100 |     
+ 1200 |     
+ 1300 |     
+ 1400 |     
+  200 |  300
+  300 |  500
+ 1000 |    0
+  500 | 1400
+(14 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c2 FROM fdw741_t1 ORDER BY lower(c2);
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Foreign Scan on public.fdw741_t1
+   Output: c2, lower((c2)::text)
+   Remote query: SELECT `c2` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY lower(`c2`) ASC
+(3 rows)
+
+SELECT c2 FROM fdw741_t1 ORDER BY lower(c2);
+  c2   
+-------
+ EMP1
+ EMP10
+ EMP11
+ EMP12
+ EMP13
+ EMP14
+ EMP2
+ EMP3
+ EMP4
+ EMP5
+ EMP6
+ EMP7
+ EMP8
+ EMP9
+(14 rows)
+
+ALTER FOREIGN TABLE fdw741_t1 ALTER COLUMN c2 DROP not null;
+ALTER FOREIGN TABLE fdw741_t1 ALTER COLUMN c7 DROP not null;
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c3 FROM fdw741_t1 ORDER BY lower(c2);
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.fdw741_t1
+   Output: c3, lower((c2)::text)
+   Remote query: SELECT `c2`, `c3` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY lower(`c2`) IS NULL, lower(`c2`) ASC
+(3 rows)
+
+SELECT c3 FROM fdw741_t1 ORDER BY lower(c2);
+    c3     
+-----------
+ ADMIN    
+ SALESMAN 
+ ADMIN    
+ ADMIN    
+ FINANCE  
+ ADMIN    
+ SALESMAN 
+ SALESMAN 
+ MANAGER  
+ SALESMAN 
+ MANAGER  
+ MANAGER  
+ FINANCE  
+ HEAD     
+(14 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c7 FROM fdw741_t1 ORDER BY (c1 + c7);
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.fdw741_t1
+   Output: c1, c7, (c1 + c7)
+   Remote query: SELECT `c1`, `c7` FROM `mysql_fdw_regress`.`test_tbl1` ORDER BY (`c1` + `c7`) IS NULL, (`c1` + `c7`) ASC
+(3 rows)
+
+SELECT c1, c7 FROM fdw741_t1 ORDER BY (c1 + c7);
+  c1  |  c7  
+------+------
+  200 |  300
+  300 |  500
+ 1000 |    0
+  500 | 1400
+  100 |     
+  400 |     
+  600 |     
+  700 |     
+  800 |     
+  900 |     
+ 1100 |     
+ 1200 |     
+ 1300 |     
+ 1400 |     
+(14 rows)
+
 -- Cleanup
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
@@ -2228,6 +2458,7 @@ DROP FOREIGN TABLE test_tbl1;
 DROP FOREIGN TABLE f_test6;
 DROP FOREIGN TABLE f_test7;
 DROP FOREIGN TABLE timestamp_test;
+DROP FOREIGN TABLE fdw741_t1;
 DROP TYPE size_t;
 DROP TYPE enum_t1_size_t;
 DROP TYPE enum_t2_size_t;

@@ -91,6 +91,14 @@ typedef struct deparse_expr_cxt
 	StringInfo	buf;			/* output buffer to append to */
 	List	  **params_list;	/* exprs that will become remote Params */
 	bool		is_not_distinct_op; /* True in case of IS NOT DISTINCT clause */
+	bool		is_order_by_operation;		/* True while deparsing an ORDER BY
+											 * expression; used to trigger
+											 * nullability checks on Vars */
+	bool		null_handling_in_order_by;	/* True if any Var in the current
+											 * ORDER BY expression is nullable,
+											 * meaning we need to add IS NULL /
+											 * IS NOT NULL prefix for correct
+											 * NULL sort ordering */
 } deparse_expr_cxt;
 
 #define REL_ALIAS_PREFIX	"r"
@@ -153,6 +161,7 @@ static void mysql_append_limit_clause(deparse_expr_cxt *context);
 static void mysql_append_orderby_suffix(Expr *em_expr, const char *sortby_dir,
 										Oid sortcoltype, bool nulls_first,
 										deparse_expr_cxt *context);
+static bool mysql_is_column_nullable(Oid relid, AttrNumber attnum);
 
 /*
  * Functions to construct string representation of a specific types.
@@ -271,6 +280,7 @@ mysql_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 	context.params_list = params_list;
 	context.scanrel = IS_UPPER_REL(rel) ? fpinfo->outerrel : rel;
 	context.is_not_distinct_op = false;
+	context.is_order_by_operation = false;
 
 	/* Construct SELECT clause */
 	mysql_deparse_select_sql(tlist, retrieved_attrs, &context);
@@ -835,6 +845,26 @@ mysql_deparse_var(Var *node, deparse_expr_cxt *context)
 		/* Var belongs to foreign table */
 		mysql_deparse_column_ref(context->buf, node->varno, node->varattno,
 								 context->root, qualify_col);
+
+		/*
+		 * Check if this is for order by operation and then check for
+		 * NOT NULL markings on the column, if not done already.  We skip
+		 * the check once null_handling_in_order_by is already true, since
+		 * even one nullable Var in the expression is enough to require the
+		 * IS NULL prefix.  This also avoids redundant syscache lookups when
+		 * the expression is deparsed a second time for the actual sort key.
+		 */
+		if (context->is_order_by_operation &&
+			!context->null_handling_in_order_by)
+		{
+			RangeTblEntry *rte;
+
+			/* Get RangeTblEntry from array in PlannerInfo. */
+			rte = planner_rt_fetch(node->varno, context->root);
+
+			if (mysql_is_column_nullable(rte->relid, node->varattno))
+				context->null_handling_in_order_by = true;
+		}
 	}
 	else
 	{
@@ -2092,6 +2122,7 @@ mysql_deparse_from_expr_for_rel(StringInfo buf, PlannerInfo *root,
 			context.root = root;
 			context.params_list = params_list;
 			context.is_not_distinct_op = false;
+			context.is_order_by_operation = false;
 
 			appendStringInfo(buf, "(");
 			mysql_append_conditions(fpinfo->joinclauses, &context);
@@ -2477,24 +2508,43 @@ mysql_append_orderby_suffix(Expr *em_expr, const char *sortby_dir,
 
 	Assert(sortby_dir != NULL);
 
-	deparseExpr(em_expr, context);
+	/*
+	 * Signal to mysql_deparse_var that we are deparsing an ORDER BY
+	 * expression, so it should check column nullability.
+	 */
+	context->is_order_by_operation = true;
+	/* Reset for each ORDER BY key. */
+	context->null_handling_in_order_by = false;
 
 	/*
-	 * Since MySQL doesn't have NULLS FIRST/LAST clause, we use IS NOT NULL or
-	 * IS NULL instead.
+	 * First, deparse the expression.  During this, mysql_deparse_var will
+	 * set null_handling_in_order_by to true if any referenced column is
+	 * nullable.  If so, we prepend an IS NULL / IS NOT NULL sort prefix to
+	 * get the correct NULL ordering behavior that MySQL lacks natively.
 	 */
-	if (nulls_first)
-		appendStringInfoString(buf, " IS NOT NULL");
-	else
-		appendStringInfoString(buf, " IS NULL");
-
-	/* Add delimiter */
-	appendStringInfoString(buf, ", ");
-
 	deparseExpr(em_expr, context);
+
+	if (context->null_handling_in_order_by)
+	{
+		/*
+		 * Since MySQL doesn't have NULLS FIRST/LAST clause, we use
+		 * IS NOT NULL or IS NULL instead.
+		 */
+		if (nulls_first)
+			appendStringInfoString(buf, " IS NOT NULL");
+		else
+			appendStringInfoString(buf, " IS NULL");
+
+		/* Add delimiter */
+		appendStringInfoString(buf, ", ");
+
+		deparseExpr(em_expr, context);
+	}
 
 	/* Add the ASC/DESC */
 	appendStringInfo(buf, " %s", sortby_dir);
+
+	context->is_order_by_operation = false;
 }
 
 /*
@@ -2523,4 +2573,34 @@ mysql_is_foreign_pathkey(PlannerInfo *root, RelOptInfo *baserel,
 		return false;
 
 	return true;
+}
+
+/*
+ * mysql_is_column_nullable
+ *		Given the relation id and the attribute number, fetch the
+ *		"attnotnull" field and return true if attribute is nullable, otherwise
+ *		false.
+ */
+static bool
+mysql_is_column_nullable(Oid relid, AttrNumber attnum)
+{
+	HeapTuple tup;
+	Form_pg_attribute attrForm;
+	bool is_nullable = true;
+
+	tup = SearchSysCache2(ATTNUM,
+						  ObjectIdGetDatum(relid),
+						  Int16GetDatum(attnum));
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for attribute %d of relation %u", attnum, relid);
+
+	attrForm = (Form_pg_attribute) GETSTRUCT(tup);
+
+	/* attnotnull = true means NOT NULL constraint */
+	if (attrForm->attnotnull)
+		is_nullable = false;
+
+	ReleaseSysCache(tup);
+
+	return is_nullable;
 }

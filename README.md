@@ -88,7 +88,9 @@ clause to the remote server so that we get the ordered result set from the
 foreign server itself. It might help us to have an efficient merge join.
 NULLs behavior is opposite on the MySQL server. Thus to get an equivalent
 result, we add the "expression IS NULL" clause at the beginning of each of
-the ORDER BY expressions.
+the ORDER BY expressions and skip the same when column is marked as NOT NULL
+on PostgreSQL side. It is possible that column is marked as NOT NULL on MySQL
+side but not on PostgreSQL side, in this case result may differ.
 
 #### LIMIT OFFSET push-down
 `mysql_fdw` now also supports limit offset push-down. Wherever possible,
