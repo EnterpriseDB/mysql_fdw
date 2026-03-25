@@ -4,8 +4,9 @@ MySQL Foreign Data Wrapper for PostgreSQL
 This is a foreign data wrapper (FDW) to connect [PostgreSQL](https://www.postgresql.org/)
 to [MySQL][1].
 
-Please note that this version of mysql_fdw works with PostgreSQL and EDB
-Postgres Advanced Server 14, 15, 16, 17, and 18.
+Please note that this version of mysql_fdw works with PostgreSQL,
+EDB Postgres Advanced Server, and EDB Postgres Extended Server
+14, 15, 16, 17, and 18.
 
 Contents
 --------
