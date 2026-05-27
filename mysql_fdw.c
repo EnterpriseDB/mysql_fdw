@@ -988,7 +988,6 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 	double		filtered = 0;
 	MYSQL	   *conn;
 	MYSQL_ROW	row;
-	Bitmapset  *attrs_used = NULL;
 	mysql_opt  *options;
 	Oid			userid = GetUserId();
 	ForeignServer *server;
@@ -1022,9 +1021,6 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 			 options->sql_mode);
 	if (mysql_query(conn, sql_mode) != 0)
 		mysql_error_print(conn);
-
-	pull_varattnos((Node *) baserel->reltarget->exprs, baserel->relid,
-				   &attrs_used);
 
 	foreach(lc, baserel->baserestrictinfo)
 	{
