@@ -41,6 +41,8 @@
 
 #define CR_NO_ERROR 0
 
+#define mysql_fetch_lengths (*_mysql_fetch_lengths)
+#define mysql_real_escape_string (*_mysql_real_escape_string)
 #define mysql_options (*_mysql_options)
 #define mysql_stmt_prepare (*_mysql_stmt_prepare)
 #define mysql_stmt_execute (*_mysql_stmt_execute)
@@ -199,6 +201,15 @@ typedef struct MySQLFdwExecState
 	/* Array for holding column values. */
 	Datum	   *wr_values;
 	bool	   *wr_nulls;
+
+	/*
+	 * When the remote server (e.g. Apache Doris) does not support the MySQL
+	 * binary/prepared-statement protocol, we fall back to the text protocol:
+	 * mysql_query() + mysql_store_result() + mysql_fetch_row().
+	 */
+	bool		use_text_protocol;	/* true => text protocol fallback */
+	MYSQL_RES  *text_result;		/* result set for text protocol */
+	MYSQL_ROW	text_row;			/* current row in text protocol */
 } MySQLFdwExecState;
 
 typedef struct MySQLFdwRelationInfo
@@ -291,6 +302,10 @@ extern unsigned int ((mysql_stmt_errno) (MYSQL_STMT *stmt));
 extern unsigned int ((mysql_errno) (MYSQL *mysql));
 extern unsigned int ((mysql_num_fields) (MYSQL_RES *result));
 extern unsigned int ((mysql_num_rows) (MYSQL_RES *result));
+extern unsigned long *((mysql_fetch_lengths) (MYSQL_RES *result));
+extern unsigned long ((mysql_real_escape_string) (MYSQL *mysql, char *to,
+												  const char *from,
+												  unsigned long length));
 
 
 /* option.c headers */

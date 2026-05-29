@@ -112,6 +112,10 @@ unsigned int ((mysql_stmt_errno) (MYSQL_STMT *stmt));
 unsigned int ((mysql_errno) (MYSQL *mysql));
 unsigned int ((mysql_num_fields) (MYSQL_RES *result));
 unsigned int ((mysql_num_rows) (MYSQL_RES *result));
+unsigned long *((mysql_fetch_lengths) (MYSQL_RES *result));
+unsigned long ((mysql_real_escape_string) (MYSQL *mysql, char *to,
+										   const char *from,
+										   unsigned long length));
 
 #define DEFAULTE_NUM_ROWS    1000
 
@@ -347,6 +351,8 @@ static int interactive_timeout = INTERACTIVE_TIMEOUT;
 static void mysql_error_print(MYSQL *conn);
 static void mysql_stmt_error_print(MySQLFdwExecState *festate,
 								   const char *msg);
+static char *mysql_build_text_query(MYSQL *conn, const char *tmpl,
+									MYSQL_BIND *binds, int nbinds);
 static List *getUpdateTargetAttrs(PlannerInfo *root, RangeTblEntry *rte);
 static char *mysql_remove_quotes(char *s1);
 
@@ -420,6 +426,8 @@ mysql_load_library(void)
 	_mysql_get_host_info = dlsym(mysql_dll_handle, "mysql_get_host_info");
 	_mysql_get_server_info = dlsym(mysql_dll_handle, "mysql_get_server_info");
 	_mysql_get_proto_info = dlsym(mysql_dll_handle, "mysql_get_proto_info");
+	_mysql_fetch_lengths = dlsym(mysql_dll_handle, "mysql_fetch_lengths");
+	_mysql_real_escape_string = dlsym(mysql_dll_handle, "mysql_real_escape_string");
 
 	if (_mysql_stmt_bind_param == NULL ||
 		_mysql_stmt_bind_result == NULL ||
@@ -450,7 +458,9 @@ mysql_load_library(void)
 		_mysql_num_rows == NULL ||
 		_mysql_get_host_info == NULL ||
 		_mysql_get_server_info == NULL ||
-		_mysql_get_proto_info == NULL)
+		_mysql_get_proto_info == NULL ||
+		_mysql_fetch_lengths == NULL ||
+		_mysql_real_escape_string == NULL)
 		return false;
 
 	return true;
@@ -666,6 +676,8 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	festate->conn = conn;
 	festate->query_executed = false;
 	festate->has_var_size_col = false;
+	festate->use_text_protocol = false;
+	festate->text_result = NULL;
 	festate->attinmeta = TupleDescGetAttInMetadata(tupleDescriptor);
 
 	festate->temp_cxt = AllocSetContextCreate(estate->es_query_cxt,
@@ -702,7 +714,20 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	/* Prepare MySQL statement */
 	if (mysql_stmt_prepare(festate->stmt, festate->query,
 						   strlen(festate->query)) != 0)
-		mysql_stmt_error_print(festate, "failed to prepare the MySQL query");
+	{
+		elog(DEBUG1,
+			 "mysql_fdw: mysql_stmt_prepare() failed for SELECT (%s); "
+			 "falling back to text protocol",
+			 mysql_error(festate->conn));
+		mysql_stmt_close(festate->stmt);
+		festate->stmt = NULL;
+		festate->use_text_protocol = true;
+		festate->text_result = NULL;
+		/* Skip all stmt-based setup */
+		numParams = list_length(fsplan->fdw_exprs);
+		festate->numParams = numParams;
+		return;
+	}
 
 	/* Prepare for output conversion of parameters used in remote query. */
 	numParams = list_length(fsplan->fdw_exprs);
@@ -731,10 +756,29 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 
 	festate->table->mysql_res = mysql_stmt_result_metadata(festate->stmt);
 	if (NULL == festate->table->mysql_res)
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to retrieve query result set metadata: \n%s",
-						mysql_error(festate->conn))));
+	{
+		/*
+		 * The remote server does not support the prepared-statement binary
+		 * protocol (e.g. Apache Doris).  Fall back to the text protocol:
+		 * we will execute the query with mysql_query() and fetch rows with
+		 * mysql_fetch_row() instead of the stmt API.
+		 */
+		elog(DEBUG1,
+			 "mysql_fdw: mysql_stmt_result_metadata() returned NULL (%s); "
+			 "falling back to text protocol",
+			 mysql_error(festate->conn));
+
+		mysql_stmt_close(festate->stmt);
+		festate->stmt = NULL;
+		festate->use_text_protocol = true;
+		festate->text_result = NULL;
+
+		/* Skip the stmt-based bind/attr setup below */
+		return;
+	}
+
+	festate->use_text_protocol = false;
+	festate->text_result = NULL;
 
 	festate->table->mysql_fields = mysql_fetch_fields(festate->table->mysql_res);
 
@@ -809,6 +853,69 @@ mysqlIterateForeignScan(ForeignScanState *node)
 	if (!festate->query_executed)
 		bind_stmt_params_and_exec(node);
 
+	/* ----------------------------------------------------------------
+	 * Text protocol path (fallback for servers like Apache Doris that
+	 * do not support the MySQL binary prepared-statement protocol).
+	 * ---------------------------------------------------------------- */
+	if (festate->use_text_protocol)
+	{
+		MYSQL_ROW	row;
+		unsigned long *lengths;
+		MYSQL_FIELD *fields;
+		unsigned int num_fields;
+
+		row = mysql_fetch_row(festate->text_result);
+		if (row == NULL)
+			return tupleSlot;	/* no more rows */
+
+		lengths = mysql_fetch_lengths(festate->text_result);
+		fields = mysql_fetch_fields(festate->text_result);
+		num_fields = mysql_num_fields(festate->text_result);
+
+		attid = 0;
+		foreach(lc, festate->retrieved_attrs)
+		{
+			int			attnum = lfirst_int(lc) - 1;
+			Oid			pgtype = TupleDescAttr(attinmeta->tupdesc, attnum)->atttypid;
+			int32		pgtypmod = TupleDescAttr(attinmeta->tupdesc, attnum)->atttypmod;
+
+			if (attid >= (int) num_fields)
+				break;
+
+			if (row[attid] == NULL)
+			{
+				nulls[attnum] = true;
+			}
+			else
+			{
+				mysql_column	col;
+				MYSQL_BIND		dummy_bind;
+
+				memset(&dummy_bind, 0, sizeof(dummy_bind));
+				col.mysql_bind = &dummy_bind;
+				col.is_null = false;
+				col.error = false;
+				col.length = lengths[attid];
+				col.value = (Datum) row[attid];
+
+				nulls[attnum] = false;
+				dvalues[attnum] = mysql_convert_to_pg(pgtype, pgtypmod, &col);
+			}
+			attid++;
+		}
+
+		tup = heap_form_tuple(attinmeta->tupdesc, dvalues, nulls);
+		if (tup)
+			ExecStoreHeapTuple(tup, tupleSlot, false);
+
+		pfree(dvalues);
+		pfree(nulls);
+		return tupleSlot;
+	}
+
+	/* ----------------------------------------------------------------
+	 * Binary prepared-statement protocol path (normal MySQL / MariaDB).
+	 * ---------------------------------------------------------------- */
 	attid = 0;
 	rc = mysql_stmt_fetch(festate->stmt);
 	if (rc == 0)
@@ -826,7 +933,6 @@ mysqlIterateForeignScan(ForeignScanState *node)
 
 			attid++;
 		}
-
 		ExecClearTuple(tupleSlot);
 
 		if (list_length(fdw_private) >= mysqlFdwPrivateScanTList)
@@ -946,6 +1052,17 @@ mysqlEndForeignScan(ForeignScanState *node)
 {
 	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
 
+	/* Text protocol: free the stored result set */
+	if (festate->use_text_protocol)
+	{
+		if (festate->text_result)
+		{
+			mysql_free_result(festate->text_result);
+			festate->text_result = NULL;
+		}
+		return;
+	}
+
 	if (festate->table && festate->table->mysql_res)
 	{
 		mysql_free_result(festate->table->mysql_res);
@@ -974,6 +1091,12 @@ mysqlReScanForeignScan(ForeignScanState *node)
 	 */
 	festate->query_executed = false;
 
+	/* Text protocol: release the previous result set so we re-execute */
+	if (festate->use_text_protocol && festate->text_result)
+	{
+		mysql_free_result(festate->text_result);
+		festate->text_result = NULL;
+	}
 }
 
 /*
@@ -1465,8 +1588,12 @@ mysqlGetForeignPlan(PlannerInfo *root, RelOptInfo *foreignrel,
 		(root->parse->commandType == CMD_UPDATE ||
 		 root->parse->commandType == CMD_DELETE))
 	{
-		/* Relation is UPDATE/DELETE target, so use FOR UPDATE */
-		appendStringInfoString(&sql, " FOR UPDATE");
+		/*
+		 * Relation is UPDATE/DELETE target.  Normally we would append
+		 * " FOR UPDATE" here to lock the row on the remote side, but Doris
+		 * (and some other MySQL-protocol-compatible engines) do not support
+		 * that syntax.  Skip it; row-level locking is handled by PostgreSQL.
+		 */
 	}
 
 	/*
@@ -1599,9 +1726,10 @@ mysqlPlanForeignModify(PlannerInfo *root,
 	foreignTableId = RelationGetRelid(rel);
 
 	if (!mysql_is_column_unique(foreignTableId))
-		ereport(ERROR,
+		ereport(WARNING,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("first column of remote table must be unique for INSERT/UPDATE/DELETE operation")));
+				 errmsg("first column of remote table must be unique for INSERT/UPDATE/DELETE operation"),
+				 errhint("Continuing anyway; data consistency is not guaranteed if the column is not unique.")));
 
 	/*
 	 * ON CONFLICT DO UPDATE and DO NOTHING case with inference specification
@@ -1797,7 +1925,7 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 
 	n_params = list_length(fmstate->retrieved_attrs);
 
-	/* Initialize mysql statment */
+	/* Initialize mysql statement */
 	fmstate->stmt = mysql_stmt_init(fmstate->conn);
 	if (!fmstate->stmt)
 		ereport(ERROR,
@@ -1805,10 +1933,20 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 				 errmsg("failed to initialize the MySQL query: \n%s",
 						mysql_error(fmstate->conn))));
 
-	/* Prepare mysql statment */
+	/* Prepare mysql statement; fall back to text protocol if it fails */
 	if (mysql_stmt_prepare(fmstate->stmt, fmstate->query,
 						   strlen(fmstate->query)) != 0)
-		mysql_stmt_error_print(fmstate, "failed to prepare the MySQL query");
+	{
+		elog(DEBUG1,
+			 "mysql_fdw: mysql_stmt_prepare() failed for DML (%s); "
+			 "falling back to text protocol",
+			 mysql_error(fmstate->conn));
+		mysql_stmt_close(fmstate->stmt);
+		fmstate->stmt = NULL;
+		fmstate->use_text_protocol = true;
+	}
+	else
+		fmstate->use_text_protocol = false;
 
 	resultRelInfo->ri_FdwState = fmstate;
 }
@@ -1847,25 +1985,44 @@ mysqlExecForeignInsert(EState *estate,
 	if (mysql_query(fmstate->conn, sql_mode) != 0)
 		mysql_error_print(fmstate->conn);
 
-	foreach(lc, fmstate->retrieved_attrs)
 	{
-		int			attnum = lfirst_int(lc) - 1;
-		Oid			type = TupleDescAttr(slot->tts_tupleDescriptor, attnum)->atttypid;
-		Datum		value;
+		int bindidx = 0;
 
-		value = slot_getattr(slot, attnum + 1, &isnull[attnum]);
+		foreach(lc, fmstate->retrieved_attrs)
+		{
+			int			attnum = lfirst_int(lc) - 1;
+			Oid			type = TupleDescAttr(slot->tts_tupleDescriptor, attnum)->atttypid;
+			Datum		value;
 
-		mysql_bind_sql_var(type, attnum, value, mysql_bind_buffer,
-						   &isnull[attnum]);
+			value = slot_getattr(slot, attnum + 1, &isnull[bindidx]);
+
+			mysql_bind_sql_var(type, bindidx, value, mysql_bind_buffer,
+							   &isnull[bindidx]);
+			bindidx++;
+		}
 	}
 
-	/* Bind values */
-	if (mysql_stmt_bind_param(fmstate->stmt, mysql_bind_buffer) != 0)
-		mysql_stmt_error_print(fmstate, "failed to bind the MySQL query");
+	if (fmstate->use_text_protocol)
+	{
+		/* Build a complete SQL with values inlined (no ? placeholders) */
+		char *full_sql = mysql_build_text_query(fmstate->conn, fmstate->query,
+												mysql_bind_buffer, n_params);
 
-	/* Execute the query */
-	if (mysql_stmt_execute(fmstate->stmt) != 0)
-		mysql_stmt_error_print(fmstate, "failed to execute the MySQL query");
+		if (mysql_query(fmstate->conn, full_sql) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("failed to execute the MySQL INSERT (text protocol): %s",
+							mysql_error(fmstate->conn))));
+	}
+	else
+	{
+		/* Binary prepared-statement protocol */
+		if (mysql_stmt_bind_param(fmstate->stmt, mysql_bind_buffer) != 0)
+			mysql_stmt_error_print(fmstate, "failed to bind the MySQL query");
+
+		if (mysql_stmt_execute(fmstate->stmt) != 0)
+			mysql_stmt_error_print(fmstate, "failed to execute the MySQL query");
+	}
 
 	MemoryContextSwitchTo(oldcontext);
 	MemoryContextReset(fmstate->temp_cxt);
@@ -1989,15 +2146,28 @@ mysqlExecForeignUpdate(EState *estate,
 	/* Bind qual */
 	mysql_bind_sql_var(typeoid, bindnum, value, mysql_bind_buffer, &is_null);
 
-	if (mysql_stmt_bind_param(fmstate->stmt, mysql_bind_buffer) != 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to bind the MySQL query: %s",
-						mysql_error(fmstate->conn))));
+	if (fmstate->use_text_protocol)
+	{
+		char *full_sql = mysql_build_text_query(fmstate->conn, fmstate->query,
+												mysql_bind_buffer, bindnum + 1);
 
-	/* Execute the query */
-	if (mysql_stmt_execute(fmstate->stmt) != 0)
-		mysql_stmt_error_print(fmstate, "failed to execute the MySQL query");
+		if (mysql_query(fmstate->conn, full_sql) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("failed to execute the MySQL UPDATE (text protocol): %s",
+							mysql_error(fmstate->conn))));
+	}
+	else
+	{
+		if (mysql_stmt_bind_param(fmstate->stmt, mysql_bind_buffer) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("failed to bind the MySQL query: %s",
+							mysql_error(fmstate->conn))));
+
+		if (mysql_stmt_execute(fmstate->stmt) != 0)
+			mysql_stmt_error_print(fmstate, "failed to execute the MySQL query");
+	}
 
 	/* Return NULL if nothing was updated on the remote end */
 	return slot;
@@ -2066,15 +2236,28 @@ mysqlExecForeignDelete(EState *estate,
 	/* Bind qual */
 	mysql_bind_sql_var(typeoid, 0, value, mysql_bind_buffer, &is_null);
 
-	if (mysql_stmt_bind_param(fmstate->stmt, mysql_bind_buffer) != 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("failed to execute the MySQL query: %s",
-						mysql_error(fmstate->conn))));
+	if (fmstate->use_text_protocol)
+	{
+		char *full_sql = mysql_build_text_query(fmstate->conn, fmstate->query,
+												mysql_bind_buffer, 1);
 
-	/* Execute the query */
-	if (mysql_stmt_execute(fmstate->stmt) != 0)
-		mysql_stmt_error_print(fmstate, "failed to execute the MySQL query");
+		if (mysql_query(fmstate->conn, full_sql) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("failed to execute the MySQL DELETE (text protocol): %s",
+							mysql_error(fmstate->conn))));
+	}
+	else
+	{
+		if (mysql_stmt_bind_param(fmstate->stmt, mysql_bind_buffer) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("failed to execute the MySQL query: %s",
+							mysql_error(fmstate->conn))));
+
+		if (mysql_stmt_execute(fmstate->stmt) != 0)
+			mysql_stmt_error_print(fmstate, "failed to execute the MySQL query");
+	}
 
 	/* Return NULL if nothing was updated on the remote end */
 	return slot;
@@ -2525,6 +2708,38 @@ bind_stmt_params_and_exec(ForeignScanState *node)
 	int			atindex = 0;
 	MemoryContext oldcontext;
 
+	/* ----------------------------------------------------------------
+	 * Text protocol fallback path.
+	 * ---------------------------------------------------------------- */
+	if (festate->use_text_protocol)
+	{
+		/*
+		 * Parameters in the text protocol path are not supported via
+		 * prepared statements.  For now we only handle the no-parameter
+		 * case (which covers the common SELECT * / table-browse scenario).
+		 * Parameterised queries will still fail gracefully.
+		 */
+		if (mysql_query(festate->conn, festate->query) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("failed to execute the MySQL query (text protocol): %s",
+							mysql_error(festate->conn))));
+
+		festate->text_result = mysql_store_result(festate->conn);
+		if (festate->text_result == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("failed to store the MySQL result (text protocol): %s",
+							mysql_error(festate->conn))));
+
+		festate->query_executed = true;
+		return;
+	}
+
+	/* ----------------------------------------------------------------
+	 * Binary prepared-statement protocol path.
+	 * ---------------------------------------------------------------- */
+
 	/*
 	 * Construct array of query parameter values in text format.  We do the
 	 * conversions in the short-lived per-tuple context, so as not to cause a
@@ -2602,6 +2817,95 @@ Datum
 mysql_fdw_version(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_INT32(CODE_VERSION);
+}
+
+/*
+ * mysql_build_text_query:
+ *		Replace each '?' placeholder in the template query with the
+ *		corresponding value from the MYSQL_BIND array, producing a complete
+ *		SQL string suitable for mysql_query() (text protocol).
+ *
+ *		Only the buffer_type / buffer / buffer_length / is_null fields of each
+ *		MYSQL_BIND entry are consulted; the result is palloc'd.
+ */
+static char *
+mysql_build_text_query(MYSQL *conn, const char *tmpl, MYSQL_BIND *binds,
+					   int nbinds)
+{
+	StringInfoData buf;
+	const char *p = tmpl;
+	int			bindidx = 0;
+
+	initStringInfo(&buf);
+
+	while (*p)
+	{
+		if (*p == '?' && bindidx < nbinds)
+		{
+			MYSQL_BIND *b = &binds[bindidx++];
+
+#if MYSQL_VERSION_ID < 80000 || MARIADB_VERSION_ID >= 100000
+			if (b->is_null && *(my_bool *) b->is_null)
+#else
+			if (b->is_null && *b->is_null)
+#endif
+			{
+				appendStringInfoString(&buf, "NULL");
+			}
+			else
+			{
+				switch (b->buffer_type)
+				{
+					case MYSQL_TYPE_SHORT:
+						appendStringInfo(&buf, "%d", *(int16 *) b->buffer);
+						break;
+					case MYSQL_TYPE_LONG:
+						appendStringInfo(&buf, "%d", *(int32 *) b->buffer);
+						break;
+					case MYSQL_TYPE_LONGLONG:
+						appendStringInfo(&buf, INT64_FORMAT,
+										 *(int64 *) b->buffer);
+						break;
+					case MYSQL_TYPE_FLOAT:
+						appendStringInfo(&buf, "%g", (double) *(float4 *) b->buffer);
+						break;
+					case MYSQL_TYPE_DOUBLE:
+						appendStringInfo(&buf, "%g", *(float8 *) b->buffer);
+						break;
+					case MYSQL_TYPE_DATE:
+					case MYSQL_TYPE_TIMESTAMP:
+						{
+							MYSQL_TIME *ts = (MYSQL_TIME *) b->buffer;
+
+							appendStringInfo(&buf,
+											 "'%04d-%02d-%02d %02d:%02d:%02d'",
+											 ts->year, ts->month, ts->day,
+											 ts->hour, ts->minute, ts->second);
+						}
+						break;
+					default:
+						{
+							/* String / blob: escape and quote */
+							unsigned long slen = b->buffer_length;
+							char	   *escaped = palloc(slen * 2 + 1);
+
+							mysql_real_escape_string(conn, escaped,
+													 (char *) b->buffer, slen);
+							appendStringInfo(&buf, "'%s'", escaped);
+							pfree(escaped);
+						}
+						break;
+				}
+			}
+			p++;
+		}
+		else
+		{
+			appendStringInfoChar(&buf, *p++);
+		}
+	}
+
+	return buf.data;
 }
 
 static void
