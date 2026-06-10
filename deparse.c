@@ -863,22 +863,12 @@ mysql_deparse_var(Var *node, deparse_expr_cxt *context)
 		/* Treat like a Param */
 		if (context->params_list)
 		{
-			int			pindex = 0;
-			ListCell   *lc;
+			int			pindex;
 
-			/* Find its index in params_list */
-			foreach(lc, *context->params_list)
-			{
-				pindex++;
-				if (equal(node, (Node *) lfirst(lc)))
-					break;
-			}
-			if (lc == NULL)
-			{
-				/* Not in list, so add it */
-				pindex++;
-				*context->params_list = lappend(*context->params_list, node);
-			}
+			/* '?' placeholders are positional: one entry per occurrence */
+			*context->params_list = lappend(*context->params_list, node);
+			pindex = list_length(*context->params_list);
+
 			mysql_print_remote_param(pindex, node->vartype, node->vartypmod,
 									 context);
 		}
@@ -983,22 +973,11 @@ mysql_deparse_param(Param *node, deparse_expr_cxt *context)
 {
 	if (context->params_list)
 	{
-		int			pindex = 0;
-		ListCell   *lc;
+		int			pindex;
 
-		/* Find its index in params_list */
-		foreach(lc, *context->params_list)
-		{
-			pindex++;
-			if (equal(node, (Node *) lfirst(lc)))
-				break;
-		}
-		if (lc == NULL)
-		{
-			/* Not in list, so add it */
-			pindex++;
-			*context->params_list = lappend(*context->params_list, node);
-		}
+		/* '?' placeholders are positional: one entry per occurrence */
+		*context->params_list = lappend(*context->params_list, node);
+		pindex = list_length(*context->params_list);
 
 		mysql_print_remote_param(pindex, node->paramtype, node->paramtypmod,
 								 context);

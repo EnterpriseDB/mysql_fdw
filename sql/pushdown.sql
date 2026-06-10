@@ -267,6 +267,18 @@ SELECT * FROM f_test_tbl1 ORDER BY c1 USING OPERATOR(public.<^);
 EXPLAIN (COSTS FALSE, VERBOSE)
 SELECT MIN(c1) FROM f_test_tbl1 GROUP BY c4 ORDER BY 1 USING OPERATOR(public.<^);
 
+-- Remote placeholders are positional '?', so a query parameter used twice
+-- must be sent (and bound) once per occurrence.  With the old equal()-based
+-- params_list dedup the remote statement had two '?' but only one bound
+-- parameter, making mysql_stmt_bind_param() read past the bind array.
+SET plan_cache_mode = force_generic_plan;
+PREPARE stmt_repeated_param (INTEGER) AS
+  SELECT c1, c2 FROM f_test_tbl1 WHERE c1 >= $1 AND c1 <= $1 ORDER BY c1;
+EXPLAIN (COSTS FALSE, VERBOSE) EXECUTE stmt_repeated_param(800);
+EXECUTE stmt_repeated_param(800);
+DEALLOCATE stmt_repeated_param;
+RESET plan_cache_mode;
+
 -- Cleanup
 DELETE FROM f_test_tbl1;
 DELETE FROM f_test_tbl2;
