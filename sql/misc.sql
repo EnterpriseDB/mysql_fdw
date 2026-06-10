@@ -140,17 +140,30 @@ SELECT * FROM fdw520 ORDER BY 1;
 UPDATE fdw520 SET c4 = 20 WHERE c1 = 2;
 UPDATE fdw520 SET c3 = 20 WHERE c1 = 2;
 
+-- A generated column that is not the last column: it deparses as DEFAULT
+-- (no '?'), so its bind slot must be skipped or every later value shifts
+-- into the wrong placeholder.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (fdw520_2)
+  FROM SERVER mysql_svr INTO public;
+\d fdw520_2
+INSERT INTO fdw520_2(c1, c3) VALUES(1, 5);
+SELECT * FROM fdw520_2 ORDER BY 1;
+UPDATE fdw520_2 SET c3 = 7 WHERE c1 = 1;
+SELECT * FROM fdw520_2 ORDER BY 1;
+
 -- Cleanup
 DELETE FROM fdw519_ft1;
 DELETE FROM fdw519_ft2;
 DELETE FROM fdw519_ft3;
 DELETE FROM fdw520;
+DELETE FROM fdw520_2;
 DROP FOREIGN TABLE fdw519_ft1;
 DROP FOREIGN TABLE fdw519_ft2;
 DROP FOREIGN TABLE fdw519_ft3;
 DROP FOREIGN TABLE fdw519_ft4;
 DROP FOREIGN TABLE fdw519_ft5;
 DROP FOREIGN TABLE fdw520;
+DROP FOREIGN TABLE fdw520_2;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;
 DROP USER MAPPING FOR public SERVER mysql_svr1;

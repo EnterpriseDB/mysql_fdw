@@ -257,17 +257,48 @@ DETAIL:  Column "c4" is a generated column.
 UPDATE fdw520 SET c3 = 20 WHERE c1 = 2;
 ERROR:  column "c3" can only be updated to DEFAULT
 DETAIL:  Column "c3" is a generated column.
+-- A generated column that is not the last column: it deparses as DEFAULT
+-- (no '?'), so its bind slot must be skipped or every later value shifts
+-- into the wrong placeholder.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (fdw520_2)
+  FROM SERVER mysql_svr INTO public;
+\d fdw520_2
+                               Foreign table "public.fdw520_2"
+ Column |  Type   | Collation | Nullable |               Default               | FDW options 
+--------+---------+-----------+----------+-------------------------------------+-------------
+ c1     | integer |           | not null |                                     | 
+ c2     | integer |           |          | generated always as (c1 * 2) stored | 
+ c3     | integer |           |          |                                     | 
+Server: mysql_svr
+FDW options: (dbname 'mysql_fdw_regress', table_name 'fdw520_2')
+
+INSERT INTO fdw520_2(c1, c3) VALUES(1, 5);
+SELECT * FROM fdw520_2 ORDER BY 1;
+ c1 | c2 | c3 
+----+----+----
+  1 |  2 |  5
+(1 row)
+
+UPDATE fdw520_2 SET c3 = 7 WHERE c1 = 1;
+SELECT * FROM fdw520_2 ORDER BY 1;
+ c1 | c2 | c3 
+----+----+----
+  1 |  2 |  7
+(1 row)
+
 -- Cleanup
 DELETE FROM fdw519_ft1;
 DELETE FROM fdw519_ft2;
 DELETE FROM fdw519_ft3;
 DELETE FROM fdw520;
+DELETE FROM fdw520_2;
 DROP FOREIGN TABLE fdw519_ft1;
 DROP FOREIGN TABLE fdw519_ft2;
 DROP FOREIGN TABLE fdw519_ft3;
 DROP FOREIGN TABLE fdw519_ft4;
 DROP FOREIGN TABLE fdw519_ft5;
 DROP FOREIGN TABLE fdw520;
+DROP FOREIGN TABLE fdw520_2;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;
 DROP USER MAPPING FOR public SERVER mysql_svr1;
