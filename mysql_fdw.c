@@ -270,15 +270,11 @@ static bool mysql_is_column_unique(Oid foreigntableid, Oid userid);
 static void prepare_query_params(PlanState *node,
 								 List *fdw_exprs,
 								 int numParams,
-								 FmgrInfo **param_flinfo,
 								 List **param_exprs,
-								 const char ***param_values,
 								 Oid **param_types);
 
 static void process_query_params(ExprContext *econtext,
-								 FmgrInfo *param_flinfo,
 								 List *param_exprs,
-								 const char **param_values,
 								 MYSQL_BIND **mysql_bind_buf,
 								 Oid *param_types);
 
@@ -712,9 +708,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 		prepare_query_params((PlanState *) node,
 							 fsplan->fdw_exprs,
 							 numParams,
-							 &festate->param_flinfo,
 							 &festate->param_exprs,
-							 &festate->param_values,
 							 &festate->param_types);
 
 	/* int column_count = mysql_num_fields(festate->meta); */
@@ -2502,9 +2496,7 @@ static void
 prepare_query_params(PlanState *node,
 					 List *fdw_exprs,
 					 int numParams,
-					 FmgrInfo **param_flinfo,
 					 List **param_exprs,
-					 const char ***param_values,
 					 Oid **param_types)
 {
 	int			i;
@@ -2512,22 +2504,14 @@ prepare_query_params(PlanState *node,
 
 	Assert(numParams > 0);
 
-	/* Prepare for output conversion of parameters used in remote query. */
-	*param_flinfo = (FmgrInfo *) palloc0(sizeof(FmgrInfo) * numParams);
-
 	*param_types = (Oid *) palloc0(sizeof(Oid) * numParams);
 
 	i = 0;
 	foreach(lc, fdw_exprs)
 	{
 		Node	   *param_expr = (Node *) lfirst(lc);
-		Oid			typefnoid;
-		bool		isvarlena;
 
 		(*param_types)[i] = exprType(param_expr);
-
-		getTypeOutputInfo(exprType(param_expr), &typefnoid, &isvarlena);
-		fmgr_info(typefnoid, &(*param_flinfo)[i]);
 		i++;
 	}
 
@@ -2540,19 +2524,14 @@ prepare_query_params(PlanState *node,
 	 * about Param evaluation.)
 	 */
 	*param_exprs = ExecInitExprList(fdw_exprs, node);
-
-	/* Allocate buffer for text form of query parameters. */
-	*param_values = (const char **) palloc0(numParams * sizeof(char *));
 }
 
 /*
- * Construct array of query parameter values in text format.
+ * Evaluate the query parameters and bind them to the prepared statement.
  */
 static void
 process_query_params(ExprContext *econtext,
-					 FmgrInfo *param_flinfo,
 					 List *param_exprs,
-					 const char **param_values,
 					 MYSQL_BIND **mysql_bind_buf,
 					 Oid *param_types)
 {
@@ -2570,15 +2549,6 @@ process_query_params(ExprContext *econtext,
 		expr_value = ExecEvalExpr(expr_state, econtext, isNull);
 		mysql_bind_sql_var(param_types[i], i, expr_value, *mysql_bind_buf,
 						   isNull);
-
-		/*
-		 * Get string representation of each parameter value by invoking
-		 * type-specific output function, unless the value is null.
-		 */
-		if (*isNull)
-			param_values[i] = NULL;
-		else
-			param_values[i] = OutputFunctionCall(&param_flinfo[i], expr_value);
 		i++;
 	}
 }
@@ -2594,7 +2564,6 @@ bind_stmt_params_and_exec(ForeignScanState *node)
 	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
 	ExprContext *econtext = node->ss.ps.ps_ExprContext;
 	int			numParams = festate->numParams;
-	const char **values = festate->param_values;
 	MYSQL_BIND *mysql_bind_buffer = NULL;
 	ListCell   *lc;
 	TupleDesc	tupleDescriptor = festate->attinmeta->tupdesc;
@@ -2602,9 +2571,9 @@ bind_stmt_params_and_exec(ForeignScanState *node)
 	MemoryContext oldcontext;
 
 	/*
-	 * Construct array of query parameter values in text format.  We do the
-	 * conversions in the short-lived per-tuple context, so as not to cause a
-	 * memory leak over repeated scans.
+	 * Evaluate and bind the query parameters.  We do the conversions in the
+	 * short-lived per-tuple context, so as not to cause a memory leak over
+	 * repeated scans.
 	 */
 	if (numParams > 0)
 	{
@@ -2613,9 +2582,7 @@ bind_stmt_params_and_exec(ForeignScanState *node)
 		mysql_bind_buffer = (MYSQL_BIND *) palloc0(sizeof(MYSQL_BIND) * numParams);
 
 		process_query_params(econtext,
-							 festate->param_flinfo,
 							 festate->param_exprs,
-							 values,
 							 &mysql_bind_buffer,
 							 festate->param_types);
 

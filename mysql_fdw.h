@@ -169,9 +169,7 @@ typedef struct MySQLFdwExecState
 	List	   *retrieved_attrs;	/* list of target attribute numbers */
 	bool		query_executed; /* have we executed the query? */
 	int			numParams;		/* number of parameters passed to query */
-	FmgrInfo   *param_flinfo;	/* output conversion functions for them */
 	List	   *param_exprs;	/* executable expressions for param values */
-	const char **param_values;	/* textual values of query parameters */
 	Oid		   *param_types;	/* type of query parameters */
 	int			p_nums;			/* number of parameters to transmit */
 	FmgrInfo   *p_flinfo;		/* output conversion functions for them */
