@@ -180,9 +180,14 @@ mysql_is_valid_option(const char *option, Oid context)
 
 /*
  * Fetch the options for a mysql_fdw foreign table.
+ *
+ * "userid" selects whose user mapping supplies the connection credentials
+ * (username/password).  Callers pass the user the access actually runs as --
+ * the RTE's checkAsUser when set (e.g. a view's owner), else the current user --
+ * so a plan-time probe and execution agree on which mapping to use.
  */
 mysql_opt *
-mysql_get_options(Oid foreignoid, bool is_foreigntable)
+mysql_get_options(Oid foreignoid, bool is_foreigntable, Oid userid)
 {
 	ForeignTable *f_table;
 	ForeignServer *f_server;
@@ -207,7 +212,7 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 		f_server = GetForeignServer(foreignoid);
 	}
 
-	f_mapping = GetUserMapping(GetUserId(), f_server->serverid);
+	f_mapping = GetUserMapping(userid, f_server->serverid);
 
 	options = NIL;
 

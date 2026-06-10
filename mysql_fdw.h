@@ -295,7 +295,8 @@ extern unsigned int ((mysql_num_rows) (MYSQL_RES *result));
 
 /* option.c headers */
 extern bool mysql_is_valid_option(const char *option, Oid context);
-extern mysql_opt *mysql_get_options(Oid foreigntableid, bool is_foreigntable);
+extern mysql_opt *mysql_get_options(Oid foreigntableid, bool is_foreigntable,
+									Oid userid);
 
 /* depare.c headers */
 extern void mysql_deparse_insert(StringInfo buf, PlannerInfo *root,
