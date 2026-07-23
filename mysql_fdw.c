@@ -1714,14 +1714,12 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	ForeignServer *server;
 	UserMapping *user;
 	ForeignTable *table;
-#if PG_VERSION_NUM >= 160000
-	ForeignScan *fsplan = (ForeignScan *) mtstate->ps.plan;
-#else
+#if PG_VERSION_NUM < 160000
 	RangeTblEntry *rte;
 #endif
 
 #if PG_VERSION_NUM >= 160000
-	userid = fsplan->checkAsUser ? fsplan->checkAsUser : GetUserId();
+	userid = ExecGetResultRelCheckAsUser(resultRelInfo, estate);
 #else
 	rte = rt_fetch(resultRelInfo->ri_RangeTableIndex, estate->es_range_table);
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();

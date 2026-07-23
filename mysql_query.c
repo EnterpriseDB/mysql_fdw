@@ -20,6 +20,7 @@
 #include "mysql_fdw.h"
 
 #include <mysql.h>
+#include <math.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -96,7 +97,7 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 		 */
 		case BYTEAOID:
 			result = (bytea *) palloc(column->length + VARHDRSZ);
-			memcpy(VARDATA(result), VARDATA(column->value), column->length);
+			memcpy(VARDATA(result), VARDATA(DatumGetPointer(column->value)), column->length);
 			SET_VARSIZE(result, column->length + VARHDRSZ);
 			return PointerGetDatum(result);
 
@@ -431,7 +432,7 @@ mysql_bind_result(Oid pgtyp, int pgtypmod, MYSQL_FIELD *field,
 			mbind->buffer_type = MYSQL_TYPE_BLOB;
 			/* Leave room at front for bytea buffer length prefix */
 			column->value = (Datum) palloc0(MAX_BLOB_WIDTH + VARHDRSZ);
-			mbind->buffer = VARDATA(column->value);
+			mbind->buffer = VARDATA(DatumGetPointer(column->value));
 			mbind->buffer_length = MAX_BLOB_WIDTH;
 			break;
 		case TEXTOID:

@@ -6,7 +6,7 @@ to [MySQL][1].
 
 Please note that this version of mysql_fdw works with PostgreSQL,
 EDB Postgres Advanced Server, and EDB Postgres Extended Server
-14, 15, 16, 17, and 18.
+14, 15, 16, 17, 18, and 19.
 
 Contents
 --------
