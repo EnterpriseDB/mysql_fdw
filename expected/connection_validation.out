@@ -123,6 +123,100 @@ SELECT * FROM f_mysql_file_test ORDER BY 1, 2;
  1 | 1
 (1 row)
 
+-- A plan-time remote connection must use the same user mapping as execution
+-- (the foreign-table RTE's checkAsUser), not the session user.  Through a view
+-- owned by a role that has a mapping, a user with NO mapping of its own must
+-- still be able to query: planning connects as the view owner.  (Before this was
+-- fixed, planning connected as the querying user and failed with "user mapping
+-- not found".)  A dedicated server with no PUBLIC mapping is used so the querying
+-- role has nothing to fall back on.
+CREATE SERVER mysql_svr_cau FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (host :MYSQL_HOST, port :MYSQL_PORT);
+CREATE ROLE regress_cau_owner LOGIN SUPERUSER;
+CREATE ROLE regress_cau_user LOGIN;
+-- Only the view owner has a user mapping on this server.
+CREATE USER MAPPING FOR regress_cau_owner SERVER mysql_svr_cau
+  OPTIONS (username :MYSQL_USER_NAME, password :MYSQL_PASS);
+CREATE FOREIGN TABLE f_cau (a int, b int)
+  SERVER mysql_svr_cau OPTIONS (dbname 'mysql_fdw_regress', table_name 'mysql_test');
+ALTER FOREIGN TABLE f_cau OWNER TO regress_cau_owner;
+CREATE VIEW v_cau AS SELECT * FROM f_cau;
+ALTER VIEW v_cau OWNER TO regress_cau_owner;
+GRANT SELECT ON v_cau TO regress_cau_user;
+-- Through the view, the mapping-less user succeeds: planning and execution both
+-- connect as the view owner (checkAsUser).
+SET ROLE regress_cau_user;
+SELECT * FROM v_cau ORDER BY 1, 2;
+ a | b 
+---+---
+ 1 | 1
+(1 row)
+
+RESET ROLE;
+-- Direct access (no view, so checkAsUser is the querying user) still correctly
+-- requires that user's own mapping, which does not exist.
+GRANT USAGE ON FOREIGN SERVER mysql_svr_cau TO regress_cau_user;
+GRANT SELECT ON f_cau TO regress_cau_user;
+SET ROLE regress_cau_user;
+SELECT * FROM f_cau ORDER BY 1, 2;
+ERROR:  user mapping not found for "regress_cau_user"
+RESET ROLE;
+-- DML through the view must resolve the view owner too: BeginForeignModify's
+-- effective user comes from the result relation's permission info on PG 16+
+-- (it was read from a ModifyTable node wrongly cast to ForeignScan, which
+-- aliased an unrelated field and fell back to the mapping-less session user).
+GRANT UPDATE ON v_cau TO regress_cau_user;
+SET ROLE regress_cau_user;
+UPDATE v_cau SET b = 2 WHERE a = 1;
+SELECT * FROM v_cau ORDER BY 1, 2;
+ a | b 
+---+---
+ 1 | 2
+(1 row)
+
+-- Restore the shared fixture row.  (An UPDATE through a view over the
+-- PARTITIONED table would cover the ModifyTable.rootRelation aliasing
+-- directly, but a cross-partition-capable UPDATE needs the tableoid system
+-- attribute, which foreign scans cannot fetch, so that path is unreachable.)
+UPDATE v_cau SET b = 1 WHERE a = 1;
+SELECT * FROM v_cau ORDER BY 1, 2;
+ a | b 
+---+---
+ 1 | 1
+(1 row)
+
+RESET ROLE;
+-- A foreign table that is a PARTITION is an inheritance child: on PG 16+ its own
+-- RTE carries no checkAsUser (perminfoindex 0), so the plan-time effective user
+-- must come from the parent (RelOptInfo.userid), exactly as execution resolves
+-- it.  Through a view owned by the mapped role, the mapping-less user must still
+-- plan and execute as the owner.  (Before the RelOptInfo.userid fix, planning the
+-- foreign partition connected as the querying user and failed with "user mapping
+-- not found".)
+CREATE TABLE p_cau (a int, b int) PARTITION BY RANGE (a);
+CREATE FOREIGN TABLE p_cau_p1 PARTITION OF p_cau FOR VALUES FROM (MINVALUE) TO (MAXVALUE)
+  SERVER mysql_svr_cau OPTIONS (dbname 'mysql_fdw_regress', table_name 'mysql_test');
+ALTER TABLE p_cau OWNER TO regress_cau_owner;
+ALTER FOREIGN TABLE p_cau_p1 OWNER TO regress_cau_owner;
+CREATE VIEW v_pcau AS SELECT * FROM p_cau;
+ALTER VIEW v_pcau OWNER TO regress_cau_owner;
+GRANT SELECT ON v_pcau TO regress_cau_user;
+SET ROLE regress_cau_user;
+SELECT * FROM v_pcau ORDER BY 1, 2;
+ a | b 
+---+---
+ 1 | 1
+(1 row)
+
+RESET ROLE;
+DROP VIEW v_pcau;
+DROP TABLE p_cau;
+DROP VIEW v_cau;
+DROP FOREIGN TABLE f_cau;
+DROP USER MAPPING FOR regress_cau_owner SERVER mysql_svr_cau;
+DROP SERVER mysql_svr_cau;
+DROP ROLE regress_cau_user;
+DROP ROLE regress_cau_owner;
 -- Cleanup
 DROP FOREIGN TABLE f_mysql_test;
 DROP FOREIGN TABLE f_mysql_file_test;

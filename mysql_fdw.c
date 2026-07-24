@@ -38,6 +38,7 @@
 #endif
 #include "catalog/heap.h"
 #include "catalog/pg_type.h"
+#include "executor/executor.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "mysql_pushability.h"
@@ -264,20 +265,16 @@ static void mysqlExecForeignTruncate(List *rels,
  */
 bool mysql_load_library(void);
 static void mysql_fdw_exit(int code, Datum arg);
-static bool mysql_is_column_unique(Oid foreigntableid);
+static bool mysql_is_column_unique(Oid foreigntableid, Oid userid);
 
 static void prepare_query_params(PlanState *node,
 								 List *fdw_exprs,
 								 int numParams,
-								 FmgrInfo **param_flinfo,
 								 List **param_exprs,
-								 const char ***param_values,
 								 Oid **param_types);
 
 static void process_query_params(ExprContext *econtext,
-								 FmgrInfo *param_flinfo,
 								 List *param_exprs,
-								 const char **param_values,
 								 MYSQL_BIND **mysql_bind_buf,
 								 Oid *param_types);
 
@@ -349,6 +346,7 @@ static void mysql_stmt_error_print(MySQLFdwExecState *festate,
 								   const char *msg);
 static List *getUpdateTargetAttrs(PlannerInfo *root, RangeTblEntry *rte);
 static char *mysql_remove_quotes(char *s1);
+static Oid mysql_exec_userid(ForeignScan *fsplan, RangeTblEntry *rte);
 
 /*
  * mysql_load_library function dynamically load the mysql's library
@@ -638,11 +636,10 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 
 #if PG_VERSION_NUM >= 160000
 	rte = exec_rt_fetch(rtindex, estate);
-	userid = fsplan->checkAsUser ? fsplan->checkAsUser : GetUserId();
 #else
 	rte = rt_fetch(rtindex, estate->es_range_table);
-	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 #endif
+	userid = mysql_exec_userid(fsplan, rte);
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(rte->relid);
@@ -650,7 +647,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	user = GetUserMapping(userid, server->serverid);
 
 	/* Fetch the options */
-	options = mysql_get_options(rte->relid, true);
+	options = mysql_get_options(rte->relid, true, userid);
 
 	/*
 	 * Get the already connected connection, otherwise connect and get the
@@ -711,9 +708,7 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 		prepare_query_params((PlanState *) node,
 							 fsplan->fdw_exprs,
 							 numParams,
-							 &festate->param_flinfo,
 							 &festate->param_exprs,
-							 &festate->param_values,
 							 &festate->param_types);
 
 	/* int column_count = mysql_num_fields(festate->meta); */
@@ -923,7 +918,8 @@ mysqlExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	/* Give some possibly useful info about startup costs */
 	if (es->costs)
 	{
-		mysql_opt  *options = mysql_get_options(rte->relid, true);
+		Oid			userid = mysql_exec_userid(fsplan, rte);
+		mysql_opt  *options = mysql_get_options(rte->relid, true, userid);
 
 		if (strcmp(options->svr_address, "127.0.0.1") == 0 ||
 			strcmp(options->svr_address, "localhost") == 0)
@@ -977,6 +973,72 @@ mysqlReScanForeignScan(ForeignScanState *node)
 }
 
 /*
+ * mysql_exec_userid
+ * 		Execution-time twin of mysql_plan_userid() for foreign SCANS: the
+ * 		effective user for remote access is the plan's checkAsUser when set
+ * 		(a view owner / SECURITY DEFINER context), else the current user.
+ * 		On PG 16+ the value lives on the ForeignScan node (the planner
+ * 		copies it there from the RTEPermissionInfo); earlier versions read
+ * 		the scanned RTE.  Keep every scan-side callback on this one helper
+ * 		so the version split lives in exactly one place.
+ */
+static Oid
+mysql_exec_userid(ForeignScan *fsplan, RangeTblEntry *rte)
+{
+	Oid			check_as_user;
+
+#if PG_VERSION_NUM >= 160000
+	check_as_user = fsplan->checkAsUser;
+#else
+	check_as_user = rte->checkAsUser;
+#endif
+
+	return OidIsValid(check_as_user) ? check_as_user : GetUserId();
+}
+
+/*
+ * mysql_plan_userid
+ * 		Identify which user a plan-time remote access should run as, matching the
+ * 		execution-time choice in mysqlBeginForeignScan() / mysqlBeginForeignModify():
+ * 		the effective checkAsUser when set (e.g. the owner of a view, or a
+ * 		SECURITY DEFINER context), otherwise the current user.  Resolving the same
+ * 		user mapping at plan time as at execution keeps a plan-time connection
+ * 		(setting sql_mode, a remote row estimate, or the rowid-uniqueness probe)
+ * 		from connecting as (or failing to find a mapping for) a different
+ * 		user than the query actually executes as.
+ *
+ * 		Read RelOptInfo.userid (like postgres_fdw's baserel->userid) rather than
+ * 		the RTE: an inheritance/partition child's RTE carries no checkAsUser
+ * 		(perminfoindex 0 on PG 16+); the planner propagates the parent's
+ * 		effective user onto the child rel instead.  Fall back to the RTE only
+ * 		when no RelOptInfo was built.
+ */
+static Oid
+mysql_plan_userid(PlannerInfo *root, Index rtindex)
+{
+	Oid			check_as_user = InvalidOid;
+	RelOptInfo *rel = (rtindex > 0 && rtindex < (Index) root->simple_rel_array_size)
+		? root->simple_rel_array[rtindex] : NULL;
+
+	if (rel != NULL)
+		check_as_user = rel->userid;	/* planner-propagated checkAsUser */
+	else
+	{
+		RangeTblEntry *rte = planner_rt_fetch(rtindex, root);
+
+#if PG_VERSION_NUM >= 160000
+		if (rte->perminfoindex > 0)
+			check_as_user = getRTEPermissionInfo(root->parse->rteperminfos,
+												 rte)->checkAsUser;
+#else
+		check_as_user = rte->checkAsUser;
+#endif
+	}
+
+	return OidIsValid(check_as_user) ? check_as_user : GetUserId();
+}
+
+/*
  * mysqlGetForeignRelSize
  * 		Create a FdwPlan for a scan on the foreign table
  */
@@ -989,7 +1051,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 	MYSQL	   *conn;
 	MYSQL_ROW	row;
 	mysql_opt  *options;
-	Oid			userid = GetUserId();
+	Oid			userid;
 	ForeignServer *server;
 	UserMapping *user;
 	ForeignTable *table;
@@ -1000,6 +1062,9 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 	const char *relname;
 	const char *refname;
 	char		sql_mode[255];
+
+	/* Plan-time access uses the same user mapping as execution (checkAsUser). */
+	userid = mysql_plan_userid(root, baserel->relid);
 
 	fpinfo = (MySQLFdwRelationInfo *) palloc0(sizeof(MySQLFdwRelationInfo));
 	baserel->fdw_private = (void *) fpinfo;
@@ -1012,7 +1077,7 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 	user = GetUserMapping(userid, server->serverid);
 
 	/* Fetch options */
-	options = mysql_get_options(foreigntableid, true);
+	options = mysql_get_options(foreigntableid, true, userid);
 
 	/* Connect to the server */
 	conn = mysql_get_connection(server, user, options);
@@ -1116,13 +1181,12 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 }
 
 static bool
-mysql_is_column_unique(Oid foreigntableid)
+mysql_is_column_unique(Oid foreigntableid, Oid userid)
 {
 	StringInfoData sql;
 	MYSQL	   *conn;
 	MYSQL_RES  *result;
 	mysql_opt  *options;
-	Oid			userid = GetUserId();
 	ForeignServer *server;
 	UserMapping *user;
 	ForeignTable *table;
@@ -1132,7 +1196,7 @@ mysql_is_column_unique(Oid foreigntableid)
 	user = GetUserMapping(userid, server->serverid);
 
 	/* Fetch the options */
-	options = mysql_get_options(foreigntableid, true);
+	options = mysql_get_options(foreigntableid, true, userid);
 
 	/* Connect to the server */
 	conn = mysql_get_connection(server, user, options);
@@ -1180,9 +1244,10 @@ mysqlEstimateCosts(PlannerInfo *root, RelOptInfo *baserel, Cost *startup_cost,
 				   Cost *total_cost, Oid foreigntableid)
 {
 	mysql_opt  *options;
+	Oid			userid = mysql_plan_userid(root, baserel->relid);
 
 	/* Fetch options */
-	options = mysql_get_options(foreigntableid, true);
+	options = mysql_get_options(foreigntableid, true, userid);
 
 	/* Local databases are probably faster */
 	if (strcmp(options->svr_address, "127.0.0.1") == 0 ||
@@ -1530,8 +1595,8 @@ mysqlAnalyzeForeignTable(Relation relation, AcquireSampleRowsFunc *func,
 	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(relation->rd_rel->relowner, server->serverid);
 
-	/* Fetch options */
-	options = mysql_get_options(foreignTableId, true);
+	/* Fetch options (ANALYZE runs as the foreign table's owner) */
+	options = mysql_get_options(foreignTableId, true, relation->rd_rel->relowner);
 	Assert(options->svr_database != NULL && options->svr_table != NULL);
 
 	/* Connect to the server */
@@ -1581,6 +1646,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 
 	CmdType		operation = plan->operation;
 	RangeTblEntry *rte = planner_rt_fetch(resultRelation, root);
+	Oid			userid = mysql_plan_userid(root, resultRelation);
 	Relation	rel;
 	List	   *targetAttrs = NIL;
 	StringInfoData sql;
@@ -1598,7 +1664,7 @@ mysqlPlanForeignModify(PlannerInfo *root,
 
 	foreignTableId = RelationGetRelid(rel);
 
-	if (!mysql_is_column_unique(foreignTableId))
+	if (!mysql_is_column_unique(foreignTableId, userid))
 		ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 				 errmsg("first column of remote table must be unique for INSERT/UPDATE/DELETE operation")));
@@ -1718,6 +1784,13 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	RangeTblEntry *rte;
 #endif
 
+	/*
+	 * Identify the effective user for the remote access.  mtstate->ps.plan
+	 * is the ModifyTable node — NOT a ForeignScan — so on PG 16+ the
+	 * permission info must come from the result relation (this also
+	 * resolves a partition child through its root).  Before PG 16 the
+	 * result relation's RTE still carries checkAsUser itself.
+	 */
 #if PG_VERSION_NUM >= 160000
 	userid = ExecGetResultRelCheckAsUser(resultRelInfo, estate);
 #else
@@ -1741,7 +1814,7 @@ mysqlBeginForeignModify(ModifyTableState *mtstate,
 	/* Begin constructing MySQLFdwExecState. */
 	fmstate = (MySQLFdwExecState *) palloc0(sizeof(MySQLFdwExecState));
 
-	fmstate->mysqlFdwOptions = mysql_get_options(foreignTableId, true);
+	fmstate->mysqlFdwOptions = mysql_get_options(foreignTableId, true, userid);
 	fmstate->conn = mysql_get_connection(server, user,
 										 fmstate->mysqlFdwOptions);
 
@@ -1829,13 +1902,12 @@ mysqlExecForeignInsert(EState *estate,
 	MemoryContext oldcontext;
 	bool	   *isnull;
 	char		sql_mode[255];
-	Oid			foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 
 	fmstate = (MySQLFdwExecState *) resultRelInfo->ri_FdwState;
 	n_params = list_length(fmstate->retrieved_attrs);
 
-	fmstate->mysqlFdwOptions = mysql_get_options(foreignTableId, true);
-
+	/* Options (incl. the user mapping's credentials) were resolved in
+	 * mysqlBeginForeignModify() as the right user; reuse them. */
 	oldcontext = MemoryContextSwitchTo(fmstate->temp_cxt);
 
 	mysql_bind_buffer = (MYSQL_BIND *) palloc0(sizeof(MYSQL_BIND) * n_params);
@@ -2150,7 +2222,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	 */
 	server = GetForeignServer(serverOid);
 	user = GetUserMapping(GetUserId(), server->serverid);
-	options = mysql_get_options(serverOid, false);
+	options = mysql_get_options(serverOid, false, GetUserId());
 	conn = mysql_get_connection(server, user, options);
 
 	/* Create workspace for strings */
@@ -2434,9 +2506,7 @@ static void
 prepare_query_params(PlanState *node,
 					 List *fdw_exprs,
 					 int numParams,
-					 FmgrInfo **param_flinfo,
 					 List **param_exprs,
-					 const char ***param_values,
 					 Oid **param_types)
 {
 	int			i;
@@ -2444,22 +2514,14 @@ prepare_query_params(PlanState *node,
 
 	Assert(numParams > 0);
 
-	/* Prepare for output conversion of parameters used in remote query. */
-	*param_flinfo = (FmgrInfo *) palloc0(sizeof(FmgrInfo) * numParams);
-
 	*param_types = (Oid *) palloc0(sizeof(Oid) * numParams);
 
 	i = 0;
 	foreach(lc, fdw_exprs)
 	{
 		Node	   *param_expr = (Node *) lfirst(lc);
-		Oid			typefnoid;
-		bool		isvarlena;
 
 		(*param_types)[i] = exprType(param_expr);
-
-		getTypeOutputInfo(exprType(param_expr), &typefnoid, &isvarlena);
-		fmgr_info(typefnoid, &(*param_flinfo)[i]);
 		i++;
 	}
 
@@ -2472,19 +2534,14 @@ prepare_query_params(PlanState *node,
 	 * about Param evaluation.)
 	 */
 	*param_exprs = ExecInitExprList(fdw_exprs, node);
-
-	/* Allocate buffer for text form of query parameters. */
-	*param_values = (const char **) palloc0(numParams * sizeof(char *));
 }
 
 /*
- * Construct array of query parameter values in text format.
+ * Evaluate the query parameters and bind them to the prepared statement.
  */
 static void
 process_query_params(ExprContext *econtext,
-					 FmgrInfo *param_flinfo,
 					 List *param_exprs,
-					 const char **param_values,
 					 MYSQL_BIND **mysql_bind_buf,
 					 Oid *param_types)
 {
@@ -2502,15 +2559,6 @@ process_query_params(ExprContext *econtext,
 		expr_value = ExecEvalExpr(expr_state, econtext, isNull);
 		mysql_bind_sql_var(param_types[i], i, expr_value, *mysql_bind_buf,
 						   isNull);
-
-		/*
-		 * Get string representation of each parameter value by invoking
-		 * type-specific output function, unless the value is null.
-		 */
-		if (*isNull)
-			param_values[i] = NULL;
-		else
-			param_values[i] = OutputFunctionCall(&param_flinfo[i], expr_value);
 		i++;
 	}
 }
@@ -2526,7 +2574,6 @@ bind_stmt_params_and_exec(ForeignScanState *node)
 	MySQLFdwExecState *festate = (MySQLFdwExecState *) node->fdw_state;
 	ExprContext *econtext = node->ss.ps.ps_ExprContext;
 	int			numParams = festate->numParams;
-	const char **values = festate->param_values;
 	MYSQL_BIND *mysql_bind_buffer = NULL;
 	ListCell   *lc;
 	TupleDesc	tupleDescriptor = festate->attinmeta->tupdesc;
@@ -2534,9 +2581,9 @@ bind_stmt_params_and_exec(ForeignScanState *node)
 	MemoryContext oldcontext;
 
 	/*
-	 * Construct array of query parameter values in text format.  We do the
-	 * conversions in the short-lived per-tuple context, so as not to cause a
-	 * memory leak over repeated scans.
+	 * Evaluate and bind the query parameters.  We do the conversions in the
+	 * short-lived per-tuple context, so as not to cause a memory leak over
+	 * repeated scans.
 	 */
 	if (numParams > 0)
 	{
@@ -2545,9 +2592,7 @@ bind_stmt_params_and_exec(ForeignScanState *node)
 		mysql_bind_buffer = (MYSQL_BIND *) palloc0(sizeof(MYSQL_BIND) * numParams);
 
 		process_query_params(econtext,
-							 festate->param_flinfo,
 							 festate->param_exprs,
-							 values,
 							 &mysql_bind_buffer,
 							 festate->param_types);
 
@@ -4808,7 +4853,7 @@ mysqlExecForeignTruncate(List *rels,
 	 * establish new connection if necessary.
 	 */
 	user = GetUserMapping(GetUserId(), serverid);
-	options = mysql_get_options(serverid, false);
+	options = mysql_get_options(serverid, false, GetUserId());
 	conn = mysql_get_connection(server, user, options);
 
 	/* Construct the TRUNCATE command string */
