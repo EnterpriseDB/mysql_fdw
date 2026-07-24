@@ -1825,6 +1825,7 @@ mysqlExecForeignInsert(EState *estate,
 	MYSQL_BIND *mysql_bind_buffer;
 	ListCell   *lc;
 	int			n_params;
+	int			bindnum = 0;
 	MemoryContext oldcontext;
 	bool	   *isnull;
 	char		sql_mode[255];
@@ -1845,16 +1846,25 @@ mysqlExecForeignInsert(EState *estate,
 	if (mysql_query(fmstate->conn, sql_mode) != 0)
 		mysql_error_print(fmstate->conn);
 
+	/*
+	 * Bind consecutive slots, skipping generated columns: they deparse as
+	 * DEFAULT and have no '?' placeholder.
+	 */
 	foreach(lc, fmstate->retrieved_attrs)
 	{
 		int			attnum = lfirst_int(lc) - 1;
-		Oid			type = TupleDescAttr(slot->tts_tupleDescriptor, attnum)->atttypid;
+		Oid			type;
 		Datum		value;
 
-		value = slot_getattr(slot, attnum + 1, &isnull[attnum]);
+		if (TupleDescAttr(slot->tts_tupleDescriptor, attnum)->attgenerated)
+			continue;
 
-		mysql_bind_sql_var(type, attnum, value, mysql_bind_buffer,
-						   &isnull[attnum]);
+		type = TupleDescAttr(slot->tts_tupleDescriptor, attnum)->atttypid;
+		value = slot_getattr(slot, attnum + 1, &isnull[bindnum]);
+
+		mysql_bind_sql_var(type, bindnum, value, mysql_bind_buffer,
+						   &isnull[bindnum]);
+		bindnum++;
 	}
 
 	/* Bind values */
