@@ -226,6 +226,29 @@ DELETE FROM fdw601 WHERE b = 1;
 SELECT * FROM fdw601 ORDER BY 1;
 DELETE FROM fdw601;
 
+-- INSERT/UPDATE/DELETE on a remote table with a composite (multi-column)
+-- primary/unique key must be rejected, since mysql_fdw only uses the first
+-- column as the row identifier and would otherwise silently modify/delete
+-- more rows than intended.
+CREATE FOREIGN TABLE f_composite_pk_test(c1 int, c2 int, c3 int)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'composite_pk_test');
+INSERT INTO f_composite_pk_test VALUES(4, 4, 4);
+UPDATE f_composite_pk_test SET c3 = 1 WHERE c1 = 1 AND c2 = 1;
+DELETE FROM f_composite_pk_test WHERE c1 = 1 AND c2 = 1;
+SELECT * FROM f_composite_pk_test ORDER BY 1, 2;
+
+-- A composite primary/unique key on the first column is fine as long as
+-- that column is *also* covered by a separate single-column unique key:
+-- the narrower key makes the first column unique on its own, so
+-- INSERT/UPDATE/DELETE must be allowed and must only affect the intended
+-- row.
+CREATE FOREIGN TABLE f_composite_pk_with_unique_test(c1 int, c2 int, c3 int)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'composite_pk_with_unique_test');
+INSERT INTO f_composite_pk_with_unique_test VALUES(3, 3, 3);
+UPDATE f_composite_pk_with_unique_test SET c3 = 99 WHERE c1 = 1;
+DELETE FROM f_composite_pk_with_unique_test WHERE c1 = 3;
+SELECT * FROM f_composite_pk_with_unique_test ORDER BY 1;
+
 -- Cleanup
 DELETE FROM fdw126_ft1;
 DELETE FROM f_empdata;
@@ -240,6 +263,8 @@ DROP FOREIGN TABLE fdw126_ft6;
 DROP FOREIGN TABLE f_empdata;
 DROP FOREIGN TABLE fdw193_ft1;
 DROP FOREIGN TABLE fdw601;
+DROP FOREIGN TABLE f_composite_pk_test;
+DROP FOREIGN TABLE f_composite_pk_with_unique_test;
 DROP FUNCTION before_row_update_func();
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;

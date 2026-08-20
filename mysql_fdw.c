@@ -264,7 +264,7 @@ static void mysqlExecForeignTruncate(List *rels,
  */
 bool mysql_load_library(void);
 static void mysql_fdw_exit(int code, Datum arg);
-static bool mysql_is_column_unique(Oid foreigntableid);
+static int	mysql_first_column_key_size(Oid foreigntableid);
 
 static void prepare_query_params(PlanState *node,
 								 List *fdw_exprs,
@@ -1115,8 +1115,24 @@ mysqlGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 						 quote_identifier(rte->eref->aliasname));
 }
 
-static bool
-mysql_is_column_unique(Oid foreigntableid)
+/*
+ * mysql_first_column_key_size
+ * 		mysql_fdw always uses the first column of the remote table as the
+ * 		sole row-identifier for UPDATE/DELETE, so that column must form a
+ * 		PRIMARY KEY or UNIQUE index all by itself.  A column that is merely
+ * 		one member of a multi-column (composite) key is not sufficient: the
+ * 		other key column(s) would be silently ignored, causing UPDATE/DELETE
+ * 		to affect more rows than intended (see mysql_fdw issue #136).
+ *
+ * 		Returns:
+ * 			0  if the first column is not part of any unique/primary key;
+ * 			1  if the first column, on its own, forms a unique/primary key;
+ * 			>1 (the number of columns in the narrowest such key) if the
+ * 			   first column only ever appears as part of a composite
+ * 			   unique/primary key.
+ */
+static int
+mysql_first_column_key_size(Oid foreigntableid)
 {
 	StringInfoData sql;
 	MYSQL	   *conn;
@@ -1126,6 +1142,8 @@ mysql_is_column_unique(Oid foreigntableid)
 	ForeignServer *server;
 	UserMapping *user;
 	ForeignTable *table;
+	char	   *firstcol;
+	int			key_size = 0;
 
 	table = GetForeignTable(foreigntableid);
 	server = GetForeignServer(table->serverid);
@@ -1142,7 +1160,9 @@ mysql_is_column_unique(Oid foreigntableid)
 
 	/*
 	 * Construct the query by prefixing the database name so that it can
-	 * lookup in correct database.
+	 * lookup in correct database.  This also serves to error out (with a
+	 * useful message) if the remote database/table does not exist, exactly
+	 * as it did before this function looked at composite keys.
 	 */
 	appendStringInfo(&sql, "EXPLAIN %s.%s",
 					 mysql_quote_identifier(options->svr_database, '`'),
@@ -1154,21 +1174,60 @@ mysql_is_column_unique(Oid foreigntableid)
 	if (result)
 	{
 		int			num_fields = mysql_num_fields(result);
-		MYSQL_ROW	row;
+		MYSQL_ROW	row = mysql_fetch_row(result);
 
-		row = mysql_fetch_row(result);
-		if (row && num_fields > 3)
-		{
-			if ((strcmp(row[3], "PRI") == 0) || (strcmp(row[3], "UNI")) == 0)
-			{
-				mysql_free_result(result);
-				return true;
-			}
-		}
+		if (row && num_fields > 3 &&
+			(strcmp(row[3], "PRI") == 0 || strcmp(row[3], "UNI") == 0))
+			key_size = 1;
+
 		mysql_free_result(result);
 	}
 
-	return false;
+	/* First column is not part of any unique/primary key. */
+	if (key_size == 0)
+		return 0;
+
+	/* Name of the column mysql_fdw uses as the row identifier */
+	firstcol = get_attname(foreigntableid, 1, false);
+
+	resetStringInfo(&sql);
+
+	/*
+	 * The first column is part of some unique/primary key, but that key
+	 * could be composite (multi-column).  Find the size (number of
+	 * columns) of the narrowest unique/primary key that the first column
+	 * belongs to, to tell a genuine single-column key apart from one where
+	 * the first column is merely one member of a composite key.
+	 */
+	appendStringInfo(&sql,
+					 "SELECT MIN(idx.col_count) FROM"
+					 " (SELECT s.INDEX_NAME, COUNT(*) AS col_count"
+					 "  FROM information_schema.STATISTICS s"
+					 "  WHERE s.TABLE_SCHEMA = '%s' AND s.TABLE_NAME = '%s'"
+					 "  AND s.NON_UNIQUE = 0"
+					 "  AND s.INDEX_NAME IN"
+					 "   (SELECT INDEX_NAME FROM information_schema.STATISTICS"
+					 "    WHERE TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s'"
+					 "    AND NON_UNIQUE = 0 AND COLUMN_NAME = '%s')"
+					 "  GROUP BY s.INDEX_NAME) AS idx",
+					 options->svr_database, options->svr_table,
+					 options->svr_database, options->svr_table, firstcol);
+
+	if (mysql_query(conn, sql.data) != 0)
+		mysql_error_print(conn);
+
+	result = mysql_store_result(conn);
+	if (result)
+	{
+		MYSQL_ROW	row = mysql_fetch_row(result);
+
+		if (row && row[0])
+			key_size = atoi(row[0]);
+
+		mysql_free_result(result);
+	}
+
+	return key_size;
 }
 
 /*
@@ -1598,10 +1657,20 @@ mysqlPlanForeignModify(PlannerInfo *root,
 
 	foreignTableId = RelationGetRelid(rel);
 
-	if (!mysql_is_column_unique(foreignTableId))
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("first column of remote table must be unique for INSERT/UPDATE/DELETE operation")));
+	{
+		int			key_size = mysql_first_column_key_size(foreignTableId);
+
+		if (key_size == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("first column of remote table must be unique for INSERT/UPDATE/DELETE operation")));
+		else if (key_size > 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+					 errmsg("remote table has a composite primary/unique key"),
+					 errdetail("mysql_fdw only supports INSERT/UPDATE/DELETE on remote tables whose first column, by itself, forms a primary key or unique key."),
+					 errhint("Define a single-column primary/unique key on the first column, or make the first column of the foreign table a column that is uniquely keyed on its own.")));
+	}
 
 	/*
 	 * ON CONFLICT DO UPDATE and DO NOTHING case with inference specification
