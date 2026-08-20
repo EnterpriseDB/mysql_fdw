@@ -725,9 +725,16 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	mysql_stmt_attr_set(festate->stmt, STMT_ATTR_PREFETCH_ROWS,
 						(void *) &options->fetch_size);
 
+	/*
+	 * A remote SELECT list is never truly empty: if the local target list
+	 * has no columns (e.g. "SELECT FROM ft1 JOIN ft2 ...", used for
+	 * EXISTS()), the deparser emits a literal NULL placeholder instead so
+	 * as to send valid SQL.  Reserve room for it so the bind array always
+	 * matches the statement's actual mysql_stmt_field_count().
+	 */
 	festate->table = (mysql_table *) palloc0(sizeof(mysql_table));
-	festate->table->column = (mysql_column *) palloc0(sizeof(mysql_column) * tupleDescriptor->natts);
-	festate->table->mysql_bind = (MYSQL_BIND *) palloc0(sizeof(MYSQL_BIND) * tupleDescriptor->natts);
+	festate->table->column = (mysql_column *) palloc0(sizeof(mysql_column) * Max(tupleDescriptor->natts, 1));
+	festate->table->mysql_bind = (MYSQL_BIND *) palloc0(sizeof(MYSQL_BIND) * Max(tupleDescriptor->natts, 1));
 
 	festate->table->mysql_res = mysql_stmt_result_metadata(festate->stmt);
 	if (NULL == festate->table->mysql_res)
@@ -756,6 +763,14 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 						  &festate->table->mysql_fields[atindex],
 						  &festate->table->column[atindex]);
 		atindex++;
+	}
+
+	if (atindex == 0)
+	{
+		/* Bind (and discard) the NULL placeholder column. */
+		festate->table->column[0].mysql_bind = &festate->table->mysql_bind[0];
+		mysql_bind_result(InvalidOid, -1, &festate->table->mysql_fields[0],
+						  &festate->table->column[0]);
 	}
 
 	/*

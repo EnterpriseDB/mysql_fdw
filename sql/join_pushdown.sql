@@ -526,6 +526,28 @@ SELECT t3 FROM fdw139_t1 t1
     LEFT JOIN fdw139_t1 t3 ON (t3.c1 = t2.c1)
   ORDER BY 1;
 
+-- GitHub issue #334: A join with an empty target list (e.g. as produced by
+-- EXISTS()) must not crash the backend, including on repeated execution
+-- within the same session.
+DELETE FROM fdw139_t1;
+DELETE FROM fdw139_t2;
+INSERT INTO fdw139_t1 VALUES (1, 100, 'AAA1', 'foo');
+INSERT INTO fdw139_t2 VALUES (1, 200, 'BBB1', 'foo');
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
+  LIMIT 1;
+SELECT
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
+  LIMIT 1;
+SELECT
+  FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
+  LIMIT 1;
+SELECT EXISTS (
+  SELECT FROM fdw139_t1 t1 JOIN fdw139_t2 t2 ON (t1.c1 = t2.c1)
+);
+
 -- Cleanup
 DELETE FROM fdw139_t1;
 DELETE FROM fdw139_t2;
