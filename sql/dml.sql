@@ -249,6 +249,12 @@ UPDATE f_composite_pk_with_unique_test SET c3 = 99 WHERE c1 = 1;
 DELETE FROM f_composite_pk_with_unique_test WHERE c1 = 3;
 SELECT * FROM f_composite_pk_with_unique_test ORDER BY 1;
 
+-- Test ANALYZE with special characters in table name to verify proper escaping
+-- in the query sent to MySQL.
+CREATE FOREIGN TABLE fdw_analyze_spl(a int, b int)
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'ana''lyze_test');
+ANALYZE fdw_analyze_spl;
+
 -- Cleanup
 DELETE FROM fdw126_ft1;
 DELETE FROM f_empdata;
@@ -265,6 +271,7 @@ DROP FOREIGN TABLE fdw193_ft1;
 DROP FOREIGN TABLE fdw601;
 DROP FOREIGN TABLE f_composite_pk_test;
 DROP FOREIGN TABLE f_composite_pk_with_unique_test;
+DROP FOREIGN TABLE fdw_analyze_spl;
 DROP FUNCTION before_row_update_func();
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;

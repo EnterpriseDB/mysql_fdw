@@ -502,8 +502,10 @@ mysql_deparse_analyze(StringInfo sql, char *dbname, char *relname)
 	appendStringInfo(sql, "SELECT");
 	appendStringInfo(sql, " round(((data_length + index_length)), 2)");
 	appendStringInfo(sql, " FROM information_schema.TABLES");
-	appendStringInfo(sql, " WHERE table_schema = '%s' AND table_name = '%s'",
-					 dbname, relname);
+	appendStringInfoString(sql, " WHERE table_schema = ");
+	mysql_deparse_string_literal(sql, dbname);
+	appendStringInfoString(sql, " AND table_name = ");
+	mysql_deparse_string_literal(sql, relname);
 }
 
 /*
@@ -601,9 +603,17 @@ mysql_deparse_column_ref(StringInfo buf, int varno, int varattno,
 }
 
 /*
-* Append a SQL string literal representing "val" to buf.
-*/
-static void
+ * Append a SQL string literal representing "val" to buf.
+ *
+ * Quoting is byte-level (not charset-aware) and only doubles single quotes.
+ * That is safe only because the FDW forces NO_BACKSLASH_ESCAPES into the
+ * remote session's sql_mode (see mysql_get_options()), so MySQL never treats
+ * backslash as an escape character.  Without NO_BACKSLASH_ESCAPES, correct
+ * quoting would depend on the connection character set, which this function
+ * does not know about.  Do not relax this: NO_BACKSLASH_ESCAPES and the
+ * single-quote-only doubling here must stay in lock-step.
+ */
+void
 mysql_deparse_string_literal(StringInfo buf, const char *val)
 {
 	const char *valptr;
@@ -614,7 +624,7 @@ mysql_deparse_string_literal(StringInfo buf, const char *val)
 	{
 		char		ch = *valptr;
 
-		if (SQL_STR_DOUBLE(ch, true))
+		if (ch == '\'')
 			appendStringInfoChar(buf, ch);
 		appendStringInfoChar(buf, ch);
 	}
@@ -797,7 +807,8 @@ mysql_deparse_update(StringInfo buf, PlannerInfo *root, Index rtindex,
 		pindex++;
 	}
 
-	appendStringInfo(buf, " WHERE %s = ?", attname);
+	appendStringInfo(buf, " WHERE %s = ?",
+					 mysql_quote_identifier(attname, '`'));
 }
 
 /*
@@ -813,7 +824,8 @@ mysql_deparse_delete(StringInfo buf, PlannerInfo *root, Index rtindex,
 {
 	appendStringInfoString(buf, "DELETE FROM ");
 	mysql_deparse_relation(buf, rel);
-	appendStringInfo(buf, " WHERE %s = ?", name);
+	appendStringInfo(buf, " WHERE %s = ?",
+					 mysql_quote_identifier(name, '`'));
 }
 
 /*

@@ -317,6 +317,43 @@ SELECT * FROM dropped_col_test ORDER BY 1;
   1 |  9
 (1 row)
 
+-- IMPORT FOREIGN SCHEMA must safely quote MySQL DEFAULT values.  The
+-- defaults come from information_schema.COLUMNS.COLUMN_DEFAULT on the
+-- remote server and would otherwise be interpolated verbatim into the
+-- locally-executed CREATE FOREIGN TABLE DDL.  fdw_default_test contains a
+-- default with a single quote ('O''Brien') and one containing SQL-like text;
+-- both must be imported as plain string literals and the resulting DDL must
+-- parse.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (fdw_default_test)
+  FROM SERVER mysql_svr INTO public OPTIONS (import_default 'true');
+\d fdw_default_test
+                                                          Foreign table "public.fdw_default_test"
+  Column  |          Type          | Collation | Nullable |                                      Default                                      | FDW options 
+----------+------------------------+-----------+----------+-----------------------------------------------------------------------------------+-------------
+ id       | integer                |           | not null |                                                                                   | 
+ c_str    | character varying(50)  |           |          | 'safe'::character varying                                                         | 
+ c_quote  | character varying(50)  |           |          | 'O''Brien'::character varying                                                     | 
+ c_spchar | character varying(100) |           |          | '''); CREATE TABLE verification_tbl(x int); SELECT 1 WHERE '''::character varying | 
+ c_int    | integer                |           |          | 42                                                                                | 
+Server: mysql_svr
+FDW options: (dbname 'mysql_fdw_regress', table_name 'fdw_default_test')
+
+-- This table must not exist.
+SELECT relname FROM pg_class WHERE relname = 'verification_tbl';
+ relname 
+---------
+(0 rows)
+
+-- Confirm the defaults round-trip as data when the server fills them in.
+INSERT INTO fdw_default_test (id) VALUES (1);
+SELECT id, c_str, c_quote, c_spchar, c_int FROM fdw_default_test WHERE id = 1;
+ id | c_str | c_quote |                          c_spchar                          | c_int 
+----+-------+---------+------------------------------------------------------------+-------
+  1 | safe  | O'Brien | '); CREATE TABLE verification_tbl(x int); SELECT 1 WHERE ' |    42
+(1 row)
+
+DELETE FROM fdw_default_test WHERE id = 1;
+DROP FOREIGN TABLE fdw_default_test;
 -- Cleanup
 DELETE FROM fdw519_ft1;
 DELETE FROM fdw519_ft2;

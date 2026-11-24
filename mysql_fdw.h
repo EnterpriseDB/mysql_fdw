@@ -334,6 +334,7 @@ extern EquivalenceMember *mysql_find_em_for_rel_target(PlannerInfo *root,
 extern bool mysql_is_builtin(Oid objectId);
 extern void mysql_deparse_truncate_sql(StringInfo buf, Relation rel);
 extern char *mysql_quote_identifier(const char *str, char quotechar);
+extern void mysql_deparse_string_literal(StringInfo buf, const char *val);
 
 /* connection.c headers */
 MYSQL *mysql_get_connection(ForeignServer *server, UserMapping *user,

@@ -147,6 +147,29 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("\"%s\" requires an integer value between 1 to %lu",
 								def->defname, ULONG_MAX)));
 		}
+		else if (strcmp(def->defname, "sql_mode") == 0)
+		{
+			/*
+			 * Validate that sql_mode contains only characters valid in MySQL
+			 * sql_mode names: letters, digits, underscores, and commas.
+			 * This is needed because the value is interpolated into a SET
+			 * command sent to MySQL.
+			 */
+			char	   *val = defGetString(def);
+			const char *p;
+
+			for (p = val; *p; p++)
+			{
+				if (!isalpha((unsigned char) *p) &&
+					!isdigit((unsigned char) *p) &&
+					*p != '_' && *p != ',')
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("invalid character in option \"%s\"",
+									def->defname),
+							 errhint("Valid sql_mode value must contain only letters, digits, underscores, and commas.")));
+			}
+		}
 		else if (strcmp(def->defname, "reconnect") == 0)
 		{
 			/* accept only boolean values */
@@ -323,9 +346,21 @@ mysql_get_options(Oid foreignoid, bool is_foreigntable)
 	else if (strcmp(opt->character_set, "PGDatabaseEncoding") == 0)
 		opt->character_set = (char *) GetDatabaseEncodingName();
 
-	/* Default value for sql_mode */
+	/*
+	 * Default value for sql_mode.
+	 *
+	 * ANSI_QUOTES makes double quotes identifier delimiters (matching
+	 * PostgreSQL).  NO_BACKSLASH_ESCAPES makes backslash a literal character
+	 * in string literals; mysql_deparse_string_literal() relies on this to
+	 * quote values safely with single-quote doubling alone.  We append
+	 * NO_BACKSLASH_ESCAPES even when the user supplies their own sql_mode so
+	 * the escaping invariant cannot be turned off from SQL.  Duplicate flags
+	 * in sql_mode are harmless.
+	 */
 	if (!opt->sql_mode)
-		opt->sql_mode = "ANSI_QUOTES";
+		opt->sql_mode = "ANSI_QUOTES,NO_BACKSLASH_ESCAPES";
+	else
+		opt->sql_mode = psprintf("%s,NO_BACKSLASH_ESCAPES", opt->sql_mode);
 
 	return opt;
 }

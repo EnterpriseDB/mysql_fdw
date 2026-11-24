@@ -1457,6 +1457,19 @@ SELECT relname FROM pg_class
  test_tbl1
 (2 rows)
 
+-- Test IMPORT FOREIGN SCHEMA with special characters in LIMIT TO table name
+-- to verify proper escaping in the query sent to MySQL.  The table ana'lyze_test exists on MySQL, so it should be
+-- imported successfully.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO ("ana'lyze_test")
+  FROM SERVER mysql_svr INTO public;
+SELECT relname FROM pg_class
+  WHERE relname = 'ana''lyze_test' AND relnamespace = 'public'::regnamespace;
+    relname    
+---------------
+ ana'lyze_test
+(1 row)
+
+DROP FOREIGN TABLE "ana'lyze_test";
 -- FDW-417: Updating a NOT NULL column with NULL should throw an error
 -- if we set sql_mode to STRICT_ALL_TABLES.
 ALTER SERVER mysql_svr OPTIONS (sql_mode 'ANSI_QUOTES,STRICT_ALL_TABLES');

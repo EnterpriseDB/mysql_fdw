@@ -2243,9 +2243,9 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	initStringInfo(&buf);
 
 	/* Check that the schema really exists */
-	appendStringInfo(&buf,
-					 "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = '%s'",
-					 stmt->remote_schema);
+	appendStringInfoString(&buf,
+						   "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ");
+	mysql_deparse_string_literal(&buf, stmt->remote_schema);
 
 	if (mysql_query(conn, buf.data) != 0)
 		mysql_error_print(conn);
@@ -2304,8 +2304,8 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 					 " ON"
 					 "  t.TABLE_CATALOG <=> c.TABLE_CATALOG AND t.TABLE_SCHEMA <=> c.TABLE_SCHEMA AND t.TABLE_NAME <=> c.TABLE_NAME"
 					 " WHERE"
-					 "  t.TABLE_SCHEMA = '%s'",
-					 stmt->remote_schema);
+					 "  t.TABLE_SCHEMA = ");
+	mysql_deparse_string_literal(&buf, stmt->remote_schema);
 
 	/* Apply restrictions for LIMIT TO and EXCEPT */
 	if (stmt->list_type == FDW_IMPORT_SCHEMA_LIMIT_TO ||
@@ -2328,7 +2328,7 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			else
 				appendStringInfoString(&buf, ", ");
 
-			appendStringInfo(&buf, "'%s'", rv->relname);
+			mysql_deparse_string_literal(&buf, rv->relname);
 		}
 		appendStringInfoChar(&buf, ')');
 	}
@@ -2386,14 +2386,30 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 				 * If import_enum_as_text is set, then map MySQL enum type to
 				 * text while import, else emit a warning to create mapping
 				 * TYPE.
+				 *
+				 * The placeholder type name is computed on the remote side as
+				 * LOWER(CONCAT(TABLE_NAME, '_', COLUMN_NAME, '_t')), so it is
+				 * derived from the remote table and column names and is fully
+				 * under the remote server's control.  Both the column-type
+				 * slot in the DDL we build below and the suggested CREATE
+				 * TYPE in the hint must therefore go through the appropriate
+				 * PostgreSQL quoting -- quote_identifier() for the identifier
+				 * positions and quote_literal_cstr() for the typname string
+				 * literal -- so the name is always treated as an identifier or a
+				 * string literal, whatever characters it contains.
 				 */
 				if (import_enum_as_text)
 					typename = "text";
 				else
+				{
 					ereport(NOTICE,
 							(errmsg("error while generating the table definition"),
-							 errhint("If you encounter an error, you may need to execute the following first:\nDO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = '%s') THEN CREATE TYPE %s AS %s; END IF; END$$;\n",
-									 typename, typename, typedfn)));
+							 errhint("If you encounter an error, you may need to execute the following first:\nDO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = %s) THEN CREATE TYPE %s AS %s; END IF; END$$;\n",
+									 quote_literal_cstr(typename),
+									 quote_identifier(typename),
+									 typedfn)));
+					typename = pstrdup(quote_identifier(typename));
+				}
 			}
 
 			/*
@@ -2420,9 +2436,27 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 			appendStringInfo(&buf, "  %s %s", quote_identifier(attname),
 							 typename);
 
-			/* Add DEFAULT if needed */
+			/*
+			 * Add DEFAULT if needed.
+			 *
+			 * The default value comes verbatim from the remote MySQL server's
+			 * information_schema.COLUMNS.COLUMN_DEFAULT and would otherwise
+			 * be interpolated directly into the CREATE FOREIGN TABLE DDL
+			 * executed locally, so it must be quoted.  Quote the value as a
+			 * string literal so it is always parsed as data; PostgreSQL handles the implicit coercion to
+			 * the target column type for ordinary literals (numbers, dates,
+			 * booleans, strings).
+			 *
+			 * Note: this means MySQL expression defaults such as
+			 * CURRENT_TIMESTAMP are imported as the literal string
+			 * "CURRENT_TIMESTAMP" rather than as an expression.  That is a
+			 * pre-existing limitation made explicit by this fix; for
+			 * expression defaults the safe and correct behaviour is to set
+			 * the default explicitly on the foreign table after import.
+			 */
 			if (import_default && attdefault != NULL)
-				appendStringInfo(&buf, " DEFAULT %s", attdefault);
+				appendStringInfo(&buf, " DEFAULT %s",
+								 quote_literal_cstr(attdefault));
 
 			/*
 			 * Add GENERATED if needed.  Map VIRTUAL GENERATED to STORED in
@@ -2463,11 +2497,12 @@ mysqlImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 		 * database and table name as options (the latter to ensure that
 		 * renaming the foreign table doesn't break the association).
 		 */
-		appendStringInfo(&buf,
-						 "\n) SERVER %s OPTIONS (dbname '%s', table_name '%s');\n",
-						 quote_identifier(server->servername),
-						 stmt->remote_schema,
-						 tablename);
+		appendStringInfo(&buf, "\n) SERVER %s OPTIONS (dbname ",
+						 quote_identifier(server->servername));
+		mysql_deparse_string_literal(&buf, stmt->remote_schema);
+		appendStringInfoString(&buf, ", table_name ");
+		mysql_deparse_string_literal(&buf, tablename);
+		appendStringInfoString(&buf, ");\n");
 
 		commands = lappend(commands, pstrdup(buf.data));
 	}

@@ -165,6 +165,24 @@ SELECT * FROM dropped_col_test ORDER BY 1;
 UPDATE dropped_col_test SET c3 = 9 WHERE c1 = 1;
 SELECT * FROM dropped_col_test ORDER BY 1;
 
+-- IMPORT FOREIGN SCHEMA must safely quote MySQL DEFAULT values.  The
+-- defaults come from information_schema.COLUMNS.COLUMN_DEFAULT on the
+-- remote server and would otherwise be interpolated verbatim into the
+-- locally-executed CREATE FOREIGN TABLE DDL.  fdw_default_test contains a
+-- default with a single quote ('O''Brien') and one containing SQL-like text;
+-- both must be imported as plain string literals and the resulting DDL must
+-- parse.
+IMPORT FOREIGN SCHEMA mysql_fdw_regress LIMIT TO (fdw_default_test)
+  FROM SERVER mysql_svr INTO public OPTIONS (import_default 'true');
+\d fdw_default_test
+-- This table must not exist.
+SELECT relname FROM pg_class WHERE relname = 'verification_tbl';
+-- Confirm the defaults round-trip as data when the server fills them in.
+INSERT INTO fdw_default_test (id) VALUES (1);
+SELECT id, c_str, c_quote, c_spchar, c_int FROM fdw_default_test WHERE id = 1;
+DELETE FROM fdw_default_test WHERE id = 1;
+DROP FOREIGN TABLE fdw_default_test;
+
 -- Cleanup
 DELETE FROM fdw519_ft1;
 DELETE FROM fdw519_ft2;

@@ -213,5 +213,66 @@ SELECT count(*)
 -- Cleanup character_set test objects.
 DROP SERVER charset101;
 
+-- Test sql_mode option validation: only letters, digits, underscores, and
+-- commas should be allowed.
+-- Valid values should succeed.
+CREATE SERVER sqlmode_test1 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (sql_mode 'ANSI_QUOTES');
+DROP SERVER sqlmode_test1;
+CREATE SERVER sqlmode_test2 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (sql_mode 'ANSI_QUOTES,STRICT_ALL_TABLES');
+DROP SERVER sqlmode_test2;
+-- Invalid values containing special characters should be rejected.
+CREATE SERVER sqlmode_test3 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (sql_mode 'ANSI_QUOTES''; DROP TABLE foo; --');
+CREATE SERVER sqlmode_test4 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (sql_mode 'ANSI QUOTES');
+
+-- Test mysql_deparse_string_literal escaping: pushed-down string constants
+-- containing backslashes and single quotes must round-trip correctly.  This
+-- depends on (a) the deparser doubling single quotes only and (b) the remote
+-- session having NO_BACKSLASH_ESCAPES in sql_mode, both of which are arranged by the option handling code.
+CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (host :MYSQL_HOST, port :MYSQL_PORT);
+CREATE USER MAPPING FOR public SERVER mysql_svr
+  OPTIONS (username :MYSQL_USER_NAME, password :MYSQL_PASS);
+CREATE FOREIGN TABLE f_strescape (a int, b varchar(255))
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'numbers');
+-- Seed via FDW (parameter binding -- bytes land on MySQL as-is).
+INSERT INTO f_strescape VALUES (1, E'plain');
+INSERT INTO f_strescape VALUES (2, E'with''quote');
+INSERT INTO f_strescape VALUES (3, E'back\\slash');
+INSERT INTO f_strescape VALUES (4, E'escape\\''strings');
+-- Each WHERE constant flows through mysql_deparse_string_literal.  If the
+-- function is buggy or NO_BACKSLASH_ESCAPES is missing, the deparsed literal
+-- will not match the seeded bytes and the row will not be returned.
+SELECT a, b FROM f_strescape WHERE b = E'with''quote' ORDER BY a;
+SELECT a, b FROM f_strescape WHERE b = E'back\\slash' ORDER BY a;
+SELECT a, b FROM f_strescape WHERE b = E'escape\\''strings' ORDER BY a;
+DELETE FROM f_strescape;
+DROP FOREIGN TABLE f_strescape;
+DROP USER MAPPING FOR public SERVER mysql_svr;
+DROP SERVER mysql_svr;
+
+-- Discriminating round-trip: the user explicitly sets sql_mode containing
+-- NO_BACKSLASH_ESCAPES.  Under the buggy code (which doubles backslashes
+-- client-side) this would write '\\' into the literal, the server would
+-- interpret that as two literal backslashes, and the row containing one
+-- backslash would not match.  Under the fix the deparser only doubles
+-- single quotes, so the literal stays one backslash and the row matches.
+CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (host :MYSQL_HOST, port :MYSQL_PORT,
+           sql_mode 'ANSI_QUOTES,NO_BACKSLASH_ESCAPES');
+CREATE USER MAPPING FOR public SERVER mysql_svr
+  OPTIONS (username :MYSQL_USER_NAME, password :MYSQL_PASS);
+CREATE FOREIGN TABLE f_strescape (a int, b varchar(255))
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'numbers');
+INSERT INTO f_strescape VALUES (1, E'back\\slash');
+SELECT a, b FROM f_strescape WHERE b = E'back\\slash' ORDER BY a;
+DELETE FROM f_strescape;
+DROP FOREIGN TABLE f_strescape;
+DROP USER MAPPING FOR public SERVER mysql_svr;
+DROP SERVER mysql_svr;
+
 -- Cleanup
 DROP EXTENSION mysql_fdw;
