@@ -147,6 +147,40 @@ mysql_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("\"%s\" requires an integer value between 1 to %lu",
 								def->defname, ULONG_MAX)));
 		}
+		else if (strcmp(def->defname, "init_command") == 0)
+		{
+			/*
+			 * Only superuser can set init_command, as it runs commands on the
+			 * remote MySQL server at connection time.
+			 */
+			if (!superuser())
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("only superuser can set the \"%s\" option",
+								def->defname)));
+		}
+		else if (strcmp(def->defname, "mysql_default_file") == 0 ||
+				 strcmp(def->defname, "ssl_key") == 0 ||
+				 strcmp(def->defname, "ssl_cert") == 0 ||
+				 strcmp(def->defname, "ssl_ca") == 0 ||
+				 strcmp(def->defname, "ssl_capath") == 0)
+		{
+			/*
+			 * Only superuser can set options that name a file on the
+			 * PostgreSQL server host.  mysql_default_file is read by
+			 * libmysqlclient as a MySQL option file, which can itself
+			 * specify host, username, password and even init-command; the
+			 * ssl_* options point at key, certificate and CA files.
+			 * Allowing a non-superuser to set these would let them access
+			 * files on the server host or change connection settings used
+			 * with another user's privileges.
+			 */
+			if (!superuser())
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("only superuser can set the \"%s\" option",
+								def->defname)));
+		}
 		else if (strcmp(def->defname, "sql_mode") == 0)
 		{
 			/*

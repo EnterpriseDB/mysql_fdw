@@ -180,7 +180,8 @@ Usage
 - **init_command** as *string*, optional, no default
 
   SQL statement to execute when connecting to the
-    MySQL server.
+    MySQL server. Because this runs commands on the remote server,
+    only a PostgreSQL superuser may set this option.
 
 - **use_remote_estimate** as *boolean*, optional, default `false`
 
@@ -198,22 +199,28 @@ Usage
 
 - **ssl_key** as *string*, optional, no default
 
-  The path name of the client private key file.
+  The path name of the client private key file. Because it names a
+    file on the PostgreSQL server host, only a PostgreSQL superuser may
+    set this option.
 
 - **ssl_cert** as *string*, optional, no default
 
-  The path name of the client public key certificate file.
+  The path name of the client public key certificate file. Because it
+    names a file on the PostgreSQL server host, only a PostgreSQL
+    superuser may set this option.
 
 - **ssl_ca** as *string*, optional, no default
 
   The path name of the Certificate Authority (CA) certificate
     file. This option, if used, must specify the same certificate used
-    by the server.
+    by the server. Because it names a file on the PostgreSQL server host,
+    only a PostgreSQL superuser may set this option.
 
 - **ssl_capath** as *string*, optional, no default
 
   The path name of the directory that contains trusted
-    SSL CA certificate files.
+    SSL CA certificate files. Because it names a path on the PostgreSQL
+    server host, only a PostgreSQL superuser may set this option.
 
 - **ssl_cipher** as *string*, optional, no default
 
@@ -238,7 +245,9 @@ Usage
 
   Set the MySQL default file path if connection
     details, such as username, password, etc., need to be picked from the
-    default file.
+    default file. Because it names a file on the PostgreSQL server host
+    (which can itself specify host, user, password and init-command),
+    only a PostgreSQL superuser may set this option.
 
 - **truncatable** as *boolean*, optional, default `true`
 

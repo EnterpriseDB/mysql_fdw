@@ -373,5 +373,43 @@ DELETE FROM f_strescape;
 DROP FOREIGN TABLE f_strescape;
 DROP USER MAPPING FOR public SERVER mysql_svr;
 DROP SERVER mysql_svr;
+-- Test init_command option: only superuser should be allowed to set it,
+-- as it permits running commands on the remote MySQL server.
+-- Superuser should succeed.
+CREATE SERVER initcmd_test1 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (init_command 'SET NAMES utf8');
+DROP SERVER initcmd_test1;
+-- Test file-path options (mysql_default_file, ssl_*): only superuser
+-- should be allowed to set them, as they reference files on the
+-- PostgreSQL server host.  Superuser should succeed.
+CREATE SERVER filepath_test1 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (mysql_default_file '/dev/null', ssl_key '/tmp/k', ssl_cert '/tmp/c',
+           ssl_ca '/tmp/ca', ssl_capath '/tmp');
+DROP SERVER filepath_test1;
+-- Non-superuser should be rejected.
+CREATE ROLE regress_mysql_fdw_user;
+GRANT USAGE ON FOREIGN DATA WRAPPER mysql_fdw TO regress_mysql_fdw_user;
+SET ROLE regress_mysql_fdw_user;
+CREATE SERVER initcmd_test2 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (init_command 'SET NAMES utf8');
+ERROR:  only superuser can set the "init_command" option
+CREATE SERVER filepath_test2 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (mysql_default_file '/dev/null');
+ERROR:  only superuser can set the "mysql_default_file" option
+CREATE SERVER filepath_test3 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (ssl_key '/tmp/k');
+ERROR:  only superuser can set the "ssl_key" option
+CREATE SERVER filepath_test4 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (ssl_cert '/tmp/c');
+ERROR:  only superuser can set the "ssl_cert" option
+CREATE SERVER filepath_test5 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (ssl_ca '/tmp/ca');
+ERROR:  only superuser can set the "ssl_ca" option
+CREATE SERVER filepath_test6 FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (ssl_capath '/tmp');
+ERROR:  only superuser can set the "ssl_capath" option
+RESET ROLE;
+REVOKE USAGE ON FOREIGN DATA WRAPPER mysql_fdw FROM regress_mysql_fdw_user;
+DROP ROLE regress_mysql_fdw_user;
 -- Cleanup
 DROP EXTENSION mysql_fdw;
