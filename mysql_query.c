@@ -46,8 +46,6 @@ x->second = y.tm_sec; \
 } while(0);
 
 static int32 mysql_from_pgtyp(Oid type);
-static int dec_bin(int number);
-static int bin_dec(int binarynumber);
 
 
 /*
@@ -61,7 +59,6 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 	Datum		valueDatum;
 	regproc		typeinput;
 	HeapTuple	tuple;
-	char		str[MAXDATELEN];
 	bytea	   *result;
 	char	   *text_result = NULL;
 
@@ -96,21 +93,102 @@ mysql_convert_to_pg(Oid pgtyp, int pgtypmod, mysql_column *column)
 		 * string.
 		 */
 		case BYTEAOID:
-			result = (bytea *) palloc(column->length + VARHDRSZ);
-			memcpy(VARDATA(result), VARDATA(DatumGetPointer(column->value)), column->length);
-			SET_VARSIZE(result, column->length + VARHDRSZ);
-			return PointerGetDatum(result);
+			{
+				/*
+				 * Only buffer_length bytes were actually fetched into the
+				 * bound buffer; MySQL can report a larger column->length for
+				 * a value that did not fit.  That over-long length is not
+				 * reachable while data-truncation reporting is on (this code
+				 * runs only for a non-truncated fetch), but copying it
+				 * blindly could read past the buffer, so clamp to the bytes we
+				 * actually own.
+				 */
+				unsigned long len = column->length;
+
+				if (len > column->mysql_bind->buffer_length)
+					len = column->mysql_bind->buffer_length;
+
+				result = (bytea *) palloc(len + VARHDRSZ);
+				memcpy(VARDATA(result), VARDATA(DatumGetPointer(column->value)), len);
+				SET_VARSIZE(result, len + VARHDRSZ);
+				return PointerGetDatum(result);
+			}
 
 		case BITOID:
-			sprintf(str, "%d", dec_bin(*((int *) column->value)));
-			valueDatum = CStringGetDatum((char *) str);
+			{
+				/*
+				 * MySQL packs BIT(N) into ceil(N/8) bytes, big-endian and
+				 * right-aligned: the high bits of the first byte are zero
+				 * padding when N is not a multiple of 8.  Walk the bytes and
+				 * emit one '0' / '1' character per data bit.  The previous
+				 * implementation reinterpreted the buffer as an int32 and ran
+				 * a decimal-to-binary helper whose internal "i *= 10"
+				 * overflowed once more than 10 bits were set, and which
+				 * silently truncated values wider than BIT(32).
+				 */
+				StringInfoData binstr;
+				unsigned char *bytes = (unsigned char *) column->value;
+				int			byte_count = (int) column->length;
+				int			total_bits = byte_count * 8;
+				int			leading_skip;
+				int			bit_index;
+
+				if (pgtypmod > 0)
+				{
+					/*
+					 * Declared width is known: skip exactly the high padding
+					 * bits so the emitted string is pgtypmod bits long and
+					 * matches the typmod.
+					 */
+					leading_skip = total_bits - pgtypmod;
+					if (leading_skip < 0)
+						leading_skip = 0;
+				}
+				else
+				{
+					/*
+					 * No typmod available (e.g. a whole-row reference): we
+					 * cannot tell MySQL's high zero padding apart from leading
+					 * data zeros, so emit the minimal representation the way
+					 * MySQL's BIN() does -- skip leading zero bits, but keep at
+					 * least one bit so an all-zero value renders as "0".
+					 */
+					leading_skip = 0;
+					while (leading_skip < total_bits - 1 &&
+						   !(bytes[leading_skip / 8] &
+							 (1 << (7 - leading_skip % 8))))
+						leading_skip++;
+				}
+
+				initStringInfo(&binstr);
+				for (bit_index = leading_skip;
+					 bit_index < total_bits;
+					 bit_index++)
+				{
+					int			byte = bit_index / 8;
+					int			bit = 7 - (bit_index % 8);
+
+					appendStringInfoChar(&binstr,
+										 (bytes[byte] & (1 << bit)) ? '1' : '0');
+				}
+
+				valueDatum = CStringGetDatum(binstr.data);
+			}
 			break;
 
 		case TEXTOID:
-			text_result = (char *) palloc(column->length + 1);
-			memcpy(text_result, (char *) column->value, column->length);
-			text_result[column->length] = '\0';
-			valueDatum = CStringGetDatum((char *) text_result);
+			{
+				/* Clamp to the bound buffer; see the BYTEA case above. */
+				unsigned long len = column->length;
+
+				if (len > column->mysql_bind->buffer_length)
+					len = column->mysql_bind->buffer_length;
+
+				text_result = (char *) palloc(len + 1);
+				memcpy(text_result, (char *) column->value, len);
+				text_result[len] = '\0';
+				valueDatum = CStringGetDatum((char *) text_result);
+			}
 			break;
 
 		default:
@@ -165,7 +243,12 @@ mysql_from_pgtyp(Oid type)
 		case TIMESTAMPTZOID:
 			return MYSQL_TYPE_TIMESTAMP;
 		case BITOID:
-			return MYSQL_TYPE_LONG;
+			/*
+			 * Bind as an 8-byte integer so values up to BIT(64) round-trip
+			 * intact.  Binding as MYSQL_TYPE_LONG (4 bytes) used to silently
+			 * truncate any column wider than BIT(32).
+			 */
+			return MYSQL_TYPE_LONGLONG;
 		case BYTEAOID:
 			return MYSQL_TYPE_BLOB;
 		default:
@@ -357,18 +440,45 @@ mysql_bind_sql_var(Oid type, int attnum, Datum value, MYSQL_BIND *binds,
 			break;
 		case BITOID:
 			{
-				int32		dat;
-				int32	   *bufptr = palloc0(sizeof(int32));
+				/*
+				 * Convert the bit string ('0' / '1' chars produced by
+				 * bit_out) directly into a 64-bit unsigned value.  The
+				 * previous implementation went through
+				 * atoi() + a custom decimal-to-binary helper that
+				 * overflowed for any input wider than ~30 bits and was
+				 * undefined for bit strings longer than INT_MAX's 10
+				 * digits, regardless of whether the actual numeric value
+				 * fit.  Walk the digits ourselves so anything up to
+				 * BIT(64) round-trips intact.
+				 */
+				uint64		dat = 0;
+				uint64	   *bufptr = palloc0(sizeof(uint64));
 				char	   *outputString = NULL;
 				Oid			outputFunctionId = InvalidOid;
 				bool		typeVarLength = false;
+				char	   *p;
 
 				getTypeOutputInfo(type, &outputFunctionId, &typeVarLength);
 				outputString = OidOutputFunctionCall(outputFunctionId, value);
 
-				dat = bin_dec(atoi(outputString));
-				memcpy(bufptr, (char *) &dat, sizeof(int32));
+				if (strlen(outputString) > 64)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+							 errmsg("BIT value of %zu bits exceeds the 64-bit limit supported by mysql_fdw",
+									strlen(outputString))));
+
+				for (p = outputString; *p; p++)
+				{
+					if (*p != '0' && *p != '1')
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+								 errmsg("invalid character \"%c\" in BIT string", *p)));
+					dat = (dat << 1) | (uint64) (*p - '0');
+				}
+
+				memcpy(bufptr, &dat, sizeof(uint64));
 				binds[attnum].buffer = bufptr;
+				binds[attnum].is_unsigned = true;
 			}
 			break;
 		case BYTEAOID:
@@ -457,38 +567,3 @@ mysql_bind_result(Oid pgtyp, int pgtypmod, MYSQL_FIELD *field,
 	}
 }
 
-static int
-dec_bin(int number)
-{
-	int			rem;
-	int			i = 1;
-	int			bin = 0;
-
-	while (number != 0)
-	{
-		rem = number % 2;
-		number /= 2;
-		bin += rem * i;
-		i *= 10;
-	}
-
-	return bin;
-}
-
-static int
-bin_dec(int binarynumber)
-{
-	int			dec = 0;
-	int			i = 0;
-	int			rem;
-
-	while (binarynumber != 0)
-	{
-		rem = binarynumber % 10;
-		binarynumber /= 10;
-		dec += rem * pow(2, i);
-		++i;
-	}
-
-	return dec;
-}

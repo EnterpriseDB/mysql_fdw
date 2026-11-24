@@ -1,0 +1,55 @@
+\set MYSQL_HOST			`echo \'"$MYSQL_HOST"\'`
+\set MYSQL_PORT			`echo \'"$MYSQL_PORT"\'`
+\set MYSQL_USER_NAME	`echo \'"$MYSQL_USER_NAME"\'`
+\set MYSQL_PASS			`echo \'"$MYSQL_PWD"\'`
+
+-- Before running this file User must create database mysql_fdw_regress on
+-- MySQL with all permission for MYSQL_USER_NAME user with MYSQL_PWD password
+-- and ran mysql_init.sh file to create tables.
+
+\c contrib_regression
+CREATE EXTENSION IF NOT EXISTS mysql_fdw;
+CREATE SERVER mysql_svr FOREIGN DATA WRAPPER mysql_fdw
+  OPTIONS (host :MYSQL_HOST, port :MYSQL_PORT);
+CREATE USER MAPPING FOR public SERVER mysql_svr
+  OPTIONS (username :MYSQL_USER_NAME, password :MYSQL_PASS);
+
+-- MySQL bit_test has columns b8 BIT(8), b16 BIT(16), b64 BIT(64).
+CREATE FOREIGN TABLE f_bit_test (id int, b8 bit(8), b16 bit(16), b64 bit(64))
+  SERVER mysql_svr OPTIONS (dbname 'mysql_fdw_regress', table_name 'bit_test');
+
+-- Round-trip BIT values: written via INSERT (bind path) and read back via
+-- SELECT (convert path).  The all-ones and high-half BIT(64) values exercise
+-- the bits above 32 that the old int32-based conversion silently truncated.
+INSERT INTO f_bit_test VALUES
+  (1, b'00001001', b'0000000100000000', x'ffffffffffffffff'::bit(64));
+INSERT INTO f_bit_test VALUES
+  (2, b'11111111', b'1111111111111111', x'ffffffff00000000'::bit(64));
+INSERT INTO f_bit_test VALUES
+  (3, b'00000000', b'0000000000000000', x'00000000ffffffff'::bit(64));
+
+-- Read the values back and check each equals what was written.  The
+-- MATERIALIZED CTE pulls the rows into PostgreSQL so the comparison is not
+-- pushed down to MySQL, ensuring the FDW read conversion path is exercised.
+-- Each count is 3 only if every value round-tripped exactly; using count(*)
+-- of an IN-list keeps the expected output independent of column alignment.
+WITH t AS MATERIALIZED (SELECT id, b8, b16, b64 FROM f_bit_test)
+SELECT count(*) AS bit8_ok FROM t
+  WHERE (id, b8) IN ((1, b'00001001'), (2, b'11111111'), (3, b'00000000'));
+WITH t AS MATERIALIZED (SELECT id, b8, b16, b64 FROM f_bit_test)
+SELECT count(*) AS bit16_ok FROM t
+  WHERE (id, b16) IN ((1, b'0000000100000000'),
+                      (2, b'1111111111111111'),
+                      (3, b'0000000000000000'));
+WITH t AS MATERIALIZED (SELECT id, b8, b16, b64 FROM f_bit_test)
+SELECT count(*) AS bit64_ok FROM t
+  WHERE (id, b64) IN ((1, x'ffffffffffffffff'::bit(64)),
+                      (2, x'ffffffff00000000'::bit(64)),
+                      (3, x'00000000ffffffff'::bit(64)));
+
+-- Cleanup
+DELETE FROM f_bit_test;
+DROP FOREIGN TABLE f_bit_test;
+DROP USER MAPPING FOR public SERVER mysql_svr;
+DROP SERVER mysql_svr;
+DROP EXTENSION mysql_fdw;

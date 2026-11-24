@@ -21,6 +21,7 @@ export MYSQL_USER_NAME="${MYSQL_USER_NAME:=edb}"
 # GRANT ALL PRIVILEGES ON mysql_fdw_regress.* TO 'edb'@'localhost';
 # GRANT ALL PRIVILEGES ON mysql_fdw_regress1.* TO 'edb'@'localhost';
 
+mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "DROP TABLE IF EXISTS bit_test;"
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "DROP TABLE IF EXISTS mysql_test;"
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "DROP TABLE IF EXISTS empdata;"
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "DROP TABLE IF EXISTS numbers;"
@@ -75,6 +76,7 @@ mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e 
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "INSERT INTO test7 (c2) SELECT repeat('abcdefgh ', 7500);"
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "CREATE TABLE distinct_test (id int primary key, c1 int, c2 int, c3 text, c4 text);"
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress1 -e "CREATE TABLE dept (dept_id int PRIMARY KEY, stu_id varchar(10), FOREIGN KEY (stu_id) REFERENCES student1(stu_id));"
+mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "CREATE TABLE bit_test (id int primary key, b8 BIT(8), b16 BIT(16), b64 BIT(64));"
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e 'CREATE TABLE fdw520 (c1 int primary key, `c ``"" 2` int, c3 int generated always as (`c ``"" 2` * 2) stored, c4 int generated always as (`c ``"" 2` * 4) virtual not null);'
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "CREATE TABLE fdw520_1 (c1 int primary key, c2 int, c3 int generated always as (c2 * 2) stored, c4 int generated always as (c3 * 4) stored not null);"
 mysql -h $MYSQL_HOST -u $MYSQL_USER_NAME -P $MYSQL_PORT -D mysql_fdw_regress -e "CREATE TABLE fdw520_2 (c1 int primary key, c2 int generated always as (c1 * 2) stored, c3 int);"
