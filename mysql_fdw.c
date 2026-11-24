@@ -675,14 +675,16 @@ mysqlBeginForeignScan(ForeignScanState *node, int eflags)
 	if (wait_timeout > 0)
 	{
 		/* Set the session timeout in seconds */
-		sprintf(timeout, "SET wait_timeout = %d", wait_timeout);
+		snprintf(timeout, sizeof(timeout),
+				 "SET wait_timeout = %d", wait_timeout);
 		mysql_query(festate->conn, timeout);
 	}
 
 	if (interactive_timeout > 0)
 	{
 		/* Set the session timeout in seconds */
-		sprintf(timeout, "SET interactive_timeout = %d", interactive_timeout);
+		snprintf(timeout, sizeof(timeout),
+				 "SET interactive_timeout = %d", interactive_timeout);
 		mysql_query(festate->conn, timeout);
 	}
 
