@@ -31,7 +31,10 @@ else
 DLSUFFIX = .so
 endif
 
-PG_CPPFLAGS += -D _MYSQL_LIBNAME=\"lib$(MYSQL_LIB)$(DLSUFFIX)\"
+# Load the library by its SONAME (e.g. libmysqlclient.so.21): runtime packages
+# often lack the unversioned symlink. Fall back to the unversioned name.
+MYSQL_SONAME := $(shell objdump -p $(shell $(CC) -print-file-name=lib$(MYSQL_LIB)$(DLSUFFIX)) 2>/dev/null | awk '/SONAME/ {print $$2}')
+PG_CPPFLAGS += -D _MYSQL_LIBNAME=\"$(or $(MYSQL_SONAME),lib$(MYSQL_LIB)$(DLSUFFIX))\"
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
